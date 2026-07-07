@@ -46,6 +46,8 @@ export namespace main {
 	    destinationSameAsSource: boolean;
 	    destinationFolder: string;
 	    deleteOriginals: boolean;
+	    watchEnabled: boolean;
+	    watchActive: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new StateResponse(source);
@@ -60,6 +62,8 @@ export namespace main {
 	        this.destinationSameAsSource = source["destinationSameAsSource"];
 	        this.destinationFolder = source["destinationFolder"];
 	        this.deleteOriginals = source["deleteOriginals"];
+	        this.watchEnabled = source["watchEnabled"];
+	        this.watchActive = source["watchActive"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

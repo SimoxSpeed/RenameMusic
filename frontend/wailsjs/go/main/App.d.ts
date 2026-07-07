@@ -26,3 +26,5 @@ export function SetConfig(arg1:rules.Config):Promise<main.ActionResponse>;
 export function SetFolder(arg1:string):Promise<main.ActionResponse>;
 
 export function SetOptions(arg1:boolean,arg2:string,arg3:boolean):Promise<main.ActionResponse>;
+
+export function SetWatchEnabled(arg1:boolean):Promise<main.ActionResponse>;

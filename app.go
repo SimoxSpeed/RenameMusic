@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -14,7 +16,14 @@ import (
 	"renamemusic/internal/rename"
 	"renamemusic/internal/rules"
 	"renamemusic/internal/settings"
+	"renamemusic/internal/watcher"
 )
+
+// EventWatchChanged è l'evento Wails emesso quando la modalità watch rileva
+// una variazione nella cartella osservata: il payload è lo StateResponse
+// aggiornato (con la nuova lista di file/anteprime), così l'UI può aggiornare
+// solo l'anteprima senza avviare nulla — la conversione resta sempre manuale.
+const EventWatchChanged = "watch:changed"
 
 type App struct {
 	ctx      context.Context
@@ -28,6 +37,19 @@ type App struct {
 	destSameAsSource bool
 	destFolder       string
 	deleteOriginals  bool
+	watchEnabled     bool
+
+	watcher *watcher.Watcher
+
+	// watchPaused sospende le notifiche del watcher finché non arriva un nuovo
+	// Scan (o cambio cartella). Viene alzato al termine di un ProcessAll: in UI
+	// coincide con la fase in cui è visibile il tasto "Avvia nuova scansione",
+	// ed è il modo più semplice per ignorare gli eventi fsnotify che noi stessi
+	// abbiamo appena generato.
+	watchPaused bool
+
+	// watchDebounce coalisce eventi ravvicinati in un unico rescan globale.
+	watchDebounce *time.Timer
 }
 
 type FileView struct {
@@ -53,6 +75,8 @@ type StateResponse struct {
 	DestinationSameAsSource bool         `json:"destinationSameAsSource"`
 	DestinationFolder       string       `json:"destinationFolder"`
 	DeleteOriginals         bool         `json:"deleteOriginals"`
+	WatchEnabled            bool         `json:"watchEnabled"`
+	WatchActive             bool         `json:"watchActive"`
 }
 
 type ActionResponse struct {
@@ -91,6 +115,11 @@ func NewApp() *App {
 	current.StartFolder = st.LastFolder
 	defaults.StartFolder = st.LastFolder
 
+	w := watcher.New()
+	if os.Getenv("RENAMEMUSIC_WATCH_DEBUG") != "" {
+		w.Debug = true
+	}
+
 	return &App{
 		config:           current,
 		defaults:         defaults,
@@ -98,6 +127,8 @@ func NewApp() *App {
 		destSameAsSource: st.DestinationSameAsSource,
 		destFolder:       st.DestinationFolder,
 		deleteOriginals:  st.DeleteOriginals,
+		watchEnabled:     st.WatchEnabled,
+		watcher:          w,
 	}
 }
 
@@ -108,11 +139,27 @@ func (a *App) persistStateLocked() {
 		DestinationSameAsSource: a.destSameAsSource,
 		DestinationFolder:       a.destFolder,
 		DeleteOriginals:         a.deleteOriginals,
+		WatchEnabled:            a.watchEnabled,
 	})
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Se il watch era abilitato nella sessione precedente e c'è una cartella
+	// ricordata, riavvialo automaticamente.
+	a.mu.Lock()
+	shouldStart := a.watchEnabled && appfs.IsDir(a.config.StartFolder)
+	a.mu.Unlock()
+	if shouldStart {
+		if err := a.startWatcher(); err != nil {
+			a.mu.Lock()
+			a.watchEnabled = false
+			a.persistStateLocked()
+			a.addLogLocked("Impossibile avviare la modalità watch: " + err.Error())
+			a.mu.Unlock()
+		}
+	}
 }
 
 func (a *App) GetState() ActionResponse {
@@ -157,10 +204,21 @@ func (a *App) SetFolder(path string) ActionResponse {
 	a.mu.Lock()
 	a.config.StartFolder = path
 	a.scanned = nil
+	a.watchPaused = false
 	a.persistStateLocked()
 	a.addLogLocked("Cartella selezionata: " + path)
+	watchWanted := a.watchEnabled
 	state := a.snapshot()
 	a.mu.Unlock()
+
+	if watchWanted {
+		if err := a.startWatcher(); err != nil {
+			a.mu.Lock()
+			a.addLogLocked("Watch non riavviato sulla nuova cartella: " + err.Error())
+			state = a.snapshot()
+			a.mu.Unlock()
+		}
+	}
 
 	return ActionResponse{OK: true, Message: "Cartella selezionata.", State: state}
 }
@@ -197,8 +255,13 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	} else {
 		a.addLogLocked("Configurazione salvata.")
 	}
+	watchWanted := a.watchEnabled
 	state := a.snapshot()
 	a.mu.Unlock()
+
+	if watchWanted {
+		_ = a.startWatcher() // eventuali errori restano visibili nel log al prossimo cambio.
+	}
 
 	if saveErr != nil {
 		return ActionResponse{OK: false, Message: "Configurazione applicata ma non salvata su disco.", State: state}
@@ -245,8 +308,13 @@ func (a *App) ResetConfig() ActionResponse {
 	} else {
 		a.addLogLocked("Configurazione ripristinata ai default e salvata.")
 	}
+	watchWanted := a.watchEnabled
 	state := a.snapshot()
 	a.mu.Unlock()
+
+	if watchWanted {
+		_ = a.startWatcher()
+	}
 
 	if saveErr != nil {
 		return ActionResponse{OK: false, Message: "Default ripristinati ma non salvati su disco.", State: state}
@@ -262,6 +330,7 @@ func (a *App) Scan() ActionResponse {
 
 	a.mu.Lock()
 	a.scanned = files
+	a.watchPaused = false
 	a.addLogLocked(fmt.Sprintf("Scansione completata: %d file audio.", len(files)))
 	state := a.snapshot()
 	a.mu.Unlock()
@@ -341,6 +410,10 @@ func (a *App) ProcessAll() ActionResponse {
 
 	a.mu.Lock()
 	a.scanned = nil
+	// Da qui in avanti l'UI mostra "Avvia nuova scansione": ignoriamo gli eventi
+	// del watcher (compresi quelli auto-generati da questa elaborazione) fino
+	// alla prossima Scan/cambio cartella.
+	a.watchPaused = true
 	a.addLogLocked(fmt.Sprintf("Elaborati %d file (%d con tag MP3).", len(results)-skipped, tagged))
 	if skipped > 0 {
 		if deleteOriginals {
@@ -353,6 +426,160 @@ func (a *App) ProcessAll() ActionResponse {
 	a.mu.Unlock()
 
 	return ActionResponse{OK: true, Message: "Elaborazione completata.", State: state, Results: views}
+}
+
+// SetWatchEnabled attiva o disattiva la modalità watch (elaborazione automatica
+// dei nuovi file che compaiono nella cartella sorgente). Lo stato è persistito
+// e ripristinato al prossimo avvio.
+func (a *App) SetWatchEnabled(enabled bool) ActionResponse {
+	a.mu.Lock()
+	folder := a.config.StartFolder
+	a.mu.Unlock()
+
+	if enabled && !appfs.IsDir(folder) {
+		return ActionResponse{OK: false, Message: "Seleziona prima una cartella valida.", State: a.snapshotLocked()}
+	}
+
+	var (
+		startErr error
+		message  string
+	)
+	if enabled {
+		startErr = a.startWatcher()
+	} else {
+		a.stopWatcher()
+	}
+
+	a.mu.Lock()
+	if enabled && startErr != nil {
+		a.watchEnabled = false
+		a.addLogLocked("Impossibile avviare la modalità watch: " + startErr.Error())
+		message = "Impossibile avviare la modalità watch."
+	} else {
+		a.watchEnabled = enabled
+		if enabled {
+			a.addLogLocked("Modalità watch attivata su: " + folder)
+			message = "Modalità watch attivata."
+		} else {
+			a.addLogLocked("Modalità watch disattivata.")
+			message = "Modalità watch disattivata."
+		}
+	}
+	a.persistStateLocked()
+	a.mu.Unlock()
+
+	// All'attivazione facciamo una scansione immediata: la cartella potrebbe
+	// essere cambiata prima che l'utente cliccasse il toggle, e senza questa
+	// scansione l'anteprima si aggiornerebbe solo al primo evento successivo.
+	if enabled && startErr == nil {
+		if files, err := rename.NewService(a.currentConfig()).Scan(); err == nil {
+			a.mu.Lock()
+			a.scanned = files
+			a.watchPaused = false
+			a.addLogLocked(fmt.Sprintf("Scansione iniziale: %d file audio.", len(files)))
+			a.mu.Unlock()
+		} else {
+			a.mu.Lock()
+			a.addLogLocked("Scansione iniziale fallita: " + err.Error())
+			a.mu.Unlock()
+		}
+	}
+
+	return ActionResponse{OK: startErr == nil, Message: message, State: a.snapshotLocked()}
+}
+
+// startWatcher avvia l'osservazione della cartella sorgente corrente.
+// Se già attivo, viene riavviato (utile dopo cambio cartella o regole).
+func (a *App) startWatcher() error {
+	a.mu.Lock()
+	folder := a.config.StartFolder
+	cfg := a.config
+	w := a.watcher
+	a.mu.Unlock()
+
+	if w == nil {
+		return nil
+	}
+	return w.Start(folder, cfg, a.onWatchFile, a.onWatchError)
+}
+
+func (a *App) stopWatcher() {
+	a.mu.Lock()
+	w := a.watcher
+	if a.watchDebounce != nil {
+		a.watchDebounce.Stop()
+		a.watchDebounce = nil
+	}
+	a.mu.Unlock()
+	if w != nil {
+		w.Stop()
+	}
+}
+
+// watchRescanDebounce è la finestra di quiete richiesta prima di eseguire un
+// rescan+notify globale. Coalizza raffiche di eventi su file DIVERSI (es. copia
+// massiva di più file) in un'unica scansione. Il watcher applica già un debounce
+// per-file di pari durata (watcher.DefaultQuietPeriod): i due lavorano in
+// cascata e sono deliberatamente distinti, quindi cambiare uno non impatta l'altro.
+const watchRescanDebounce = 150 * time.Millisecond
+
+// onWatchFile viene invocato dal watcher quando cambia il contenuto della
+// cartella osservata (nuovo file, modifica o rimozione). NON esegue conversioni:
+// si limita a schedulare (con debounce) una scansione + notifica all'UI, che
+// aggiornerà l'anteprima. Se il watcher è in pausa (post-ProcessAll, prima di
+// una nuova Scan manuale) l'evento viene ignorato: è così che filtriamo
+// automaticamente gli eventi fsnotify generati dalla conversione appena
+// eseguita.
+func (a *App) onWatchFile(_ string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.watcher == nil || !a.watchEnabled || a.watchPaused {
+		return
+	}
+	if a.watchDebounce != nil {
+		a.watchDebounce.Reset(watchRescanDebounce)
+		return
+	}
+	a.watchDebounce = time.AfterFunc(watchRescanDebounce, a.runWatchRescan)
+}
+
+// runWatchRescan esegue la scansione differita e notifica l'UI. Chiamata dal
+// timer di debounce; se nel frattempo il watcher è stato fermato o messo in
+// pausa, non fa nulla.
+func (a *App) runWatchRescan() {
+	a.mu.Lock()
+	a.watchDebounce = nil
+	if a.watcher == nil || !a.watchEnabled || a.watchPaused {
+		a.mu.Unlock()
+		return
+	}
+	cfg := a.config
+	a.mu.Unlock()
+
+	files, err := rename.NewService(cfg).Scan()
+	if err != nil {
+		a.mu.Lock()
+		a.addLogLocked("Watch: errore scansione: " + err.Error())
+		a.mu.Unlock()
+		return
+	}
+
+	a.mu.Lock()
+	a.scanned = files
+	a.addLogLocked(fmt.Sprintf("Scansione automatica: %d file audio.", len(files)))
+	state := a.snapshot()
+	ctx := a.ctx
+	a.mu.Unlock()
+
+	if ctx != nil {
+		wailsruntime.EventsEmit(ctx, EventWatchChanged, state)
+	}
+}
+
+func (a *App) onWatchError(err error) {
+	a.mu.Lock()
+	a.addLogLocked("Watch: errore filesystem: " + err.Error())
+	a.mu.Unlock()
 }
 
 func (a *App) currentConfig() rules.Config {
@@ -389,6 +616,8 @@ func (a *App) snapshot() StateResponse {
 		DestinationSameAsSource: a.destSameAsSource,
 		DestinationFolder:       a.destFolder,
 		DeleteOriginals:         a.deleteOriginals,
+		WatchEnabled:            a.watchEnabled,
+		WatchActive:             a.watcher != nil && a.watcher.Folder() != "",
 	}
 }
 

@@ -49,3 +49,7 @@ export function SetFolder(arg1) {
 export function SetOptions(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetOptions'](arg1, arg2, arg3);
 }
+
+export function SetWatchEnabled(arg1) {
+  return window['go']['main']['App']['SetWatchEnabled'](arg1);
+}
