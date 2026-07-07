@@ -10,25 +10,99 @@ const (
 	DefaultDestinationFolder = `D:\Musica\Musica Convertita`
 )
 
-var OccurrenciesToRemove = []string{
-	"(Official Music Video)", "(Official Visual)", "(Lyrics)", "(Visual)", "(freestyle)", "(Video Animation)",
-	"(Original Mix)", "(Lyrics/Lyric Video)", "(Visual)", "(Lyrics Video)", "(Official Video)", "(Visual Video)",
-	"(Lyric Video), (Official Audio)",
+// Replacement è una sostituzione testuale generica From -> To,
+// applicata in ordine dalla pipeline di normalizzazione.
+type Replacement struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
-var OccurrenciesToReplaceWithFt = []string{
-	"featuring", "feat.", "Feat.", "ft.", "Ft.", "feat", "Feat",
+// Config raccoglie tutte le regole configurabili in-sessione.
+// I passi strutturali (rimozione di [...], collapse spazi, trim,
+// dash iniziale, "(ft" -> "ft") restano fissi in NormalizeFileBase.
+type Config struct {
+	StartFolder                 string        `json:"startFolder"`
+	SupportedExtensions         []string      `json:"supportedExtensions"`
+	OccurrenciesToRemove        []string      `json:"occurrenciesToRemove"`
+	OccurrenciesToReplaceWithFt []string      `json:"occurrenciesToReplaceWithFt"`
+	Replacements                []Replacement `json:"replacements"`
 }
 
-var SupportedExtensions = []string{
-	"ogg", "mp3", "mp4", "m4a", "aac", "flac",
+// FactoryConfig è il seed di fabbrica usato SOLO al primo avvio per inizializzare
+// i file persistiti (config.json e defaults.json). Dopo il primo avvio le regole
+// vivono su disco e sono modificabili dall'utente.
+func FactoryConfig() Config {
+	return Config{
+		StartFolder: "", // al primo avvio nessuna cartella selezionata
+		SupportedExtensions: []string{
+			"mp3", "flac", "m4a", "aac", "mp4", "ogg", "opus", "wav", "wma", "aiff",
+		},
+		OccurrenciesToRemove: []string{
+			"(Official Music Video)",
+			"(Official Video)",
+			"(Official Audio)",
+			"(Official Lyric Video)",
+			"(Official Lyrics Video)",
+			"(Official Visualizer)",
+			"(Official Visual)",
+			"(Visualizer)",
+			"(Visual Video)",
+			"(Visual)",
+			"(Lyric Video)",
+			"(Lyrics Video)",
+			"(Lyrics/Lyric Video)",
+			"(Lyrics)",
+			"(Lyric)",
+			"(Audio)",
+			"(Music Video)",
+			"(Video)",
+			"(Video Animation)",
+			"(Original Mix)",
+			"(Explicit)",
+			"(Clean)",
+			"(HD)",
+			"(HQ)",
+			"(4K)",
+			"(Full HD)",
+			"(freestyle)",
+			"(Free Download)",
+			"(Free DL)",
+			"(Color Coded Lyrics)",
+			"(Colour Coded Lyrics)",
+			"(Out Now)",
+			"(OUT NOW)",
+			"(Premiere)",
+			"(NCS Release)",
+			"(No Copyright Music)",
+			"(Bass Boosted)",
+		},
+		OccurrenciesToReplaceWithFt: []string{
+			"featuring", "Featuring", "FEATURING",
+			"feat.", "Feat.", "FEAT.",
+			"ft.", "Ft.", "FT.",
+			"feat", "Feat", "FEAT",
+		},
+		Replacements: []Replacement{
+			{From: "–", To: "-"},   // en dash -> trattino (es. "Artista – Titolo" di YouTube)
+			{From: "—", To: "-"},   // em dash -> trattino
+			{From: "’", To: "'"},   // apostrofo tipografico -> apostrofo semplice
+			{From: "‘", To: "'"},   // apostrofo tipografico (sinistro) -> apostrofo semplice
+			{From: " w/ ", To: " ft "},
+			{From: "_", To: " "},
+			{From: "(VIP)", To: "VIP"},
+			{From: " Re-Crank", To: " Remix"},
+			{From: "tha Supreme", To: "thasup"},
+			{From: "Prod.", To: "prod."},
+			{From: " X ", To: " x "},
+		},
+	}
 }
 
 var squareParenthesesPattern = regexp.MustCompile(`\[.*?\]`)
 var spacesPattern = regexp.MustCompile(` +`)
 
-func IsSupportedExtension(ext string) bool {
-	for _, supported := range SupportedExtensions {
+func (c Config) IsSupportedExtension(ext string) bool {
+	for _, supported := range c.SupportedExtensions {
 		if ext == supported {
 			return true
 		}
@@ -36,31 +110,36 @@ func IsSupportedExtension(ext string) bool {
 	return false
 }
 
-func NormalizeFileBase(title string) string {
-	title = removeOccurrencies(title)
-	title = replaceFt(title)
+// NormalizeFileBase applica la pipeline di normalizzazione nello stesso
+// ordine del progetto Java originale.
+func (c Config) NormalizeFileBase(title string) string {
+	title = c.removeOccurrencies(title)
+	title = c.replaceFt(title)
 	title = replaceFtParenthesis(title)
-	title = replaceVIP(title)
+	title = c.applyReplacements(title)
 	title = removeBetweenSquareParenthesis(title)
-	title = swapReCrankWithRemix(title)
-	title = swapThaSupreme(title)
-	title = swapProd(title)
-	title = changeCapitalX(title)
 	title = removeTripleAndDoubleSpacesAndTrim(title)
 	title = removeDashAtStart(title)
 	return strings.TrimSpace(title)
 }
 
-func removeOccurrencies(title string) string {
-	for _, occurrence := range OccurrenciesToRemove {
+func (c Config) removeOccurrencies(title string) string {
+	for _, occurrence := range c.OccurrenciesToRemove {
 		title = strings.ReplaceAll(title, occurrence, "")
 	}
 	return title
 }
 
-func replaceFt(title string) string {
-	for _, occurrence := range OccurrenciesToReplaceWithFt {
+func (c Config) replaceFt(title string) string {
+	for _, occurrence := range c.OccurrenciesToReplaceWithFt {
 		title = strings.ReplaceAll(title, occurrence, "ft")
+	}
+	return title
+}
+
+func (c Config) applyReplacements(title string) string {
+	for _, r := range c.Replacements {
+		title = strings.ReplaceAll(title, r.From, r.To)
 	}
 	return title
 }
@@ -74,28 +153,8 @@ func replaceFtParenthesis(title string) string {
 	return title
 }
 
-func replaceVIP(title string) string {
-	return strings.ReplaceAll(title, "(VIP)", "VIP")
-}
-
 func removeBetweenSquareParenthesis(title string) string {
 	return squareParenthesesPattern.ReplaceAllString(title, "")
-}
-
-func swapReCrankWithRemix(title string) string {
-	return strings.ReplaceAll(title, " Re-Crank", " Remix")
-}
-
-func swapThaSupreme(title string) string {
-	return strings.ReplaceAll(title, "tha Supreme", "thasup")
-}
-
-func swapProd(title string) string {
-	return strings.ReplaceAll(title, "Prod.", "prod.")
-}
-
-func changeCapitalX(title string) string {
-	return strings.ReplaceAll(title, " X ", " x ")
 }
 
 func removeTripleAndDoubleSpacesAndTrim(title string) string {

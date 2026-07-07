@@ -45,7 +45,7 @@ func TagArtist(fileName string) string {
 			artists += ", "
 			if IsRemixed(title) {
 				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " (")))
-			} else if IsVIP(title) {
+			} else if vipAfterFt(title) {
 				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " VIP")))
 			} else {
 				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, len(title)))
@@ -70,7 +70,7 @@ func TagTitle(fileName string) string {
 			if IsRemixed(tagTitle) {
 				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " (")))
 				return substring(tagTitle, 0, strings.Index(tagTitle, " ft ")) + " ft " + ret + substring(tagTitle, strings.LastIndex(tagTitle, " ("), len(tagTitle))
-			} else if IsVIP(tagTitle) {
+			} else if vipAfterFt(tagTitle) {
 				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " VIP")))
 				return substring(tagTitle, 0, strings.Index(tagTitle, " ft ")) + " ft " + ret + " VIP"
 			}
@@ -83,6 +83,15 @@ func TagTitle(fileName string) string {
 
 func IsVIP(title string) bool {
 	return strings.Contains(title, " VIP ")
+}
+
+// vipAfterFt indica se un marcatore " VIP" compare DOPO " ft ": solo in quel caso
+// "VIP" va trattato come suffisso finale (dopo gli artisti featuring). Se "VIP"
+// fa parte del titolo prima di "ft" (es. "Mock VIP ft Jabra") non si applica.
+func vipAfterFt(s string) bool {
+	ft := strings.Index(s, " ft ")
+	vip := strings.LastIndex(s, " VIP")
+	return ft >= 0 && vip > ft
 }
 
 func IsRemixed(title string) bool {
