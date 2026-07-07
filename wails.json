@@ -1,0 +1,16 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "RenameMusic",
+  "outputfilename": "RenameMusic",
+  "frontend:dir": "frontend/dist",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "author": {
+    "name": "Simone D'Alessandro",
+    "email": ""
+  },
+  "windows": {
+    "icon": "Icone/Rename Music Icon.ico"
+  }
+}

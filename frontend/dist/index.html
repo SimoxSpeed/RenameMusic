@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="it">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>RenameMusic</title>
+	<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+	<header>
+		<div>
+			<h1>RenameMusic</h1>
+			<p id="folderLabel"></p>
+		</div>
+		<div id="count">0 file</div>
+	</header>
+
+	<main>
+		<section class="panel controls">
+			<div class="folder-row">
+				<input id="folder" type="text" aria-label="Cartella">
+				<button id="selectFolder">Sfoglia</button>
+				<button id="saveFolder">Usa percorso</button>
+			</div>
+			<div class="actions">
+				<button id="processAll" class="primary">Processa tutti i file</button>
+			</div>
+			<div id="status" class="status"></div>
+		</section>
+
+		<div class="workspace">
+			<section class="panel files-panel">
+				<h2>File audio</h2>
+				<div id="files"></div>
+			</section>
+
+			<section class="panel side-panel">
+				<h2>Attività</h2>
+				<ul id="logs" class="logs"></ul>
+			</section>
+		</div>
+	</main>
+
+	<script src="./app.js"></script>
+</body>
+</html>
