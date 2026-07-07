@@ -32,6 +32,17 @@ func TestTagTitleVIPMatchesJavaSpacing(t *testing.T) {
 	}
 }
 
+func TestTagVIPInTitleNotTreatedAsSuffix(t *testing.T) {
+	name := "File example - Mock VIP ft Jabra.mp3"
+
+	if got := TagTitle(name); got != "Mock VIP ft Jabra" {
+		t.Fatalf("TagTitle() = %q, want %q", got, "Mock VIP ft Jabra")
+	}
+	if got := TagArtist(name); got != "File example, Jabra" {
+		t.Fatalf("TagArtist() = %q, want %q", got, "File example, Jabra")
+	}
+}
+
 func TestUnknownArtistAndTitle(t *testing.T) {
 	name := "Loose Track.mp3"
 

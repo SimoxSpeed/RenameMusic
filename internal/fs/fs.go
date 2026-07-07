@@ -8,7 +8,7 @@ import (
 	"renamemusic/internal/rules"
 )
 
-func ScanAudioFiles(folder string) ([]string, error) {
+func ScanAudioFiles(folder string, cfg rules.Config) ([]string, error) {
 	entries, err := os.ReadDir(folder)
 	if err != nil {
 		return nil, err
@@ -20,7 +20,7 @@ func ScanAudioFiles(folder string) ([]string, error) {
 			continue
 		}
 		ext := parser.Extension(entry.Name())
-		if rules.IsSupportedExtension(ext) {
+		if cfg.IsSupportedExtension(ext) {
 			files = append(files, filepath.Join(folder, entry.Name()))
 		}
 	}

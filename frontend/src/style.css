@@ -1,0 +1,34 @@
+:root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --line: #d9dee7;
+    --text: #172033;
+    --muted: #667085;
+    --primary: #176b87;
+    --primary-strong: #0f5268;
+    --accent: #2d7d46;
+    --accent-strong: #24683c;
+    --danger: #a43b3b;
+    --ok: #2d7d46;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 "Segoe UI", system-ui, sans-serif;
+}
+
+#root {
+    height: 100vh;
+}
