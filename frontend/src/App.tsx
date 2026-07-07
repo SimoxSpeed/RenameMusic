@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import {
     GetState,
@@ -11,7 +11,9 @@ import {
     ClearLogs,
     ChooseDirectory,
     SetOptions,
+    SetWatchEnabled,
 } from '../wailsjs/go/main/App'
+import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime'
 import { main, rules } from '../wailsjs/go/models'
 
 type Status = { message: string; ok: boolean }
@@ -45,6 +47,7 @@ function App() {
     const [destSameAsSource, setDestSameAsSource] = useState(true)
     const [destFolder, setDestFolder] = useState('')
     const [deleteOriginals, setDeleteOriginals] = useState(false)
+    const [watchEnabled, setWatchEnabled] = useState(false)
 
     function absorb(resp: main.ActionResponse) {
         setState(resp.state)
@@ -69,11 +72,17 @@ function App() {
         setDestSameAsSource(s.destinationSameAsSource)
         setDestFolder(s.destinationFolder ?? '')
         setDeleteOriginals(s.deleteOriginals)
+        setWatchEnabled(s.watchEnabled)
     }
 
     // Carica lo stato iniziale (cartella + opzioni persistite); se una cartella è
     // ricordata, ne mostra subito l'anteprima.
+    // Il ref evita la doppia esecuzione indotta da React.StrictMode in dev,
+    // così vediamo un unico "Scansione completata" come in produzione.
+    const bootedRef = useRef(false)
     useEffect(() => {
+        if (bootedRef.current) return
+        bootedRef.current = true
         guard(async () => {
             const resp = await GetState()
             absorb(resp)
@@ -96,6 +105,31 @@ function App() {
         setDeleteOriginals(del)
         SetOptions(same, dest, del).catch(() => {
             /* la persistenza opzioni non deve bloccare la UI */
+        })
+    }
+
+    // In modalità watch, il backend rileva variazioni nella cartella e ci
+    // manda lo stato aggiornato: aggiorniamo solo l'anteprima (la conversione
+    // resta manuale). Se l'utente sta guardando i risultati dell'ultima
+    // conversione, ignoriamo l'evento: il backend è già in pausa in quel caso,
+    // ma è una difesa extra lato UI.
+    useEffect(() => {
+        EventsOn('watch:changed', (payload: unknown) => {
+            const next = payload as main.StateResponse
+            if (!next) return
+            setState((prev) => (prev ? ({ ...prev, files: next.files, logs: next.logs } as main.StateResponse) : next))
+        })
+        return () => {
+            EventsOff('watch:changed')
+        }
+    }, [])
+
+    function toggleWatch(next: boolean) {
+        guard(async () => {
+            const resp = await SetWatchEnabled(next)
+            absorb(resp)
+            setWatchEnabled(resp.state.watchEnabled)
+            setStatus({ message: resp.message ?? '', ok: resp.ok })
         })
     }
 
@@ -298,6 +332,21 @@ function App() {
                             {deleteOriginals
                                 ? '(gli originali vengono eliminati dopo la scrittura)'
                                 : '(scrive i nuovi file lasciando intatti gli originali)'}
+                        </span>
+                    </label>
+
+                    <label className="check">
+                        <input
+                            type="checkbox"
+                            checked={watchEnabled}
+                            onChange={(e) => toggleWatch(e.target.checked)}
+                            disabled={busy || !folder}
+                        />
+                        Modalità watch (aggiorna l'anteprima automaticamente)
+                        <span className="hint">
+                            {watchEnabled
+                                ? '(le variazioni nella cartella aggiornano l\'anteprima; la conversione resta manuale)'
+                                : '(disattivata: l\'anteprima si aggiorna solo con "Scegli cartella" o "Aggiorna")'}
                         </span>
                     </label>
                 </div>

@@ -24,6 +24,7 @@ type State struct {
 	DestinationSameAsSource bool   `json:"destinationSameAsSource"`
 	DestinationFolder       string `json:"destinationFolder"`
 	DeleteOriginals         bool   `json:"deleteOriginals"`
+	WatchEnabled            bool   `json:"watchEnabled"`
 }
 
 // DefaultState è lo stato al primo avvio: nessuna cartella, destinazione = partenza,
