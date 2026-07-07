@@ -10,8 +10,8 @@ header {
     justify-content: space-between;
     gap: 16px;
     padding: 16px 24px;
-    background: #1f2937;
-    color: white;
+    background: var(--header-bg);
+    color: var(--header-text);
 }
 
 header h1 {
@@ -20,15 +20,54 @@ header h1 {
     font-weight: 650;
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
 .counters {
     display: flex;
     gap: 8px;
-    color: #cbd5e1;
+    color: var(--header-muted);
     font-size: 13px;
 }
 
 .counters .dot {
     opacity: 0.5;
+}
+
+/* Pill "Watch attivo" nell'header: rimane sempre visibile, con puntino pulsante. */
+.watch-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(78, 168, 106, 0.18);
+    color: #b7e5c4;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.watch-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    box-shadow: 0 0 0 0 rgba(78, 168, 106, 0.7);
+    animation: watchPulse 1.8s ease-out infinite;
+}
+
+@keyframes watchPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(78, 168, 106, 0.55); }
+    70%  { box-shadow: 0 0 0 8px rgba(78, 168, 106, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(78, 168, 106, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .watch-dot { animation: none; }
 }
 
 main {
@@ -54,7 +93,7 @@ main {
     padding: 8px 12px;
     border: 1px solid var(--line);
     border-radius: 6px;
-    background: #fbfcfe;
+    background: var(--panel-alt);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -63,9 +102,11 @@ main {
 
 .icon-btn {
     min-width: 42px;
-    font-size: 17px;
     line-height: 1;
     padding: 8px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 input,
@@ -75,8 +116,15 @@ textarea {
     border-radius: 6px;
     padding: 8px 10px;
     color: var(--text);
-    background: white;
+    background: var(--input-bg);
     font: inherit;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
 }
 
 input {
@@ -94,11 +142,12 @@ button {
     border: 1px solid var(--line);
     border-radius: 6px;
     padding: 8px 12px;
-    background: white;
+    background: var(--panel);
     color: var(--text);
     cursor: pointer;
     font-weight: 600;
     white-space: nowrap;
+    transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 button:hover:not(:disabled) {
@@ -178,12 +227,12 @@ button.danger {
 
 tr.skipped td {
     color: var(--muted);
-    background: #fbfbfc;
+    background: var(--row-skipped);
 }
 
 /* Righe dove l'anteprima del nuovo nome differisce dal nome attuale */
 tr.changed td {
-    background: #eef7f0;
+    background: var(--row-changed);
 }
 
 tr.changed td:nth-child(2) {
@@ -296,7 +345,7 @@ tr.changed td:nth-child(2) {
     padding: 12px 14px;
     border-bottom: 1px solid var(--line);
     font-size: 15px;
-    background: #fbfcfe;
+    background: var(--panel-alt);
 }
 
 .panel-head {
@@ -304,7 +353,7 @@ tr.changed td:nth-child(2) {
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--line);
-    background: #fbfcfe;
+    background: var(--panel-alt);
     padding-right: 10px;
 }
 
@@ -320,16 +369,16 @@ table {
     table-layout: fixed;
 }
 
-/* Colonna Tag/Esito stretta */
+/* Colonna Tag/Esito */
 .panel table th:last-child,
 .panel table td:last-child {
-    width: 96px;
+    width: 130px;
 }
 
 th,
 td {
     padding: 10px 12px;
-    border-bottom: 1px solid #edf0f5;
+    border-bottom: 1px solid var(--line-soft);
     text-align: left;
     vertical-align: top;
     word-break: break-word;
@@ -339,7 +388,7 @@ th {
     color: var(--muted);
     font-size: 12px;
     text-transform: uppercase;
-    background: #fbfcfe;
+    background: var(--panel-alt);
 }
 
 .empty {
@@ -349,37 +398,97 @@ th {
 
 .badge {
     display: inline-block;
-    border: 1px solid #bdd7c8;
-    color: var(--accent-strong);
+    border: 1px solid var(--line);
+    color: var(--muted);
     border-radius: 999px;
     padding: 1px 7px;
     font-size: 12px;
     font-weight: 650;
 }
 
+/* Contenitore dei badge di stato: gap verticale + wrap per evitare che
+   "Da rinominare" e "MP3" si incollino su una sola riga. */
+.badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+}
+
+.badge-changed {
+    border-color: rgba(45, 125, 70, 0.55);
+    background: rgba(45, 125, 70, 0.12);
+    color: var(--accent-strong);
+}
+
+.badge-neutral {
+    border-color: var(--line);
+    background: transparent;
+    color: var(--muted);
+}
+
+.badge-mp3 {
+    border-color: rgba(23, 107, 135, 0.55);
+    background: rgba(23, 107, 135, 0.12);
+    color: var(--primary-strong);
+}
+
 .log {
-    padding: 12px 14px;
+    padding: 8px 0;
     margin: 0;
     list-style: none;
-    color: var(--muted);
+    color: var(--text);
     max-height: 280px;
     overflow-y: auto;
     resize: vertical;
 }
 
-.log li {
-    padding: 8px 0;
-    border-bottom: 1px solid #edf0f5;
+.log-empty {
+    padding: 12px 14px;
+    color: var(--muted);
 }
 
-.log li:last-child {
+.log-item {
+    display: grid;
+    grid-template-columns: 8px 64px 1fr;
+    gap: 10px;
+    align-items: baseline;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line-soft);
+}
+
+.log-item:last-child {
     border-bottom: 0;
 }
+
+.log-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    align-self: center;
+}
+
+.log-time {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+}
+
+.log-msg {
+    min-width: 0;
+    word-break: break-word;
+}
+
+.log-info .log-dot    { background: var(--muted); }
+.log-success .log-dot { background: var(--ok); }
+.log-watch .log-dot   { background: var(--primary); }
+.log-error .log-dot   { background: var(--danger); }
+.log-error .log-msg   { color: var(--danger); }
 
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.45);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -394,7 +503,7 @@ th {
     padding: 20px 22px;
     max-width: 460px;
     width: 100%;
-    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+    box-shadow: var(--shadow);
 }
 
 .modal h3 {

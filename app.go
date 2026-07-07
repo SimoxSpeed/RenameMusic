@@ -101,13 +101,13 @@ func NewApp() *App {
 	// Le regole correnti: se il file non esiste si inizializzano dai default.
 	current, curExisted, err := settings.LoadConfig()
 	if err != nil {
-		logs = []string{"Impossibile leggere la configurazione salvata: uso i default."}
+		logs = []string{stampLog("Impossibile leggere la configurazione salvata: uso i default.")}
 	}
 	if !curExisted {
 		current = defaults
 		_ = settings.SaveConfig(current)
 	} else {
-		logs = []string{"Configurazione caricata dal file salvato."}
+		logs = []string{stampLog("Configurazione caricata dal file salvato.")}
 	}
 
 	// Cartella e opzioni sono persistite a parte: al primo avvio la cartella è vuota.
@@ -622,10 +622,17 @@ func (a *App) snapshot() StateResponse {
 }
 
 func (a *App) addLogLocked(message string) {
-	a.logs = append([]string{message}, a.logs...)
+	a.logs = append([]string{stampLog(message)}, a.logs...)
 	if len(a.logs) > 12 {
 		a.logs = a.logs[:12]
 	}
+}
+
+// stampLog antepone al messaggio l'orario corrente nel formato usato dal
+// frontend (HH:MM:SS seguito da due spazi). Isolato in una funzione così può
+// essere usato anche nei bootstrap (NewApp) dove non c'è ancora l'istanza App.
+func stampLog(message string) string {
+	return time.Now().Format("15:04:05") + "  " + message
 }
 
 // normalizeConfig ripulisce la configurazione ricevuta dalla GUI: trim del percorso,

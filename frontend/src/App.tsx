@@ -18,12 +18,46 @@ import { main, rules } from '../wailsjs/go/models'
 
 type Status = { message: string; ok: boolean }
 
+// LogKind classifica il tipo di riga log in base al contenuto: serve solo a
+// scegliere un colore/icona nel pannello Attività.
+type LogKind = 'error' | 'watch' | 'success' | 'info'
+
 function listToText(list: string[] | undefined): string {
     return (list ?? []).join('\n')
 }
 
 function textToList(text: string): string[] {
     return text.split('\n')
+}
+
+// parseLogEntry separa il timestamp (aggiunto dal backend, formato HH:MM:SS +
+// due spazi) dal messaggio e ne deduce la categoria dal contenuto testuale.
+function parseLogEntry(entry: string): { time: string; message: string; kind: LogKind } {
+    const m = entry.match(/^(\d{2}:\d{2}:\d{2})\s{2}(.*)$/)
+    const time = m ? m[1] : ''
+    const message = m ? m[2] : entry
+    const lower = message.toLowerCase()
+    let kind: LogKind = 'info'
+    if (lower.includes('errore') || lower.includes('fallit') || lower.includes('impossibile')) {
+        kind = 'error'
+    } else if (lower.includes('automatica') || lower.startsWith('watch') || lower.includes('modalità watch')) {
+        kind = 'watch'
+    } else if (lower.startsWith('elaborati') || lower.includes('salvat')) {
+        kind = 'success'
+    }
+    return { time, message, kind }
+}
+
+// RefreshIcon: icona SVG per il bottone di ricarica; sostituisce il glifo Unicode
+// che su Windows viene reso in modo inconsistente a seconda del font di sistema.
+function RefreshIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-3.5-7.1" />
+            <path d="M21 4v6h-6" />
+        </svg>
+    )
 }
 
 function cloneConfig(cfg: rules.Config): rules.Config {
@@ -272,10 +306,18 @@ function App() {
         <div className="app">
             <header>
                 <h1>RenameMusic</h1>
-                <div className="counters">
-                    <span>{files.length} file</span>
-                    <span className="dot">·</span>
-                    <span>{mp3Count} MP3</span>
+                <div className="header-right">
+                    {state?.watchActive && (
+                        <span className="watch-pill" title="Modalità watch attiva: variazioni nella cartella aggiornano l'anteprima">
+                            <span className="watch-dot" aria-hidden="true" />
+                            Watch attivo
+                        </span>
+                    )}
+                    <div className="counters">
+                        <span>{files.length} file</span>
+                        <span className="dot">·</span>
+                        <span>{mp3Count} MP3</span>
+                    </div>
                 </div>
             </header>
 
@@ -291,7 +333,7 @@ function App() {
                         title="Aggiorna scansione della cartella"
                         aria-label="Aggiorna scansione"
                     >
-                        ⟳
+                        <RefreshIcon />
                     </button>
                     <button className="primary" onClick={chooseFolder} disabled={busy}>
                         Scegli cartella
@@ -477,21 +519,25 @@ function App() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {results.map((r, i) => (
-                                            <tr key={i} className={r.skipped ? 'skipped' : ''}>
-                                                <td>{r.oldName}</td>
-                                                <td>{r.skipped ? '—' : r.newName}</td>
-                                                <td>
-                                                    {r.skipped ? (
-                                                        <span className="note">Saltato: {r.reason}</span>
-                                                    ) : r.tagged ? (
-                                                        <span className="badge">MP3</span>
-                                                    ) : (
-                                                        <span className="note">OK</span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {results.map((r, i) => {
+                                            const renamed = !r.skipped && r.oldName !== r.newName
+                                            const rowClass = r.skipped ? 'skipped' : renamed ? 'changed' : ''
+                                            return (
+                                                <tr key={i} className={rowClass}>
+                                                    <td>{r.oldName}</td>
+                                                    <td>{r.skipped ? '—' : r.newName}</td>
+                                                    <td>
+                                                        {r.skipped ? (
+                                                            <span className="note">Saltato: {r.reason}</span>
+                                                        ) : r.tagged ? (
+                                                            <span className="badge badge-mp3">MP3</span>
+                                                        ) : (
+                                                            <span className="note">OK</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
                                     </tbody>
                                 </table>
                             )
@@ -503,17 +549,29 @@ function App() {
                                     <tr>
                                         <th>File attuale</th>
                                         <th>Anteprima nuovo nome</th>
-                                        <th>Tag</th>
+                                        <th>Stato</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {files.map((file, i) => (
-                                        <tr key={i} className={file.preview !== file.name ? 'changed' : ''}>
-                                            <td>{file.name}</td>
-                                            <td>{file.preview}</td>
-                                            <td>{file.mp3 ? <span className="badge">MP3</span> : ''}</td>
-                                        </tr>
-                                    ))}
+                                    {files.map((file, i) => {
+                                        const changed = file.preview !== file.name
+                                        return (
+                                            <tr key={i} className={changed ? 'changed' : ''}>
+                                                <td>{file.name}</td>
+                                                <td>{file.preview}</td>
+                                                <td>
+                                                    <div className="badges">
+                                                        {changed ? (
+                                                            <span className="badge badge-changed">Da rinominare</span>
+                                                        ) : (
+                                                            <span className="badge badge-neutral">Invariato</span>
+                                                        )}
+                                                        {file.mp3 && <span className="badge badge-mp3">MP3</span>}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         )}
@@ -532,9 +590,18 @@ function App() {
                         </div>
                         <ul className="log">
                             {logs.length === 0 ? (
-                                <li>Nessuna attività.</li>
+                                <li className="log-empty">Nessuna attività.</li>
                             ) : (
-                                logs.map((log, i) => <li key={i}>{log}</li>)
+                                logs.map((log, i) => {
+                                    const { time, message, kind } = parseLogEntry(log)
+                                    return (
+                                        <li key={i} className={'log-item log-' + kind}>
+                                            <span className="log-dot" aria-hidden="true" />
+                                            {time && <span className="log-time">{time}</span>}
+                                            <span className="log-msg">{message}</span>
+                                        </li>
+                                    )
+                                })
                             )}
                         </ul>
                     </section>
