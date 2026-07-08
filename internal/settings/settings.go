@@ -87,7 +87,27 @@ func save(name string, cfg rules.Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, filePerm)
+	return writeFileAtomic(path, data, filePerm)
+}
+
+// writeFileAtomic scrive data su path in modo atomico: scrive prima su un file
+// temporaneo e lo rinomina su path solo a scrittura completata. Evita che un
+// crash o due istanze dell'app in scrittura contemporanea lascino un JSON di
+// configurazione troncato/corrotto. Se il rename diretto fallisce (es. file di
+// sola lettura su Windows) si riprova rimuovendo prima il file esistente.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(path)
+		if err2 := os.Rename(tmp, path); err2 != nil {
+			_ = os.Remove(tmp)
+			return err2
+		}
+	}
+	return nil
 }
 
 // LoadConfig / SaveConfig gestiscono le regole correnti (attive).
@@ -132,5 +152,5 @@ func SaveState(s State) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, filePerm)
+	return writeFileAtomic(path, data, filePerm)
 }

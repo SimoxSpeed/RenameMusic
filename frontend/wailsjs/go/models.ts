@@ -5,6 +5,7 @@ export namespace main {
 	    newName: string;
 	    tagged: boolean;
 	    skipped: boolean;
+	    failed: boolean;
 	    reason: string;
 	
 	    static createFrom(source: any = {}) {
@@ -17,6 +18,7 @@ export namespace main {
 	        this.newName = source["newName"];
 	        this.tagged = source["tagged"];
 	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
 	        this.reason = source["reason"];
 	    }
 	}

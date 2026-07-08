@@ -64,6 +64,7 @@ type ResultView struct {
 	NewName string `json:"newName"`
 	Tagged  bool   `json:"tagged"`
 	Skipped bool   `json:"skipped"`
+	Failed  bool   `json:"failed"`
 	Reason  string `json:"reason"`
 }
 
@@ -447,23 +448,31 @@ func (a *App) ProcessAll() ActionResponse {
 		return ActionResponse{OK: false, Message: "Errore elaborazione: " + err.Error(), State: a.snapshotLocked()}
 	}
 
-	tagged, skipped := 0, 0
+	tagged, skipped, failed := 0, 0, 0
 	views := make([]ResultView, 0, len(results))
 	for _, result := range results {
-		if result.Tagged {
-			tagged++
-		}
-		if result.Skipped {
+		// Failed è esclusivo nel conteggio: un file fallito non è né "elaborato"
+		// né "saltato con successo", anche se collideva (Skipped+Failed insieme).
+		switch {
+		case result.Failed:
+			failed++
+		case result.Skipped:
 			skipped++
+		default:
+			if result.Tagged {
+				tagged++
+			}
 		}
 		views = append(views, ResultView{
 			OldName: filepath.Base(result.OldPath),
 			NewName: result.NewName,
 			Tagged:  result.Tagged,
 			Skipped: result.Skipped,
+			Failed:  result.Failed,
 			Reason:  result.Reason,
 		})
 	}
+	processed := len(results) - skipped - failed
 
 	a.mu.Lock()
 	a.scanned = nil
@@ -471,7 +480,7 @@ func (a *App) ProcessAll() ActionResponse {
 	// del watcher (compresi quelli auto-generati da questa elaborazione) fino
 	// alla prossima Scan/cambio cartella.
 	a.watchPaused = true
-	a.addLogLocked(LogSuccess, fmt.Sprintf("Elaborati %d file (%d con tag MP3).", len(results)-skipped, tagged))
+	a.addLogLocked(LogSuccess, fmt.Sprintf("Elaborati %d file (%d con tag MP3).", processed, tagged))
 	if skipped > 0 {
 		if deleteOriginals {
 			a.addLogLocked(LogInfo, fmt.Sprintf("Saltati ed eliminati %d file.", skipped))
@@ -479,9 +488,20 @@ func (a *App) ProcessAll() ActionResponse {
 			a.addLogLocked(LogInfo, fmt.Sprintf("Saltati %d file.", skipped))
 		}
 	}
+	if failed > 0 {
+		a.addLogLocked(LogError, fmt.Sprintf("%d file non elaborati per errori (dettagli nella tabella).", failed))
+	}
 	state := a.snapshot()
 	a.mu.Unlock()
 
+	if failed > 0 {
+		return ActionResponse{
+			OK:      false,
+			Message: fmt.Sprintf("Elaborazione completata con %d errori.", failed),
+			State:   state,
+			Results: views,
+		}
+	}
 	return ActionResponse{OK: true, Message: "Elaborazione completata.", State: state, Results: views}
 }
 

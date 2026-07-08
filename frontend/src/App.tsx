@@ -372,8 +372,9 @@ function App() {
         ? results!.filter((r) => r.tagged).length
         : files.filter((f) => f.mp3).length
     const toRenameCount = showingResults
-        ? results!.filter((r) => !r.skipped && r.oldName !== r.newName).length
+        ? results!.filter((r) => !r.skipped && !r.failed && r.oldName !== r.newName).length
         : files.filter((f) => f.preview !== f.name).length
+    const failedCount = showingResults ? results!.filter((r) => r.failed).length : 0
     const destReady = destSameAsSource || destFolder !== ''
     const canProcess = !busy && folder !== '' && files.length > 0 && destReady
 
@@ -441,6 +442,12 @@ function App() {
                                 <span className="counter-hi">
                                     {toRenameCount} {showingResults ? 'rinominati' : 'da rinominare'}
                                 </span>
+                            </>
+                        )}
+                        {failedCount > 0 && (
+                            <>
+                                <span className="dot">·</span>
+                                <span className="counter-err">{failedCount} errori</span>
                             </>
                         )}
                     </div>
@@ -671,8 +678,14 @@ function App() {
                                         {results.map((r, i) => {
                                             const src = splitName(r.oldName)
                                             const dst = splitName(r.newName)
-                                            const renamed = !r.skipped && src.base !== dst.base
-                                            const rowClass = r.skipped ? 'skipped' : renamed ? 'changed' : ''
+                                            const renamed = !r.skipped && !r.failed && src.base !== dst.base
+                                            const rowClass = r.failed
+                                                ? 'failed'
+                                                : r.skipped
+                                                  ? 'skipped'
+                                                  : renamed
+                                                    ? 'changed'
+                                                    : ''
                                             return (
                                                 <tr key={i} className={rowClass}>
                                                     <td>
@@ -680,7 +693,9 @@ function App() {
                                                     </td>
                                                     <td>{r.skipped ? '—' : dst.base}</td>
                                                     <td>
-                                                        {r.skipped ? (
+                                                        {r.failed ? (
+                                                            <span className="note error">Errore: {r.reason}</span>
+                                                        ) : r.skipped ? (
                                                             <span className="note">Saltato: {r.reason}</span>
                                                         ) : (
                                                             <div className="badges">
