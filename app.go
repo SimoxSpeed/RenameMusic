@@ -31,7 +31,7 @@ type App struct {
 	config   rules.Config
 	defaults rules.Config
 	scanned  []string
-	logs     []string
+	logs     []LogEntry
 
 	// Opzioni di elaborazione persistite (state.json).
 	destSameAsSource bool
@@ -67,10 +67,30 @@ type ResultView struct {
 	Reason  string `json:"reason"`
 }
 
+// LogKind classifica la natura di una riga di attività. Viene assegnata alla
+// SORGENTE (quando il messaggio viene emesso), così il frontend non deve più
+// dedurla dal testo: è un dato esplicito, non un'euristica fragile.
+type LogKind string
+
+const (
+	LogInfo    LogKind = "info"
+	LogSuccess LogKind = "success"
+	LogError   LogKind = "error"
+	LogAuto    LogKind = "auto" // eventi legati all'aggiornamento automatico
+)
+
+// LogEntry è una riga di attività strutturata: orario, categoria e messaggio
+// separati, pronti per essere renderizzati senza parsing lato UI.
+type LogEntry struct {
+	Time    string  `json:"time"`
+	Kind    LogKind `json:"kind"`
+	Message string  `json:"message"`
+}
+
 type StateResponse struct {
 	Folder                  string       `json:"folder"`
 	Files                   []FileView   `json:"files"`
-	Logs                    []string     `json:"logs"`
+	Logs                    []LogEntry   `json:"logs"`
 	Config                  rules.Config `json:"config"`
 	DestinationSameAsSource bool         `json:"destinationSameAsSource"`
 	DestinationFolder       string       `json:"destinationFolder"`
@@ -87,12 +107,12 @@ type ActionResponse struct {
 }
 
 func NewApp() *App {
-	logs := []string{"App pronta."}
+	logs := []LogEntry{newLogEntry(LogInfo, "App pronta.")}
 
 	// I default sono persistiti: se il file non esiste lo si crea dal seed di fabbrica.
 	defaults, defExisted, err := settings.LoadDefaults()
 	if err != nil {
-		logs = []string{"Impossibile leggere i default salvati: uso il seed di fabbrica."}
+		logs = []LogEntry{newLogEntry(LogError, "Impossibile leggere i default salvati: uso il seed di fabbrica.")}
 	}
 	if !defExisted {
 		_ = settings.SaveDefaults(defaults)
@@ -101,13 +121,13 @@ func NewApp() *App {
 	// Le regole correnti: se il file non esiste si inizializzano dai default.
 	current, curExisted, err := settings.LoadConfig()
 	if err != nil {
-		logs = []string{stampLog("Impossibile leggere la configurazione salvata: uso i default.")}
+		logs = []LogEntry{newLogEntry(LogError, "Impossibile leggere la configurazione salvata: uso i default.")}
 	}
 	if !curExisted {
 		current = defaults
 		_ = settings.SaveConfig(current)
 	} else {
-		logs = []string{stampLog("Configurazione caricata dal file salvato.")}
+		logs = []LogEntry{newLogEntry(LogInfo, "Configurazione caricata dal file salvato.")}
 	}
 
 	// Cartella e opzioni sono persistite a parte: al primo avvio la cartella è vuota.
@@ -156,14 +176,51 @@ func (a *App) startup(ctx context.Context) {
 			a.mu.Lock()
 			a.watchEnabled = false
 			a.persistStateLocked()
-			a.addLogLocked("Impossibile avviare la modalità watch: " + err.Error())
+			a.addLogLocked(LogError, "Impossibile avviare l'aggiornamento automatico: "+err.Error())
 			a.mu.Unlock()
 		}
 	}
 }
 
 func (a *App) GetState() ActionResponse {
-	return ActionResponse{OK: true, State: a.snapshotLocked()}
+	// Al primo accesso, se c'è una cartella ricordata ma non è ancora stata
+	// scansionata, la scansioniamo QUI: così la prima risposta contiene già le
+	// anteprime e la UI si popola in un solo passaggio, senza mostrare prima uno
+	// stato vuoto e poi riempirlo (niente "azzera e ripopola" al refresh).
+	msg := a.ensureScanned()
+	return ActionResponse{OK: true, Message: msg, State: a.snapshotLocked()}
+}
+
+// ensureScanned esegue una scansione una tantum se la cartella è valida e non è
+// ancora stato prodotto alcun risultato (a.scanned == nil). Restituisce il
+// messaggio di stato da mostrare (vuoto se non ha scansionato). È idempotente:
+// una volta che a.scanned è valorizzato (anche a lista vuota) non riscansiona.
+func (a *App) ensureScanned() string {
+	a.mu.Lock()
+	needScan := a.scanned == nil && appfs.IsDir(a.config.StartFolder)
+	cfg := a.config
+	a.mu.Unlock()
+	if !needScan {
+		return ""
+	}
+
+	files, err := rename.NewService(cfg).Scan()
+	if err != nil {
+		a.mu.Lock()
+		a.addLogLocked(LogError, "Errore scansione iniziale: "+err.Error())
+		a.mu.Unlock()
+		return "Errore scansione: " + err.Error()
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.scanned != nil {
+		return "" // una scansione concorrente ha già valorizzato lo stato
+	}
+	a.scanned = files
+	a.watchPaused = false
+	a.addLogLocked(LogInfo, fmt.Sprintf("Scansione completata: %d file audio.", len(files)))
+	return "Scansione completata."
 }
 
 // ClearLogs svuota il registro delle attività.
@@ -206,7 +263,7 @@ func (a *App) SetFolder(path string) ActionResponse {
 	a.scanned = nil
 	a.watchPaused = false
 	a.persistStateLocked()
-	a.addLogLocked("Cartella selezionata: " + path)
+	a.addLogLocked(LogInfo, "Cartella selezionata: "+path)
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
 	a.mu.Unlock()
@@ -214,7 +271,7 @@ func (a *App) SetFolder(path string) ActionResponse {
 	if watchWanted {
 		if err := a.startWatcher(); err != nil {
 			a.mu.Lock()
-			a.addLogLocked("Watch non riavviato sulla nuova cartella: " + err.Error())
+			a.addLogLocked(LogError, "Aggiornamento automatico non riavviato sulla nuova cartella: "+err.Error())
 			state = a.snapshot()
 			a.mu.Unlock()
 		}
@@ -251,9 +308,9 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	a.config = cfg
 	// NON azzeriamo scanned: le anteprime restano e si ricalcolano con le nuove regole.
 	if saveErr != nil {
-		a.addLogLocked("Configurazione applicata ma NON salvata: " + saveErr.Error())
+		a.addLogLocked(LogError, "Configurazione applicata ma NON salvata: "+saveErr.Error())
 	} else {
-		a.addLogLocked("Configurazione salvata.")
+		a.addLogLocked(LogSuccess, "Configurazione salvata.")
 	}
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
@@ -278,9 +335,9 @@ func (a *App) SetAsDefault(cfg rules.Config) ActionResponse {
 	a.mu.Lock()
 	a.defaults = cfg
 	if defErr != nil {
-		a.addLogLocked("Default aggiornati ma NON salvati su disco: " + defErr.Error())
+		a.addLogLocked(LogError, "Default aggiornati ma NON salvati su disco: "+defErr.Error())
 	} else {
-		a.addLogLocked("Nuovo default salvato.")
+		a.addLogLocked(LogSuccess, "Nuovo default salvato.")
 	}
 	state := a.snapshot()
 	a.mu.Unlock()
@@ -304,9 +361,9 @@ func (a *App) ResetConfig() ActionResponse {
 	a.config = cfg
 	// NON azzeriamo scanned: le anteprime restano e si ricalcolano con le regole di default.
 	if saveErr != nil {
-		a.addLogLocked("Default ripristinati ma NON salvati: " + saveErr.Error())
+		a.addLogLocked(LogError, "Default ripristinati ma NON salvati: "+saveErr.Error())
 	} else {
-		a.addLogLocked("Configurazione ripristinata ai default e salvata.")
+		a.addLogLocked(LogSuccess, "Configurazione ripristinata ai default e salvata.")
 	}
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
@@ -331,7 +388,7 @@ func (a *App) Scan() ActionResponse {
 	a.mu.Lock()
 	a.scanned = files
 	a.watchPaused = false
-	a.addLogLocked(fmt.Sprintf("Scansione completata: %d file audio.", len(files)))
+	a.addLogLocked(LogInfo, fmt.Sprintf("Scansione completata: %d file audio.", len(files)))
 	state := a.snapshot()
 	a.mu.Unlock()
 
@@ -414,12 +471,12 @@ func (a *App) ProcessAll() ActionResponse {
 	// del watcher (compresi quelli auto-generati da questa elaborazione) fino
 	// alla prossima Scan/cambio cartella.
 	a.watchPaused = true
-	a.addLogLocked(fmt.Sprintf("Elaborati %d file (%d con tag MP3).", len(results)-skipped, tagged))
+	a.addLogLocked(LogSuccess, fmt.Sprintf("Elaborati %d file (%d con tag MP3).", len(results)-skipped, tagged))
 	if skipped > 0 {
 		if deleteOriginals {
-			a.addLogLocked(fmt.Sprintf("Saltati ed eliminati %d file.", skipped))
+			a.addLogLocked(LogInfo, fmt.Sprintf("Saltati ed eliminati %d file.", skipped))
 		} else {
-			a.addLogLocked(fmt.Sprintf("Saltati %d file.", skipped))
+			a.addLogLocked(LogInfo, fmt.Sprintf("Saltati %d file.", skipped))
 		}
 	}
 	state := a.snapshot()
@@ -453,16 +510,16 @@ func (a *App) SetWatchEnabled(enabled bool) ActionResponse {
 	a.mu.Lock()
 	if enabled && startErr != nil {
 		a.watchEnabled = false
-		a.addLogLocked("Impossibile avviare la modalità watch: " + startErr.Error())
-		message = "Impossibile avviare la modalità watch."
+		a.addLogLocked(LogError, "Impossibile avviare l'aggiornamento automatico: "+startErr.Error())
+		message = "Impossibile avviare l'aggiornamento automatico."
 	} else {
 		a.watchEnabled = enabled
 		if enabled {
-			a.addLogLocked("Modalità watch attivata su: " + folder)
-			message = "Modalità watch attivata."
+			a.addLogLocked(LogAuto, "Aggiornamento automatico attivato su: "+folder)
+			message = "Aggiornamento automatico attivato."
 		} else {
-			a.addLogLocked("Modalità watch disattivata.")
-			message = "Modalità watch disattivata."
+			a.addLogLocked(LogAuto, "Aggiornamento automatico disattivato.")
+			message = "Aggiornamento automatico disattivato."
 		}
 	}
 	a.persistStateLocked()
@@ -476,11 +533,11 @@ func (a *App) SetWatchEnabled(enabled bool) ActionResponse {
 			a.mu.Lock()
 			a.scanned = files
 			a.watchPaused = false
-			a.addLogLocked(fmt.Sprintf("Scansione iniziale: %d file audio.", len(files)))
+			a.addLogLocked(LogAuto, fmt.Sprintf("Scansione iniziale: %d file audio.", len(files)))
 			a.mu.Unlock()
 		} else {
 			a.mu.Lock()
-			a.addLogLocked("Scansione iniziale fallita: " + err.Error())
+			a.addLogLocked(LogError, "Scansione iniziale fallita: "+err.Error())
 			a.mu.Unlock()
 		}
 	}
@@ -559,14 +616,14 @@ func (a *App) runWatchRescan() {
 	files, err := rename.NewService(cfg).Scan()
 	if err != nil {
 		a.mu.Lock()
-		a.addLogLocked("Watch: errore scansione: " + err.Error())
+		a.addLogLocked(LogError, "Aggiornamento automatico: errore scansione: "+err.Error())
 		a.mu.Unlock()
 		return
 	}
 
 	a.mu.Lock()
 	a.scanned = files
-	a.addLogLocked(fmt.Sprintf("Scansione automatica: %d file audio.", len(files)))
+	a.addLogLocked(LogAuto, fmt.Sprintf("Scansione automatica: %d file audio.", len(files)))
 	state := a.snapshot()
 	ctx := a.ctx
 	a.mu.Unlock()
@@ -578,7 +635,7 @@ func (a *App) runWatchRescan() {
 
 func (a *App) onWatchError(err error) {
 	a.mu.Lock()
-	a.addLogLocked("Watch: errore filesystem: " + err.Error())
+	a.addLogLocked(LogError, "Aggiornamento automatico: errore filesystem: "+err.Error())
 	a.mu.Unlock()
 }
 
@@ -607,7 +664,7 @@ func (a *App) snapshot() StateResponse {
 			MP3:     ext == "mp3",
 		})
 	}
-	logs := append([]string(nil), a.logs...)
+	logs := append([]LogEntry(nil), a.logs...)
 	return StateResponse{
 		Folder:                  a.config.StartFolder,
 		Files:                   files,
@@ -621,18 +678,22 @@ func (a *App) snapshot() StateResponse {
 	}
 }
 
-func (a *App) addLogLocked(message string) {
-	a.logs = append([]string{stampLog(message)}, a.logs...)
+func (a *App) addLogLocked(kind LogKind, message string) {
+	a.logs = append([]LogEntry{newLogEntry(kind, message)}, a.logs...)
 	if len(a.logs) > 12 {
 		a.logs = a.logs[:12]
 	}
 }
 
-// stampLog antepone al messaggio l'orario corrente nel formato usato dal
-// frontend (HH:MM:SS seguito da due spazi). Isolato in una funzione così può
-// essere usato anche nei bootstrap (NewApp) dove non c'è ancora l'istanza App.
-func stampLog(message string) string {
-	return time.Now().Format("15:04:05") + "  " + message
+// newLogEntry costruisce una riga di attività con l'orario corrente. Isolata in
+// una funzione così può essere usata anche nei bootstrap (NewApp) dove non c'è
+// ancora l'istanza App.
+func newLogEntry(kind LogKind, message string) LogEntry {
+	return LogEntry{
+		Time:    time.Now().Format("15:04:05"),
+		Kind:    kind,
+		Message: message,
+	}
 }
 
 // normalizeConfig ripulisce la configurazione ricevuta dalla GUI: trim del percorso,

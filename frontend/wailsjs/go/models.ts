@@ -20,6 +20,22 @@ export namespace main {
 	        this.reason = source["reason"];
 	    }
 	}
+	export class LogEntry {
+	    time: string;
+	    kind: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.time = source["time"];
+	        this.kind = source["kind"];
+	        this.message = source["message"];
+	    }
+	}
 	export class FileView {
 	    name: string;
 	    path: string;
@@ -41,7 +57,7 @@ export namespace main {
 	export class StateResponse {
 	    folder: string;
 	    files: FileView[];
-	    logs: string[];
+	    logs: LogEntry[];
 	    config: rules.Config;
 	    destinationSameAsSource: boolean;
 	    destinationFolder: string;
@@ -57,7 +73,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.folder = source["folder"];
 	        this.files = this.convertValues(source["files"], FileView);
-	        this.logs = source["logs"];
+	        this.logs = this.convertValues(source["logs"], LogEntry);
 	        this.config = this.convertValues(source["config"], rules.Config);
 	        this.destinationSameAsSource = source["destinationSameAsSource"];
 	        this.destinationFolder = source["destinationFolder"];
@@ -120,6 +136,7 @@ export namespace main {
 		    return a;
 		}
 	}
+	
 	
 	
 

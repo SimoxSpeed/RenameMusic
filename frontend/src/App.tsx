@@ -18,34 +18,12 @@ import { main, rules } from '../wailsjs/go/models'
 
 type Status = { message: string; ok: boolean }
 
-// LogKind classifica il tipo di riga log in base al contenuto: serve solo a
-// scegliere un colore/icona nel pannello Attività.
-type LogKind = 'error' | 'watch' | 'success' | 'info'
-
 function listToText(list: string[] | undefined): string {
     return (list ?? []).join('\n')
 }
 
 function textToList(text: string): string[] {
     return text.split('\n')
-}
-
-// parseLogEntry separa il timestamp (aggiunto dal backend, formato HH:MM:SS +
-// due spazi) dal messaggio e ne deduce la categoria dal contenuto testuale.
-function parseLogEntry(entry: string): { time: string; message: string; kind: LogKind } {
-    const m = entry.match(/^(\d{2}:\d{2}:\d{2})\s{2}(.*)$/)
-    const time = m ? m[1] : ''
-    const message = m ? m[2] : entry
-    const lower = message.toLowerCase()
-    let kind: LogKind = 'info'
-    if (lower.includes('errore') || lower.includes('fallit') || lower.includes('impossibile')) {
-        kind = 'error'
-    } else if (lower.includes('automatica') || lower.startsWith('watch') || lower.includes('modalità watch')) {
-        kind = 'watch'
-    } else if (lower.startsWith('elaborati') || lower.includes('salvat')) {
-        kind = 'success'
-    }
-    return { time, message, kind }
 }
 
 // RefreshIcon: icona SVG per il bottone di ricarica; sostituisce il glifo Unicode
@@ -56,6 +34,105 @@ function RefreshIcon() {
              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M21 12a9 9 0 1 1-3.5-7.1" />
             <path d="M21 4v6h-6" />
+        </svg>
+    )
+}
+
+// InfoIcon: pulsante con tooltip custom. \u00c8 un <button> per essere focusabile
+// da tastiera e per catturare il click impedendo che tocchi la <label> genitore
+// (altrimenti cliccare la "i" attiverebbe la checkbox associata).
+function InfoIcon({ text }: { text: string }) {
+    return (
+        <button
+            type="button"
+            className="info-icon"
+            aria-label={text}
+            onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+            }}
+        >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="11" x2="12" y2="16" />
+                <circle cx="12" cy="8" r="0.6" fill="currentColor" />
+            </svg>
+            <span className="info-tooltip" role="tooltip">{text}</span>
+        </button>
+    )
+}
+
+// splitName separa il nome file dalla sua estensione (parte dopo l'ultimo punto).
+// Restituisce base senza estensione ed estensione senza punto. Usato per NON
+// mostrare mai l'estensione nei nomi file: quella viaggia in un chip a parte.
+function splitName(full: string): { base: string; ext: string } {
+    const idx = full.lastIndexOf('.')
+    if (idx <= 0 || idx === full.length - 1) return { base: full, ext: '' }
+    return { base: full.slice(0, idx), ext: full.slice(idx + 1).toLowerCase() }
+}
+
+// ExtChip mostra il formato del file in stile blu. I file trattati sono sempre
+// mp3 (nessuna conversione tra formati diversi), quindi mostriamo semplicemente
+// l'estensione: serve solo perché l'estensione non è mai visibile nei nomi.
+function ExtChip({ ext }: { ext: string }) {
+    if (!ext) return null
+    return <span className="ext-chip ext-same">{ext}</span>
+}
+
+// EyeIcon: etichetta "Anteprima".
+function EyeIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+        </svg>
+    )
+}
+
+// ActivityIcon: etichetta "Attività".
+function ActivityIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+        </svg>
+    )
+}
+
+// ConvertIcon: etichetta "Risultato conversione" (frecce di scambio).
+function ConvertIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M17 3l4 4-4 4" />
+            <path d="M21 7H7" />
+            <path d="M7 21l-4-4 4-4" />
+            <path d="M3 17h14" />
+        </svg>
+    )
+}
+
+// TrashIcon: azione "Pulisci".
+function TrashIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M19 6l-1 14H6L5 6" />
+        </svg>
+    )
+}
+
+// SettingsIcon: azione "Impostazioni".
+function SettingsIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
         </svg>
     )
 }
@@ -82,6 +159,11 @@ function App() {
     const [destFolder, setDestFolder] = useState('')
     const [deleteOriginals, setDeleteOriginals] = useState(false)
     const [watchEnabled, setWatchEnabled] = useState(false)
+    const [confirmDeleteOriginals, setConfirmDeleteOriginals] = useState(false)
+    // booted diventa true al termine del caricamento iniziale: finché è false
+    // mostriamo un placeholder di caricamento invece del messaggio "vuoto",
+    // così al refresh non si vede un lampo di stato vuoto prima dei dati.
+    const [booted, setBooted] = useState(false)
 
     function absorb(resp: main.ActionResponse) {
         setState(resp.state)
@@ -90,7 +172,13 @@ function App() {
         }
     }
 
+    // Durata minima (ms) per cui lo stato "busy" resta attivo una volta partito:
+    // così la barra di progresso non lampeggia (accendendosi e spegnendosi in
+    // pochi ms) sulle operazioni rapide, ma resta visibile un istante coerente.
+    const MIN_BUSY_MS = 450
+
     async function guard(fn: () => Promise<void>) {
+        const start = performance.now()
         setBusy(true)
         setStatus({ message: 'Operazione in corso...', ok: true })
         try {
@@ -98,6 +186,10 @@ function App() {
         } catch (err: any) {
             setStatus({ message: 'Errore: ' + (err?.message ?? String(err)), ok: false })
         } finally {
+            const elapsed = performance.now() - start
+            if (elapsed < MIN_BUSY_MS) {
+                await new Promise((r) => window.setTimeout(r, MIN_BUSY_MS - elapsed))
+            }
             setBusy(false)
         }
     }
@@ -109,10 +201,10 @@ function App() {
         setWatchEnabled(s.watchEnabled)
     }
 
-    // Carica lo stato iniziale (cartella + opzioni persistite); se una cartella è
-    // ricordata, ne mostra subito l'anteprima.
-    // Il ref evita la doppia esecuzione indotta da React.StrictMode in dev,
-    // così vediamo un unico "Scansione completata" come in produzione.
+    // Carica lo stato iniziale (cartella + opzioni + anteprima) in UN SOLO passaggio:
+    // il backend (GetState) scansiona già la cartella ricordata e restituisce le
+    // anteprime, quindi la UI si popola una sola volta senza svuotarsi/riempirsi.
+    // Il ref evita la doppia esecuzione indotta da React.StrictMode in dev.
     const bootedRef = useRef(false)
     useEffect(() => {
         if (bootedRef.current) return
@@ -121,14 +213,8 @@ function App() {
             const resp = await GetState()
             absorb(resp)
             syncOptions(resp.state)
-            if (resp.state.folder) {
-                const scanned = await Scan()
-                absorb(scanned)
-                setStatus({ message: scanned.message ?? '', ok: scanned.ok })
-            } else {
-                setStatus({ message: resp.message ?? '', ok: resp.ok })
-            }
-        })
+            setStatus({ message: resp.message ?? '', ok: resp.ok })
+        }).finally(() => setBooted(true))
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -200,6 +286,12 @@ function App() {
             if (path) {
                 applyOptions(destSameAsSource, path, deleteOriginals)
                 setStatus({ message: 'Cartella di destinazione impostata.', ok: true })
+            } else {
+                // Selezione annullata: manteniamo la destinazione precedente e
+                // sblocchiamo lo stato (altrimenti resterebbe "Operazione in corso...").
+                // ok:false → messaggio in rosso, coerente con l'annullamento della
+                // cartella di partenza.
+                setStatus({ message: 'Selezione annullata.', ok: false })
             }
         })
     }
@@ -270,9 +362,35 @@ function App() {
     const folder = state?.folder ?? ''
     const files = state?.files ?? []
     const logs = state?.logs ?? []
-    const mp3Count = files.filter((f) => f.mp3).length
+    // Contatori nell'header: dopo un'elaborazione la lista `files` \u00e8 vuota
+    // (i file sono stati rinominati/spostati), quindi mostreremmo "0 file".
+    // Quando ci sono `results` calcoliamo i contatori da quelli, cos\u00ec l'utente
+    // vede il riepilogo di ci\u00f2 che \u00e8 appena stato fatto.
+    const showingResults = results !== null
+    const fileCount = showingResults ? results!.length : files.length
+    const mp3Count = showingResults
+        ? results!.filter((r) => r.tagged).length
+        : files.filter((f) => f.mp3).length
+    const toRenameCount = showingResults
+        ? results!.filter((r) => !r.skipped && r.oldName !== r.newName).length
+        : files.filter((f) => f.preview !== f.name).length
     const destReady = destSameAsSource || destFolder !== ''
     const canProcess = !busy && folder !== '' && files.length > 0 && destReady
+
+    // Attiva/disattiva "Elimina originali" con conferma esplicita quando si passa
+    // da OFF a ON (è un'azione distruttiva). Spegnerlo non richiede conferma.
+    function toggleDeleteOriginals(next: boolean) {
+        if (next && !deleteOriginals) {
+            setConfirmDeleteOriginals(true)
+            return
+        }
+        applyOptions(destSameAsSource, destFolder, next)
+    }
+
+    function confirmEnableDelete() {
+        setConfirmDeleteOriginals(false)
+        applyOptions(destSameAsSource, destFolder, true)
+    }
 
     function updateDraftList(
         key: 'supportedExtensions' | 'occurrenciesToRemove' | 'occurrenciesToReplaceWithFt',
@@ -308,102 +426,125 @@ function App() {
                 <h1>RenameMusic</h1>
                 <div className="header-right">
                     {state?.watchActive && (
-                        <span className="watch-pill" title="Modalità watch attiva: variazioni nella cartella aggiornano l'anteprima">
+                        <span className="watch-pill" title="Aggiornamento automatico attivo: variazioni nella cartella aggiornano l'anteprima">
                             <span className="watch-dot" aria-hidden="true" />
-                            Watch attivo
+                            Agg. automatico attivo
                         </span>
                     )}
                     <div className="counters">
-                        <span>{files.length} file</span>
+                        <span>{fileCount} file{showingResults ? ' elaborati' : ''}</span>
                         <span className="dot">·</span>
                         <span>{mp3Count} MP3</span>
+                        {toRenameCount > 0 && (
+                            <>
+                                <span className="dot">·</span>
+                                <span className="counter-hi">
+                                    {toRenameCount} {showingResults ? 'rinominati' : 'da rinominare'}
+                                </span>
+                            </>
+                        )}
                     </div>
                 </div>
             </header>
 
             <main>
-                <div className="toolbar">
-                    <div className="folder-path" title={folder}>
-                        {folder || 'Nessuna cartella selezionata'}
+                <div
+                    className={'busy-bar' + (busy ? ' is-active' : '')}
+                    role="progressbar"
+                    aria-hidden={!busy}
+                    aria-label="Operazione in corso"
+                />
+
+                <div className="field-group">
+                    <span className="field-label">Cartella di partenza</span>
+                    <div className="toolbar">
+                        <div className="folder-path" title={folder}>
+                            {folder || 'Nessuna cartella selezionata'}
+                        </div>
+                        <button
+                            className="icon-btn"
+                            onClick={refresh}
+                            disabled={busy || !folder}
+                            aria-label="Aggiorna scansione"
+                        >
+                            <RefreshIcon />
+                            <span className="info-tooltip" role="tooltip">Aggiorna la scansione della cartella</span>
+                        </button>
+                        <button className="primary" onClick={chooseFolder} disabled={busy}>
+                            Scegli cartella
+                        </button>
                     </div>
-                    <button
-                        className="icon-btn"
-                        onClick={refresh}
-                        disabled={busy || !folder}
-                        title="Aggiorna scansione della cartella"
-                        aria-label="Aggiorna scansione"
-                    >
-                        <RefreshIcon />
-                    </button>
-                    <button className="primary" onClick={chooseFolder} disabled={busy}>
-                        Scegli cartella
-                    </button>
                 </div>
 
                 <div className="options">
-                    <label className="check">
-                        <input
-                            type="checkbox"
-                            checked={destSameAsSource}
-                            onChange={(e) => applyOptions(e.target.checked, destFolder, deleteOriginals)}
-                            disabled={busy}
-                        />
-                        Destinazione uguale alla cartella di partenza
-                    </label>
+                    <div className="check">
+                        <label className="check-label">
+                            <input
+                                type="checkbox"
+                                checked={destSameAsSource}
+                                onChange={(e) => applyOptions(e.target.checked, destFolder, deleteOriginals)}
+                                disabled={busy}
+                            />
+                            Destinazione uguale alla cartella di partenza
+                        </label>
+                        <InfoIcon text="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata." />
+                    </div>
 
                     {!destSameAsSource && (
-                        <div className="toolbar">
-                            <div className="folder-path" title={destFolder}>
-                                {destFolder || 'Nessuna destinazione selezionata'}
+                        <div className="field-group">
+                            <span className="field-label">Cartella di destinazione</span>
+                            <div className="toolbar">
+                                <div className="folder-path" title={destFolder}>
+                                    {destFolder || 'Nessuna destinazione selezionata'}
+                                </div>
+                                <button className="primary" onClick={chooseDestination} disabled={busy}>
+                                    Scegli destinazione
+                                </button>
                             </div>
-                            <button className="primary" onClick={chooseDestination} disabled={busy}>
-                                Scegli destinazione
-                            </button>
                         </div>
                     )}
 
-                    <label className="check">
-                        <input
-                            type="checkbox"
-                            checked={deleteOriginals}
-                            onChange={(e) => applyOptions(destSameAsSource, destFolder, e.target.checked)}
-                            disabled={busy}
-                        />
-                        Elimina file originali
-                        <span className="hint">
-                            {deleteOriginals
-                                ? '(gli originali vengono eliminati dopo la scrittura)'
-                                : '(scrive i nuovi file lasciando intatti gli originali)'}
-                        </span>
-                    </label>
+                    <div className="check">
+                        <label className="check-label">
+                            <input
+                                type="checkbox"
+                                checked={deleteOriginals}
+                                onChange={(e) => toggleDeleteOriginals(e.target.checked)}
+                                disabled={busy}
+                            />
+                            Eliminazione file originali
+                        </label>
+                        <InfoIcon text="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali." />
+                    </div>
 
-                    <label className="check">
-                        <input
-                            type="checkbox"
-                            checked={watchEnabled}
-                            onChange={(e) => toggleWatch(e.target.checked)}
-                            disabled={busy || !folder}
-                        />
-                        Modalità watch (aggiorna l'anteprima automaticamente)
-                        <span className="hint">
-                            {watchEnabled
-                                ? '(le variazioni nella cartella aggiornano l\'anteprima; la conversione resta manuale)'
-                                : '(disattivata: l\'anteprima si aggiorna solo con "Scegli cartella" o "Aggiorna")'}
-                        </span>
-                    </label>
+                    <div className="check">
+                        <label className="check-label">
+                            <input
+                                type="checkbox"
+                                checked={watchEnabled}
+                                onChange={(e) => toggleWatch(e.target.checked)}
+                                disabled={busy || !folder}
+                            />
+                            Aggiornamento automatico
+                        </label>
+                        <InfoIcon text="Quando attivo, l'applicazione osserva la cartella di partenza: se aggiungi, modifichi o rimuovi file, l'anteprima si aggiorna da sola. La conversione resta comunque manuale: nessun file viene mai rinominato senza il tuo comando esplicito. Quando disattivato, l'anteprima si aggiorna solo con 'Scegli cartella' o con il pulsante di aggiornamento." />
+                    </div>
                 </div>
 
                 <div className="actions">
                     {results ? (
-                        <button className="accent" onClick={refresh} disabled={busy || !folder}>
+                        <button className="accent with-icon" onClick={refresh} disabled={busy || !folder}>
+                            <span className="btn-icon"><RefreshIcon /></span>
                             Avvia nuova scansione
                         </button>
                     ) : (
-                        <button className="accent" onClick={process} disabled={!canProcess}>
+                        <button className="accent with-icon" onClick={process} disabled={!canProcess}>
+                            <span className="btn-icon"><ConvertIcon /></span>
                             Converti nomi e scrivi tag
                         </button>
                     )}
-                    <button className="ghost" onClick={() => setShowSettings((v) => !v)} disabled={busy}>
+                    <button className="ghost with-icon" onClick={() => setShowSettings((v) => !v)} disabled={busy}>
+                        <span className="btn-icon"><SettingsIcon /></span>
                         {showSettings ? 'Nascondi impostazioni' : 'Impostazioni'}
                     </button>
                 </div>
@@ -450,7 +591,7 @@ function App() {
                         <div className="replacements">
                             <div className="replacements-head">
                                 <span>Sostituzioni (Da → A)</span>
-                                <button className="ghost small" onClick={addReplacement} disabled={busy}>
+                                <button className="ghost small add-replacement" onClick={addReplacement} disabled={busy}>
                                     + Aggiungi
                                 </button>
                             </div>
@@ -483,29 +624,37 @@ function App() {
                         </div>
 
                         <div className="settings-actions">
-                            <button className="primary" onClick={saveConfig} disabled={busy}>
-                                Salva impostazioni
-                            </button>
-                            <button onClick={revertDraft} disabled={busy}>
-                                Ripristina precedenti
-                            </button>
-                            <button onClick={resetConfig} disabled={busy}>
-                                Ripristina default
-                            </button>
-                            <button
-                                className="accent"
-                                onClick={() => setConfirmDefault(true)}
-                                disabled={busy}
-                            >
-                                Rendi queste il default
-                            </button>
+                            <div className="settings-actions-group">
+                                <button className="primary" onClick={saveConfig} disabled={busy}>
+                                    Salva
+                                </button>
+                                <button onClick={revertDraft} disabled={busy}>
+                                    Annulla modifiche
+                                </button>
+                                <button onClick={resetConfig} disabled={busy}>
+                                    Ripristina predefiniti
+                                </button>
+                            </div>
+                            <span className="settings-actions-sep" aria-hidden="true" />
+                            <div className="settings-actions-group">
+                                <button
+                                    className="accent"
+                                    onClick={() => setConfirmDefault(true)}
+                                    disabled={busy}
+                                >
+                                    Salva come predefinito
+                                </button>
+                            </div>
                         </div>
                     </section>
                 )}
 
                 <div className="grid">
-                    <section className="panel">
-                        <h2>{results ? 'Risultato conversione' : 'Anteprima'}</h2>
+                    <section className="panel fade-in">
+                        <h2>
+                            <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>
+                            {results ? 'Risultato conversione' : 'Anteprima'}
+                        </h2>
                         {results ? (
                             results.length === 0 ? (
                                 <div className="empty">Nessun file elaborato.</div>
@@ -520,19 +669,23 @@ function App() {
                                     </thead>
                                     <tbody>
                                         {results.map((r, i) => {
-                                            const renamed = !r.skipped && r.oldName !== r.newName
+                                            const src = splitName(r.oldName)
+                                            const dst = splitName(r.newName)
+                                            const renamed = !r.skipped && src.base !== dst.base
                                             const rowClass = r.skipped ? 'skipped' : renamed ? 'changed' : ''
                                             return (
                                                 <tr key={i} className={rowClass}>
-                                                    <td>{r.oldName}</td>
-                                                    <td>{r.skipped ? '—' : r.newName}</td>
+                                                    <td>
+                                                        {renamed ? <s className="old-name">{src.base}</s> : src.base}
+                                                    </td>
+                                                    <td>{r.skipped ? '—' : dst.base}</td>
                                                     <td>
                                                         {r.skipped ? (
                                                             <span className="note">Saltato: {r.reason}</span>
-                                                        ) : r.tagged ? (
-                                                            <span className="badge badge-mp3">MP3</span>
                                                         ) : (
-                                                            <span className="note">OK</span>
+                                                            <div className="badges">
+                                                                <ExtChip ext={dst.ext} />
+                                                            </div>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -541,6 +694,8 @@ function App() {
                                     </tbody>
                                 </table>
                             )
+                        ) : !booted ? (
+                            <div className="empty">Caricamento…</div>
                         ) : files.length === 0 ? (
                             <div className="empty">Scegli una cartella per vedere l'anteprima.</div>
                         ) : (
@@ -554,11 +709,15 @@ function App() {
                                 </thead>
                                 <tbody>
                                     {files.map((file, i) => {
-                                        const changed = file.preview !== file.name
+                                        const src = splitName(file.name)
+                                        const dst = splitName(file.preview)
+                                        const changed = src.base !== dst.base
                                         return (
                                             <tr key={i} className={changed ? 'changed' : ''}>
-                                                <td>{file.name}</td>
-                                                <td>{file.preview}</td>
+                                                <td>
+                                                    {changed ? <s className="old-name">{src.base}</s> : src.base}
+                                                </td>
+                                                <td>{dst.base}</td>
                                                 <td>
                                                     <div className="badges">
                                                         {changed ? (
@@ -566,7 +725,7 @@ function App() {
                                                         ) : (
                                                             <span className="badge badge-neutral">Invariato</span>
                                                         )}
-                                                        {file.mp3 && <span className="badge badge-mp3">MP3</span>}
+                                                        <ExtChip ext={src.ext} />
                                                     </div>
                                                 </td>
                                             </tr>
@@ -577,14 +736,18 @@ function App() {
                         )}
                     </section>
 
-                    <section className="panel">
+                    <section className="panel fade-in">
                         <div className="panel-head">
-                            <h2>Attività</h2>
+                            <h2>
+                                <span className="h2-icon"><ActivityIcon /></span>
+                                Attività
+                            </h2>
                             <button
-                                className="ghost small"
+                                className="ghost small with-icon"
                                 onClick={clearLogs}
                                 disabled={busy || logs.length === 0}
                             >
+                                <span className="btn-icon"><TrashIcon /></span>
                                 Pulisci
                             </button>
                         </div>
@@ -592,21 +755,39 @@ function App() {
                             {logs.length === 0 ? (
                                 <li className="log-empty">Nessuna attività.</li>
                             ) : (
-                                logs.map((log, i) => {
-                                    const { time, message, kind } = parseLogEntry(log)
-                                    return (
-                                        <li key={i} className={'log-item log-' + kind}>
-                                            <span className="log-dot" aria-hidden="true" />
-                                            {time && <span className="log-time">{time}</span>}
-                                            <span className="log-msg">{message}</span>
-                                        </li>
-                                    )
-                                })
+                                logs.map((log, i) => (
+                                    <li key={i} className={'log-item log-' + (log.kind || 'info')}>
+                                        <span className="log-dot" aria-hidden="true" />
+                                        {log.time && <span className="log-time">{log.time}</span>}
+                                        <span className="log-msg">{log.message}</span>
+                                    </li>
+                                ))
                             )}
                         </ul>
                     </section>
                 </div>
             </main>
+
+            {confirmDeleteOriginals && (
+                <div className="modal-overlay" onClick={() => setConfirmDeleteOriginals(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Attivare l'eliminazione degli originali?</h3>
+                        <p>
+                            Con questa opzione attiva, dopo ogni conversione i file originali
+                            verranno <strong>eliminati definitivamente</strong>. Verifica di avere
+                            un backup se ti serve poter tornare indietro.
+                        </p>
+                        <div className="modal-actions">
+                            <button onClick={() => setConfirmDeleteOriginals(false)} disabled={busy}>
+                                Annulla
+                            </button>
+                            <button className="danger-solid" onClick={confirmEnableDelete} disabled={busy}>
+                                Continua
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {confirmDefault && (
                 <div className="modal-overlay" onClick={() => setConfirmDefault(false)}>

@@ -24,6 +24,8 @@
     --focus-ring: #7cc0d6;
     --shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
     --overlay: rgba(15, 23, 42, 0.45);
+    --tooltip-bg: #1f2937;
+    --tooltip-text: #f5f7fa;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -52,6 +54,8 @@
         --focus-ring: #4fbedd;
         --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
         --overlay: rgba(0, 0, 0, 0.6);
+        --tooltip-bg: #2d3a52;
+        --tooltip-text: #f1f5f9;
     }
 }
 
@@ -65,12 +69,26 @@ body {
     padding: 0;
 }
 
+html {
+    /* Riserva sempre lo spazio della scrollbar verticale: evita il layout shift
+       (flicker orizzontale) quando la tabella cambia dimensione e la scrollbar
+       compare/scompare durante Scan/Refresh. */
+    scrollbar-gutter: stable;
+    overflow-y: scroll;
+}
+
 body {
     background: var(--bg);
     color: var(--text);
-    font: 14px/1.4 "Segoe UI", system-ui, sans-serif;
+    font-family: "Sora", "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 #root {
-    height: 100vh;
+    min-height: 100vh;
 }
