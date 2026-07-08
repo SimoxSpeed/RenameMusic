@@ -21,6 +21,7 @@
     --row-neutral: transparent;
     --row-changed: #eef7f0;
     --row-skipped: #fbfbfc;
+    --row-error: #fbeeee;
     --focus-ring: #7cc0d6;
     --shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
     --overlay: rgba(15, 23, 42, 0.45);
@@ -51,6 +52,7 @@
         --row-neutral: transparent;
         --row-changed: #1c3826;
         --row-skipped: #182033;
+        --row-error: #3a1f24;
         --focus-ring: #4fbedd;
         --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
         --overlay: rgba(0, 0, 0, 0.6);

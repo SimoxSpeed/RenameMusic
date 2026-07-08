@@ -27,6 +27,7 @@ type Result struct {
 	NewName string
 	Tagged  bool
 	Skipped bool
+	Failed  bool // errore sul singolo file: il batch prosegue comunque
 	Reason  string
 }
 
@@ -53,6 +54,12 @@ type workItem struct {
 // altri vengono saltati (ed eliminati se DeleteOriginals). A parità di nome viene
 // preferito come vincitore il file che ha GIÀ il nome corretto, così non viene
 // sovrascritto/cancellato per errore.
+//
+// Un errore su un singolo file NON interrompe il batch: il file viene marcato
+// come Failed (con Reason) e l'elaborazione prosegue con i successivi. Così un
+// disco pieno o un permesso mancante a metà lista non lascia il resto dei file
+// non elaborato e senza feedback. L'error restituito resta nil (gli esiti per
+// file sono nei Result); è mantenuto in firma per compatibilità/estensioni future.
 func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 	dest := opts.DestinationFolder
 	if dest == "" {
@@ -110,9 +117,11 @@ func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 			result.Skipped = true
 			if opts.DeleteOriginals {
 				if err := os.Remove(it.path); err != nil {
-					return results, err
+					result.Failed = true
+					result.Reason = "nome già esistente, ma eliminazione dell'originale fallita: " + err.Error()
+				} else {
+					result.Reason = "nome già esistente (originale eliminato)"
 				}
-				result.Reason = "nome già esistente (originale eliminato)"
 			} else {
 				result.Reason = "nome già esistente"
 			}
@@ -127,18 +136,28 @@ func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 		case opts.DeleteOriginals:
 			// Sposta/rinomina, sovrascrivendo un eventuale file preesistente con quel nome.
 			if err := moveFile(it.path, it.newPath); err != nil {
-				return results, err
+				result.Failed = true
+				result.Reason = "spostamento fallito: " + err.Error()
+				results = append(results, result)
+				continue
 			}
 		default:
 			// Copia lasciando l'originale, sovrascrivendo un eventuale file di destinazione.
 			if err := copyFile(it.path, it.newPath); err != nil {
-				return results, err
+				result.Failed = true
+				result.Reason = "copia fallita: " + err.Error()
+				results = append(results, result)
+				continue
 			}
 		}
 
 		if it.ext == "mp3" {
 			if err := WriteTags(it.newPath); err != nil {
-				return results, err
+				// Il file è stato rinominato/copiato, ma i tag non sono stati scritti.
+				result.Failed = true
+				result.Reason = "rinominato, ma scrittura tag fallita: " + err.Error()
+				results = append(results, result)
+				continue
 			}
 			result.Tagged = true
 		}
@@ -169,6 +188,10 @@ func moveFile(src, dst string) error {
 	return os.Remove(src)
 }
 
+// copyFile copia src su dst in modo atomico: scrive prima su un file temporaneo
+// e lo rinomina su dst solo a copia completata. Così un errore a metà (es. disco
+// pieno) non lascia un dst troncato/corrotto, e un eventuale dst preesistente non
+// viene distrutto se la copia fallisce.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -176,13 +199,30 @@ func copyFile(src, dst string) error {
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	tmp := dst + ".tmp"
+	out, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		out.Close()
+		_ = os.Remove(tmp)
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+
+	if err := os.Rename(tmp, dst); err != nil {
+		// Alcuni casi (es. dst di sola lettura su Windows) non consentono la
+		// sostituzione diretta: rimuoviamo dst e riproviamo. Il temp è già
+		// completo, quindi la finestra di rischio è minima.
+		_ = os.Remove(dst)
+		if err2 := os.Rename(tmp, dst); err2 != nil {
+			_ = os.Remove(tmp)
+			return err2
+		}
+	}
+	return nil
 }

@@ -168,6 +168,77 @@ func TestProcessKeepsAlreadyNamedFileOnCollision(t *testing.T) {
 	}
 }
 
+func TestProcessContinuesAfterSingleFileFailure(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	// Due file distinti da copiare in destinazione.
+	bad := filepath.Join(src, "Bad Song (Official Video).flac")  // normalizza -> "Bad Song.flac"
+	good := filepath.Join(src, "Good Song (Official Video).flac") // normalizza -> "Good Song.flac"
+	if err := os.WriteFile(bad, []byte("bad"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(good, []byte("good"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sabotiamo la destinazione del primo file: creiamo una CARTELLA NON VUOTA
+	// dove dovrebbe finire "Bad Song.flac", così la copia non può sostituirla e
+	// fallisce. È il modo portabile per forzare un errore su un solo elemento.
+	badDest := filepath.Join(dst, "Bad Song.flac")
+	if err := os.Mkdir(badDest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badDest, "keep"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := rules.FactoryConfig()
+	cfg.StartFolder = src
+
+	svc := NewService(cfg)
+	files, err := svc.Scan()
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	results, err := svc.Process(files, Options{DestinationFolder: dst, DeleteOriginals: false})
+	if err != nil {
+		t.Fatalf("Process non deve restituire errore di batch: %v", err)
+	}
+
+	// Il file "buono" deve essere stato copiato nonostante il fallimento dell'altro.
+	if _, err := os.Stat(filepath.Join(dst, "Good Song.flac")); err != nil {
+		t.Fatalf("il file valido doveva essere elaborato: %v", err)
+	}
+
+	var failed, ok int
+	for _, r := range results {
+		if r.Failed {
+			failed++
+			if r.Reason == "" {
+				t.Fatal("un risultato fallito deve avere una Reason")
+			}
+		} else {
+			ok++
+		}
+	}
+	if failed != 1 {
+		t.Fatalf("atteso 1 file fallito, ottenuti %d", failed)
+	}
+	if ok != 1 {
+		t.Fatalf("atteso 1 file elaborato con successo, ottenuti %d", ok)
+	}
+
+	// Nessun file temporaneo residuo deve restare in destinazione.
+	entries, _ := os.ReadDir(dst)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Fatalf("residuo temporaneo non ripulito: %s", e.Name())
+		}
+	}
+}
+
 func TestProcessCopiesToDestinationKeepingOriginals(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()

@@ -49,6 +49,11 @@ header h1 {
     font-weight: 600;
 }
 
+.counters .counter-err {
+    color: #f0a9a9;
+    font-weight: 600;
+}
+
 /* Pill "Agg. automatico attivo" nell'header: rimane sempre visibile, con puntino pulsante. */
 .watch-pill {
     display: inline-flex;
@@ -490,6 +495,15 @@ button.danger-solid:hover:not(:disabled) {
 tr.skipped td {
     color: var(--muted);
     background: var(--row-skipped);
+}
+
+/* Righe con errore di elaborazione: il file non è stato completato. */
+tr.failed td {
+    background: var(--row-error);
+}
+
+.note.error {
+    color: var(--danger);
 }
 
 /* Righe dove l'anteprima del nuovo nome differisce dal nome attuale */
