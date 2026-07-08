@@ -10,3 +10,6 @@ frontend/dist/
 
 # Wails build output
 build/bin/
+
+# Documentazione locale (non versionata)
+docs/

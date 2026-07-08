@@ -4,7 +4,13 @@
     flex-direction: column;
 }
 
+/* Header fisso in cima: resta visibile durante lo scorrimento dei contenuti.
+   La scrollbar vive sull'elemento <html> (overflow-y: scroll), quindi sticky
+   qui ancora l'header al viewport. La leggera ombra lo stacca dal contenuto. */
 header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -12,6 +18,7 @@ header {
     padding: 16px 24px;
     background: var(--header-bg);
     color: var(--header-text);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.18);
 }
 
 header h1 {
@@ -37,7 +44,12 @@ header h1 {
     opacity: 0.5;
 }
 
-/* Pill "Watch attivo" nell'header: rimane sempre visibile, con puntino pulsante. */
+.counters .counter-hi {
+    color: #b7e5c4;
+    font-weight: 600;
+}
+
+/* Pill "Agg. automatico attivo" nell'header: rimane sempre visibile, con puntino pulsante. */
 .watch-pill {
     display: inline-flex;
     align-items: center;
@@ -71,6 +83,7 @@ header h1 {
 }
 
 main {
+    position: relative;
     max-width: 1180px;
     width: 100%;
     margin: 0 auto;
@@ -127,6 +140,57 @@ button:focus-visible {
     outline-offset: 2px;
 }
 
+/* Barra di progresso indeterminata in cima al main. È in position:absolute così
+   non occupa spazio nel flusso: appare/scompare senza spostare i controlli
+   sottostanti (niente layout-shift/flicker). Colore e animazione solo quando
+   è attiva (.is-active). */
+.busy-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: transparent;
+    overflow: hidden;
+    /* Animazione di attivazione discreta: la barra sfuma e cresce dolcemente in
+       altezza quando parte un'operazione, e sfuma via al termine. Vive su un layer
+       compositato proprio (transform/opacity) così la sua animazione non provoca
+       ridisegni dei controlli sottostanti (niente flicker). */
+    opacity: 0;
+    transform: scaleY(0.35);
+    transform-origin: top center;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    will-change: opacity, transform;
+}
+
+.busy-bar.is-active {
+    opacity: 1;
+    transform: scaleY(1);
+    background: rgba(23, 107, 135, 0.15);
+}
+
+/* Lo shimmer esiste (e quindi anima) solo quando la barra è attiva:
+   niente animazione perenne che ridipinge di continuo. */
+.busy-bar.is-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    animation: busySlide 1.2s ease-in-out infinite;
+    will-change: transform;
+}
+
+@keyframes busySlide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .busy-bar { transition: none; }
+    .busy-bar.is-active::before { animation: none; }
+}
+
 input {
     min-height: 38px;
 }
@@ -135,6 +199,14 @@ textarea {
     resize: vertical;
     font-family: "Consolas", ui-monospace, monospace;
     font-size: 13px;
+}
+
+button,
+select {
+    /* I controlli del form non ereditano il font di default: senza questo i
+       pulsanti userebbero il font di sistema del WebView (che appare tipo Arial),
+       mentre input/textarea hanno già `font: inherit`. */
+    font-family: inherit;
 }
 
 button {
@@ -147,11 +219,66 @@ button {
     cursor: pointer;
     font-weight: 600;
     white-space: nowrap;
-    transition: background 0.12s ease, border-color 0.12s ease;
+    transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease,
+        box-shadow 0.14s ease;
 }
 
 button:hover:not(:disabled) {
     border-color: #aab3c2;
+}
+
+button:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* Leggera micro-interazione di rilievo sulle azioni principali: solo un'ombra,
+   senza spostamento verticale (i bottoni non devono "salire" in hover). */
+button.primary:hover:not(:disabled),
+button.accent:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
+}
+
+button.primary:active:not(:disabled),
+button.accent:active:not(:disabled) {
+    box-shadow: none;
+}
+
+/* Bottoni con icona che appare lateralmente da sinistra all'hover/focus, mentre
+   il testo scivola dolcemente verso destra. */
+.with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+}
+
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    width: 0;
+    margin-right: 0;
+    opacity: 0;
+    transform: translateX(-6px);
+    overflow: hidden;
+    transition: width 0.2s ease, margin-right 0.2s ease, opacity 0.2s ease,
+        transform 0.2s ease;
+}
+
+.with-icon:hover:not(:disabled) .btn-icon,
+.with-icon:focus-visible .btn-icon {
+    width: 16px;
+    margin-right: 7px;
+    opacity: 1;
+    transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btn-icon {
+        transition: none;
+    }
+    button.primary:hover:not(:disabled),
+    button.accent:hover:not(:disabled) {
+        transform: none;
+    }
 }
 
 button:disabled {
@@ -194,17 +321,52 @@ button.danger {
     border-color: #e3c2c2;
 }
 
+/* Hover della X "rimuovi sostituzione": sfondo rosso pieno, glifo nero/grigio. */
+button.danger:hover:not(:disabled) {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #2b2b2b;
+}
+
+/* Hover di "+ Aggiungi" sostituzione: sfondo verde (accento). */
+button.add-replacement:hover:not(:disabled) {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+/* Variante pieno-rosso per azioni distruttive nei modali ("Continua"). */
+button.danger-solid {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+}
+
+button.danger-solid:hover:not(:disabled) {
+    filter: brightness(1.05);
+}
+
 .options {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-bottom: 14px;
+    gap: 16px;
+    margin-top: 20px;
+    margin-bottom: 20px;
 }
 
 .check {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+/* La label (input + testo) è cliccabile e toggola la checkbox; l'icona info è
+   fuori dalla label, quindi cliccarla non ha alcun effetto sulla checkbox. */
+.check-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.4;
     cursor: pointer;
 }
 
@@ -213,6 +375,106 @@ button.danger {
     min-height: 0;
     margin: 0;
     cursor: pointer;
+}
+
+/* Avviciniamo l'icona informativa al testo della checkbox: qualche pixel a
+   sinistra rispetto al gap di default del contenitore. */
+.check .info-icon {
+    margin-left: -4px;
+}
+
+/* Gruppo campo: etichetta sopra il controllo (cartelle di partenza/destinazione). */
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.field-group .toolbar {
+    margin-bottom: 0;
+}
+
+.field-label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Icona "i" con tooltip custom: solo il glifo, senza anello/bordo esterno. */
+.info-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: help;
+}
+
+.info-icon:hover:not(:disabled) {
+    color: var(--primary);
+}
+
+/* Il tooltip è figlio di un contenitore position:relative (info-icon o un
+   bottone della toolbar) e compare verso il BASSO su hover/focus del genitore,
+   con una piccola freccia (caret) che punta verso l'alto, verso il trigger. */
+.info-tooltip {
+    position: absolute;
+    top: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    z-index: 20;
+    width: max-content;
+    max-width: 260px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--tooltip-bg, #1f2937);
+    color: var(--tooltip-text, #f8fafc);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* Freccia: triangolo che punta verso l'alto, agganciato al bordo superiore. */
+.info-tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-bottom-color: var(--tooltip-bg, #1f2937);
+}
+
+.info-icon:hover .info-tooltip,
+.info-icon:focus-visible .info-tooltip,
+.icon-btn:hover .info-tooltip,
+.icon-btn:focus-visible .info-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* La toolbar contiene bottoni con tooltip: serve un contesto di posizionamento. */
+.toolbar .icon-btn {
+    position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .info-tooltip { transition: none; }
 }
 
 .hint {
@@ -238,6 +500,15 @@ tr.changed td {
 tr.changed td:nth-child(2) {
     color: var(--accent-strong);
     font-weight: 600;
+}
+
+/* Nome vecchio (colonna 1) quando il file sta per essere rinominato: linea sottile
+   e leggermente attenuato, per far risaltare la nuova versione senza cancellarlo. */
+.old-name {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: rgba(164, 59, 59, 0.5);
+    text-decoration-thickness: 1px;
 }
 
 .actions {
@@ -293,6 +564,12 @@ tr.changed td:nth-child(2) {
     letter-spacing: 0.02em;
 }
 
+/* L'altezza attuale (rows=6) diventa anche altezza minima: la textarea è ancora
+   ridimensionabile in verticale, ma non può scendere sotto la dimensione base. */
+.settings textarea {
+    min-height: 132px;
+}
+
 .replacements {
     margin-top: 16px;
 }
@@ -322,8 +599,26 @@ tr.changed td:nth-child(2) {
 
 .settings-actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 10px;
     margin-top: 16px;
+}
+
+.settings-actions-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* Separatore leggero fra "salvataggio normale" e "salva come predefinito":
+   uno spaziatore flessibile con un sottile filo verticale che li distingue. */
+.settings-actions-sep {
+    flex: 1 1 16px;
+    align-self: stretch;
+    min-width: 16px;
+    min-height: 24px;
+    border-right: 1px solid var(--line);
 }
 
 .grid {
@@ -340,12 +635,36 @@ tr.changed td:nth-child(2) {
     overflow: hidden;
 }
 
+/* Fade+slide leggerissimo sui pannelli quando appaiono nel DOM. */
+.fade-in {
+    animation: fadeIn 0.18s ease-out both;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fade-in { animation: none; }
+}
+
 .panel h2 {
     margin: 0;
     padding: 12px 14px;
     border-bottom: 1px solid var(--line);
     font-size: 15px;
     background: var(--panel-alt);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Icona a fianco delle etichette dei pannelli (Anteprima / Attività / Risultato). */
+.h2-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--primary);
 }
 
 .panel-head {
@@ -432,6 +751,27 @@ th {
     color: var(--primary-strong);
 }
 
+/* Chip formato. Mostra l'estensione del file (mai visibile nel nome) in stile
+   blu. I file trattati sono sempre mp3: nessuna conversione fra formati diversi. */
+.ext-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.7;
+}
+
+.ext-same {
+    border: 1px solid rgba(23, 107, 135, 0.55);
+    background: rgba(23, 107, 135, 0.12);
+    color: var(--primary-strong);
+}
+
 .log {
     padding: 8px 0;
     margin: 0;
@@ -451,7 +791,7 @@ th {
     display: grid;
     grid-template-columns: 8px 64px 1fr;
     gap: 10px;
-    align-items: baseline;
+    align-items: center;
     padding: 8px 14px;
     border-bottom: 1px solid var(--line-soft);
 }
@@ -481,7 +821,7 @@ th {
 
 .log-info .log-dot    { background: var(--muted); }
 .log-success .log-dot { background: var(--ok); }
-.log-watch .log-dot   { background: var(--primary); }
+.log-auto .log-dot    { background: var(--primary); }
 .log-error .log-dot   { background: var(--danger); }
 .log-error .log-msg   { color: var(--danger); }
 
