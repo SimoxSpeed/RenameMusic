@@ -172,6 +172,14 @@ func (a *App) persistStateLocked() {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// Pulizia dei file temporanei di configurazione lasciati orfani da un crash
+	// durante una scrittura atomica (%AppData%\RenameMusic).
+	if n := settings.CleanTempFiles(); n > 0 {
+		a.mu.Lock()
+		a.addLogLocked(LogInfo, fmt.Sprintf("Rimossi %d file temporanei di configurazione residui.", n))
+		a.mu.Unlock()
+	}
+
 	// Trascinamento di una cartella (o file) sulla finestra: imposta la cartella
 	// di partenza. Avviene fuori dal ciclo richiesta/risposta della UI, quindi
 	// dopo l'aggiornamento notifichiamo il frontend con un evento dedicato.
@@ -458,7 +466,16 @@ func (a *App) ResetConfig() ActionResponse {
 }
 
 func (a *App) Scan() ActionResponse {
-	files, err := rename.NewService(a.currentConfig()).Scan()
+	cfg := a.currentConfig()
+
+	// Rimuove eventuali temporanei orfani da run precedenti prima di scansionare.
+	if n := rename.CleanTempFiles(cfg.StartFolder); n > 0 {
+		a.mu.Lock()
+		a.addLogLocked(LogInfo, fmt.Sprintf("Rimossi %d file temporanei residui.", n))
+		a.mu.Unlock()
+	}
+
+	files, err := rename.NewService(cfg).Scan()
 	if err != nil {
 		return ActionResponse{OK: false, Message: "Errore scansione: " + err.Error(), State: a.snapshotLocked()}
 	}
@@ -506,6 +523,18 @@ func (a *App) ProcessAll() ActionResponse {
 	}
 	if destination != "" && !appfs.IsDir(destination) {
 		return ActionResponse{OK: false, Message: "La cartella di destinazione non esiste.", State: a.snapshotLocked()}
+	}
+
+	// Rimuove i temporanei orfani da conversioni precedenti interrotte, in
+	// origine e (se distinta) in destinazione, prima di riscrivere.
+	cleaned := rename.CleanTempFiles(cfg.StartFolder)
+	if destination != "" && destination != cfg.StartFolder {
+		cleaned += rename.CleanTempFiles(destination)
+	}
+	if cleaned > 0 {
+		a.mu.Lock()
+		a.addLogLocked(LogInfo, fmt.Sprintf("Rimossi %d file temporanei residui.", cleaned))
+		a.mu.Unlock()
 	}
 
 	service := rename.NewService(cfg)
