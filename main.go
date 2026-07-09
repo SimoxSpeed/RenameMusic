@@ -28,6 +28,11 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 246, G: 247, B: 249, A: 1},
 		OnStartup:        app.startup,
+		// Abilita il trascinamento di file/cartelle sulla finestra: il percorso
+		// rilasciato viene gestito in app.startup via runtime.OnFileDrop.
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop: true,
+		},
 		Bind: []interface{}{
 			app,
 		},
