@@ -18,6 +18,9 @@ import { main, rules } from '../wailsjs/go/models'
 
 type Status = { message: string; ok: boolean }
 
+// Toast: notifica effimera in basso a destra. `ok` decide colore/icona.
+type Toast = { id: number; ok: boolean; message: string }
+
 function listToText(list: string[] | undefined): string {
     return (list ?? []).join('\n')
 }
@@ -80,6 +83,20 @@ function ExtChip({ ext }: { ext: string }) {
     return <span className="ext-chip ext-same">{ext}</span>
 }
 
+// ErrorLabel: chip rosso "Errore" nella colonna esito. Il messaggio effettivo
+// compare in un tooltip scuro al passaggio del mouse (o al focus da tastiera),
+// così la tabella resta compatta ma il dettaglio è a un hover di distanza.
+function ErrorLabel({ message }: { message: string }) {
+    return (
+        <button type="button" className="result-error" aria-label={'Errore: ' + message}
+                onClick={(e) => e.preventDefault()}>
+            <AlertIcon />
+            Errore
+            <span className="result-error-tip" role="tooltip">{message}</span>
+        </button>
+    )
+}
+
 // EyeIcon: etichetta "Anteprima".
 function EyeIcon() {
     return (
@@ -137,6 +154,36 @@ function SettingsIcon() {
     )
 }
 
+// CheckIcon / AlertIcon / CloseIcon: glifi per i toast (successo, errore, chiudi).
+function CheckIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+        </svg>
+    )
+}
+
+function AlertIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="7" x2="12" y2="13" />
+            <circle cx="12" cy="17" r="0.6" fill="currentColor" />
+        </svg>
+    )
+}
+
+function CloseIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+    )
+}
+
 function cloneConfig(cfg: rules.Config): rules.Config {
     return {
         startFolder: cfg.startFolder,
@@ -150,6 +197,8 @@ function cloneConfig(cfg: rules.Config): rules.Config {
 function App() {
     const [state, setState] = useState<main.StateResponse | null>(null)
     const [status, setStatus] = useState<Status>({ message: '', ok: true })
+    const [toasts, setToasts] = useState<Toast[]>([])
+    const toastIdRef = useRef(0)
     const [busy, setBusy] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
     const [draft, setDraft] = useState<rules.Config | null>(null)
@@ -192,6 +241,22 @@ function App() {
             }
             setBusy(false)
         }
+    }
+
+    // notify mostra un toast effimero. Gli errori restano più a lungo (portano
+    // un messaggio da leggere); i successi spariscono in fretta. Messaggio vuoto
+    // => nessun toast.
+    function notify(ok: boolean, message: string) {
+        if (!message) return
+        const id = (toastIdRef.current += 1)
+        setToasts((prev) => [...prev, { id, ok, message }])
+        window.setTimeout(() => {
+            setToasts((prev) => prev.filter((t) => t.id !== id))
+        }, ok ? 3500 : 6000)
+    }
+
+    function dismissToast(id: number) {
+        setToasts((prev) => prev.filter((t) => t.id !== id))
     }
 
     function syncOptions(s: main.StateResponse) {
@@ -308,6 +373,7 @@ function App() {
             absorb(resp)
             setResults(resp.results ?? [])
             setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
         })
     }
 
@@ -318,6 +384,7 @@ function App() {
             absorb(resp)
             setResults(null)
             setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
         })
     }
 
@@ -327,6 +394,7 @@ function App() {
             absorb(resp)
             setResults(null)
             setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
         })
     }
 
@@ -356,6 +424,7 @@ function App() {
             const resp = await SetAsDefault(draft)
             setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as main.StateResponse) : resp.state))
             setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
         })
     }
 
@@ -694,7 +763,7 @@ function App() {
                                                     <td>{r.skipped ? '—' : dst.base}</td>
                                                     <td>
                                                         {r.failed ? (
-                                                            <span className="note error">Errore: {r.reason}</span>
+                                                            <ErrorLabel message={r.reason} />
                                                         ) : r.skipped ? (
                                                             <span className="note">Saltato: {r.reason}</span>
                                                         ) : (
@@ -824,6 +893,25 @@ function App() {
                     </div>
                 </div>
             )}
+
+            <div className="toast-container" aria-live="polite" aria-atomic="false">
+                {toasts.map((t) => (
+                    <div key={t.id} className={'toast ' + (t.ok ? 'toast-ok' : 'toast-err')} role="status">
+                        <span className="toast-icon" aria-hidden="true">
+                            {t.ok ? <CheckIcon /> : <AlertIcon />}
+                        </span>
+                        <span className="toast-msg">{t.message}</span>
+                        <button
+                            type="button"
+                            className="toast-close"
+                            aria-label="Chiudi notifica"
+                            onClick={() => dismissToast(t.id)}
+                        >
+                            <CloseIcon />
+                        </button>
+                    </div>
+                ))}
+            </div>
         </div>
     )
 }

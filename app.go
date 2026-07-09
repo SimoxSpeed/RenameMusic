@@ -305,13 +305,24 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 
 	saveErr := settings.SaveConfig(cfg)
 
+	// Riscansiona con le nuove regole (I/O fuori dal lock): le regole possono
+	// cambiare non solo il nome normalizzato ma anche QUALI file rientrano
+	// (estensioni supportate/occorrenze), e dopo un ProcessAll `scanned` è nil.
+	files, rescanned, scanErr := a.rescanWith(cfg)
+
 	a.mu.Lock()
 	a.config = cfg
-	// NON azzeriamo scanned: le anteprime restano e si ricalcolano con le nuove regole.
+	if rescanned {
+		a.scanned = files
+		a.watchPaused = false
+	}
 	if saveErr != nil {
 		a.addLogLocked(LogError, "Configurazione applicata ma NON salvata: "+saveErr.Error())
 	} else {
 		a.addLogLocked(LogSuccess, "Configurazione salvata.")
+	}
+	if scanErr != nil {
+		a.addLogLocked(LogError, "Scansione con le nuove regole fallita: "+scanErr.Error())
 	}
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
@@ -358,13 +369,22 @@ func (a *App) ResetConfig() ActionResponse {
 
 	saveErr := settings.SaveConfig(cfg)
 
+	// Riscansiona con le regole di default (vedi nota in SetConfig).
+	files, rescanned, scanErr := a.rescanWith(cfg)
+
 	a.mu.Lock()
 	a.config = cfg
-	// NON azzeriamo scanned: le anteprime restano e si ricalcolano con le regole di default.
+	if rescanned {
+		a.scanned = files
+		a.watchPaused = false
+	}
 	if saveErr != nil {
 		a.addLogLocked(LogError, "Default ripristinati ma NON salvati: "+saveErr.Error())
 	} else {
 		a.addLogLocked(LogSuccess, "Configurazione ripristinata ai default e salvata.")
+	}
+	if scanErr != nil {
+		a.addLogLocked(LogError, "Scansione con le regole di default fallita: "+scanErr.Error())
 	}
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
@@ -657,6 +677,21 @@ func (a *App) onWatchError(err error) {
 	a.mu.Lock()
 	a.addLogLocked(LogError, "Aggiornamento automatico: errore filesystem: "+err.Error())
 	a.mu.Unlock()
+}
+
+// rescanWith esegue una scansione con la config fornita. Fa I/O su disco, quindi
+// va chiamata SENZA lock. Se la cartella non è valida ritorna rescanned=false
+// (nessuna scansione, nessun errore); se la scansione fallisce ritorna l'errore
+// e rescanned=false, così il chiamante lascia invariato lo stato precedente.
+func (a *App) rescanWith(cfg rules.Config) (files []string, rescanned bool, err error) {
+	if !appfs.IsDir(cfg.StartFolder) {
+		return nil, false, nil
+	}
+	files, err = rename.NewService(cfg).Scan()
+	if err != nil {
+		return nil, false, err
+	}
+	return files, true, nil
 }
 
 func (a *App) currentConfig() rules.Config {
