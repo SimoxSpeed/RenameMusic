@@ -1,0 +1,2 @@
+Incrementiamo la colonna "file attuale" di poco, togliendo un po' di spazio alle altre.
+Poi ti volevo chiedere: voglio eseguire uno script che al momento viene eseguito in un bat. Questo script ha due parametri: un link di una playlist di youtube, che noi dobbiamo associare ad un nome, che l'utente sceglie tramite select (vedendo il nome), e il secondo parametro è la cartella di partenza che l'utente ha già scelto. Si chiama lo script, si attende che finisce (lo script fa cose async quindi attenzione) e poi al termine si fa una scansione

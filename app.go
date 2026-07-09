@@ -46,7 +46,13 @@ type App struct {
 	config   rules.Config
 	defaults rules.Config
 	scanned  []string
-	logs     []LogEntry
+	// currentTags tiene, per ogni percorso mp3 in scanned, i tag ID3
+	// attualmente letti dal file. Calcolato una sola volta insieme alla
+	// scansione (I/O su disco), non ad ogni snapshot; il tag che verrebbe
+	// invece scritto è ricavato al volo in snapshot() dal nome normalizzato,
+	// senza bisogno di I/O.
+	currentTags map[string]rename.TagInfo
+	logs        []LogEntry
 
 	// Opzioni di elaborazione persistite (state.json).
 	destSameAsSource bool
@@ -76,6 +82,14 @@ type FileView struct {
 	Path    string `json:"path"`
 	Preview string `json:"preview"`
 	MP3     bool   `json:"mp3"`
+	// Title/Artist sono i tag ID3 attualmente presenti sul file (vuoti se
+	// assenti o illeggibili); TitlePreview/ArtistPreview sono quelli che
+	// ProcessAll scriverebbe. Valorizzati solo per MP3; la UI li confronta per
+	// evidenziare le differenze, come già fa per Name/Preview.
+	Title         string `json:"title,omitempty"`
+	Artist        string `json:"artist,omitempty"`
+	TitlePreview  string `json:"titlePreview,omitempty"`
+	ArtistPreview string `json:"artistPreview,omitempty"`
 }
 
 type ResultView struct {
@@ -292,6 +306,7 @@ func (a *App) ensureScanned() string {
 		a.mu.Unlock()
 		return "Errore scansione: " + err.Error()
 	}
+	currentTags := currentTagsFor(files)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -299,9 +314,25 @@ func (a *App) ensureScanned() string {
 		return "" // una scansione concorrente ha già valorizzato lo stato
 	}
 	a.scanned = files
+	a.currentTags = currentTags
 	a.watchPaused = false
 	a.addLogLocked(LogInfo, fmt.Sprintf("Scansione completata: %d file audio.", len(files)))
 	return "Scansione completata."
+}
+
+// currentTagsFor legge, per ogni file mp3 scansionato, i tag ID3 attualmente
+// presenti (non dipende dalle regole configurate). Fa I/O su disco: va
+// chiamata SENZA lock, insieme alla scansione stessa; il risultato va poi
+// assegnato sotto lock come a.currentTags.
+func currentTagsFor(files []string) map[string]rename.TagInfo {
+	info := make(map[string]rename.TagInfo, len(files))
+	for _, path := range files {
+		if parser.Extension(filepath.Base(path)) != "mp3" {
+			continue
+		}
+		info[path] = rename.CurrentTags(path)
+	}
+	return info
 }
 
 // ClearLogs svuota il registro delle attività.
@@ -342,6 +373,7 @@ func (a *App) SetFolder(path string) ActionResponse {
 	a.mu.Lock()
 	a.config.StartFolder = path
 	a.scanned = nil
+	a.currentTags = nil
 	a.watchPaused = false
 	a.persistStateLocked()
 	a.addLogLocked(LogInfo, "Cartella selezionata: "+path)
@@ -388,12 +420,13 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	// Riscansiona con le nuove regole (I/O fuori dal lock): le regole possono
 	// cambiare non solo il nome normalizzato ma anche QUALI file rientrano
 	// (estensioni supportate/occorrenze), e dopo un ProcessAll `scanned` è nil.
-	files, rescanned, scanErr := a.rescanWith(cfg)
+	files, currentTags, rescanned, scanErr := a.rescanWith(cfg)
 
 	a.mu.Lock()
 	a.config = cfg
 	if rescanned {
 		a.scanned = files
+		a.currentTags = currentTags
 		a.watchPaused = false
 	}
 	if saveErr != nil {
@@ -450,12 +483,13 @@ func (a *App) ResetConfig() ActionResponse {
 	saveErr := settings.SaveConfig(cfg)
 
 	// Riscansiona con le regole predefinite (vedi nota in SetConfig).
-	files, rescanned, scanErr := a.rescanWith(cfg)
+	files, currentTags, rescanned, scanErr := a.rescanWith(cfg)
 
 	a.mu.Lock()
 	a.config = cfg
 	if rescanned {
 		a.scanned = files
+		a.currentTags = currentTags
 		a.watchPaused = false
 	}
 	if saveErr != nil {
@@ -494,9 +528,11 @@ func (a *App) Scan() ActionResponse {
 	if err != nil {
 		return ActionResponse{OK: false, Message: "Errore scansione: " + err.Error(), State: a.snapshotLocked()}
 	}
+	currentTags := currentTagsFor(files)
 
 	a.mu.Lock()
 	a.scanned = files
+	a.currentTags = currentTags
 	a.watchPaused = false
 	a.addLogLocked(LogInfo, fmt.Sprintf("Scansione completata: %d file audio.", len(files)))
 	state := a.snapshot()
@@ -647,6 +683,7 @@ func (a *App) ProcessAll() ActionResponse {
 
 	a.mu.Lock()
 	a.scanned = nil
+	a.currentTags = nil
 	// Da qui in avanti l'UI mostra "Avvia nuova scansione": ignoriamo gli eventi
 	// del watcher (compresi quelli auto-generati da questa elaborazione) fino
 	// alla prossima Scan/cambio cartella.
@@ -714,7 +751,12 @@ func (a *App) ClearTags() ActionResponse {
 	)
 	canceled := opCtx.Err() != nil
 
+	// I tag su disco sono cambiati per gli stessi percorsi scansionati: rilegge
+	// i tag attuali (i file appena ripuliti risulteranno senza titolo/artista).
+	currentTags := currentTagsFor(files)
+
 	a.mu.Lock()
+	a.currentTags = currentTags
 	if canceled {
 		a.addLogLocked(LogInfo, fmt.Sprintf("Cancellazione tag annullata: %d file ripuliti.", cleared))
 	} else {
@@ -779,9 +821,12 @@ func (a *App) SetWatchEnabled(enabled bool) ActionResponse {
 	// essere cambiata prima che l'utente cliccasse il toggle, e senza questa
 	// scansione l'anteprima si aggiornerebbe solo al primo evento successivo.
 	if enabled && startErr == nil {
-		if files, err := rename.NewService(a.currentConfig()).Scan(); err == nil {
+		cfg := a.currentConfig()
+		if files, err := rename.NewService(cfg).Scan(); err == nil {
+			currentTags := currentTagsFor(files)
 			a.mu.Lock()
 			a.scanned = files
+			a.currentTags = currentTags
 			a.watchPaused = false
 			a.addLogLocked(LogAuto, fmt.Sprintf("Scansione iniziale: %d file audio.", len(files)))
 			a.mu.Unlock()
@@ -870,9 +915,11 @@ func (a *App) runWatchRescan() {
 		a.mu.Unlock()
 		return
 	}
+	currentTags := currentTagsFor(files)
 
 	a.mu.Lock()
 	a.scanned = files
+	a.currentTags = currentTags
 	a.addLogLocked(LogAuto, fmt.Sprintf("Scansione automatica: %d file audio.", len(files)))
 	state := a.snapshot()
 	ctx := a.ctx
@@ -893,15 +940,16 @@ func (a *App) onWatchError(err error) {
 // va chiamata SENZA lock. Se la cartella non è valida ritorna rescanned=false
 // (nessuna scansione, nessun errore); se la scansione fallisce ritorna l'errore
 // e rescanned=false, così il chiamante lascia invariato lo stato precedente.
-func (a *App) rescanWith(cfg rules.Config) (files []string, rescanned bool, err error) {
+func (a *App) rescanWith(cfg rules.Config) (files []string, currentTags map[string]rename.TagInfo, rescanned bool, err error) {
 	if !appfs.IsDir(cfg.StartFolder) {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	files, err = rename.NewService(cfg).Scan()
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
-	return files, true, nil
+	currentTags = currentTagsFor(files)
+	return files, currentTags, true, nil
 }
 
 func (a *App) currentConfig() rules.Config {
@@ -922,12 +970,20 @@ func (a *App) snapshot() StateResponse {
 		name := filepath.Base(path)
 		ext := parser.Extension(name)
 		preview := a.config.NormalizeFileBase(parser.RemoveExtension(name)) + "." + ext
-		files = append(files, FileView{
+		view := FileView{
 			Name:    name,
 			Path:    path,
 			Preview: preview,
 			MP3:     ext == "mp3",
-		})
+		}
+		if view.MP3 {
+			current := a.currentTags[path]
+			view.Title = current.Title
+			view.Artist = current.Artist
+			view.TitlePreview = parser.TagTitle(preview, a.config.ArtistExceptions)
+			view.ArtistPreview = parser.TagArtist(preview, a.config.ArtistExceptions)
+		}
+		files = append(files, view)
 	}
 	logs := append([]LogEntry(nil), a.logs...)
 	return StateResponse{

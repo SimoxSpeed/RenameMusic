@@ -3,58 +3,78 @@ package tags
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"unicode/utf16"
 )
 
+// maxTagBytes limita quanto del tag ID3 viene letto in memoria: TIT2/TPE1
+// compaiono sempre tra i primi frame di un tag scritto da WriteMP3Tags, e
+// anche nei tag di terzi con copertina incorporata restano ben prima
+// dell'eventuale APIC. Il limite evita letture spropositate su un tag con
+// dimensione dichiarata anomala, senza dover mai caricare l'intero file audio.
+const maxTagBytes = 2 << 20 // 2 MiB
+
 // ReadMP3Tags legge titolo (TIT2) e artista (TPE1) da un file MP3 con tag
-// ID3v2.3, come quelli prodotti da WriteMP3Tags. È un parser INDIPENDENTE dallo
-// scrittore: serve a verificare (round-trip) che ciò che scriviamo sia
-// effettivamente rileggibile, non a interpretare tag arbitrari di terzi (di cui
-// gestisce comunque le codifiche di testo più comuni).
+// ID3v2.3, come quelli prodotti da WriteMP3Tags. Legge da disco solo l'header
+// ID3 e il tag dichiarato (non l'intero file, che per un mp3 può pesare
+// diversi MB): è un parser INDIPENDENTE dallo scrittore, usato per verificare
+// (round-trip) che ciò che scriviamo sia effettivamente rileggibile, non per
+// interpretare tag arbitrari di terzi (di cui gestisce comunque le codifiche
+// di testo più comuni).
 func ReadMP3Tags(path string) (title string, artist string, err error) {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return "", "", err
 	}
-	frames, err := parseID3v23Frames(data)
-	if err != nil {
+	defer f.Close()
+
+	header := make([]byte, 10)
+	if _, err := io.ReadFull(f, header); err != nil {
+		return "", "", fmt.Errorf("header ID3 assente")
+	}
+	if string(header[:3]) != "ID3" {
+		return "", "", fmt.Errorf("header ID3 assente")
+	}
+
+	tagSize := syncSafeToInt(header[6:10])
+	if tagSize > maxTagBytes {
+		tagSize = maxTagBytes
+	}
+	body := make([]byte, tagSize)
+	n, err := io.ReadFull(f, body)
+	if err != nil && err != io.ErrUnexpectedEOF {
 		return "", "", err
 	}
+
+	frames := parseID3v23FrameBody(body[:n])
 	return frames["TIT2"], frames["TPE1"], nil
 }
 
-// parseID3v23Frames estrae i frame di testo da un tag ID3v2.3 in testa ai dati.
-func parseID3v23Frames(data []byte) (map[string]string, error) {
-	if len(data) < 10 || string(data[:3]) != "ID3" {
-		return nil, fmt.Errorf("header ID3 assente")
-	}
-
-	end := 10 + syncSafeToInt(data[6:10])
-	if end > len(data) {
-		end = len(data)
-	}
-
+// parseID3v23FrameBody estrae i frame di testo dal corpo di un tag ID3v2.3
+// (i byte subito dopo l'header di 10 byte, fino alla dimensione dichiarata).
+func parseID3v23FrameBody(body []byte) map[string]string {
 	frames := make(map[string]string)
-	pos := 10
+	pos := 0
+	end := len(body)
 	// Ogni frame ID3v2.3: 4 byte ID + 4 byte size (big-endian, NON syncsafe) +
 	// 2 byte flags + payload. Uno zero come primo byte dell'ID indica padding.
 	for pos+10 <= end {
-		id := string(data[pos : pos+4])
+		id := string(body[pos : pos+4])
 		if id[0] == 0 {
 			break
 		}
-		size := int(binary.BigEndian.Uint32(data[pos+4 : pos+8]))
+		size := int(binary.BigEndian.Uint32(body[pos+4 : pos+8]))
 		pos += 10
 		if size < 0 || pos+size > end {
 			break
 		}
 		if id == "TIT2" || id == "TPE1" {
-			frames[id] = decodeTextFrame(data[pos : pos+size])
+			frames[id] = decodeTextFrame(body[pos : pos+size])
 		}
 		pos += size
 	}
-	return frames, nil
+	return frames
 }
 
 // decodeTextFrame decodifica il payload di un frame di testo ID3v2.3 in base al
