@@ -12,6 +12,7 @@ import {
     ChooseDirectory,
     SetOptions,
     SetWatchEnabled,
+    OpenFolder,
 } from '../wailsjs/go/main/App'
 import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime'
 import { main, rules } from '../wailsjs/go/models'
@@ -41,6 +42,17 @@ function RefreshIcon() {
     )
 }
 
+// FolderOpenIcon: icona per il pulsante "Apri" (apre la cartella in Esplora risorse).
+function FolderOpenIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h5a2 2 0 0 1 2 2v1" />
+            <path d="M3 9h16.5a1.5 1.5 0 0 1 1.45 1.9l-1.7 6A2 2 0 0 1 17.3 18H4a1.5 1.5 0 0 1-1.5-1.5V9Z" />
+        </svg>
+    )
+}
+
 // InfoIcon: pulsante con tooltip custom. \u00c8 un <button> per essere focusabile
 // da tastiera e per catturare il click impedendo che tocchi la <label> genitore
 // (altrimenti cliccare la "i" attiverebbe la checkbox associata).
@@ -62,6 +74,52 @@ function InfoIcon({ text }: { text: string }) {
                 <circle cx="12" cy="8" r="0.6" fill="currentColor" />
             </svg>
             <span className="info-tooltip" role="tooltip">{text}</span>
+        </button>
+    )
+}
+
+// KeyboardIcon: glifo per la legenda delle scorciatoie nell'header.
+function KeyboardIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2" y="6" width="20" height="12" rx="2" />
+            <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+        </svg>
+    )
+}
+
+// ShortcutsLegend: icona tastiera nell'header con tooltip che elenca le
+// scorciatoie disponibili. Riusa lo stile info-icon/info-tooltip (tooltip scuro
+// verso il basso) con un contenuto strutturato tasto → azione.
+function ShortcutsLegend() {
+    const shortcuts: [string, string][] = [
+        ['Ctrl + O', 'Scegli cartella'],
+        ['Ctrl + R', 'Aggiorna scansione'],
+        ['Ctrl + Invio', 'Converti / Nuova scansione'],
+        ['Ctrl + ,', 'Impostazioni'],
+        ['Esc', 'Chiudi finestre e pannelli'],
+    ]
+    return (
+        <button
+            type="button"
+            className="info-icon shortcuts-legend"
+            aria-label="Scorciatoie da tastiera"
+            onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+            }}
+        >
+            <KeyboardIcon />
+            <span className="info-tooltip shortcuts-tooltip" role="tooltip">
+                <span className="shortcuts-title">Scorciatoie da tastiera</span>
+                {shortcuts.map(([keys, desc]) => (
+                    <span className="shortcut-row" key={keys}>
+                        <kbd>{keys}</kbd>
+                        <span className="shortcut-desc">{desc}</span>
+                    </span>
+                ))}
+            </span>
         </button>
     )
 }
@@ -310,6 +368,28 @@ function App() {
         }
     }, [])
 
+    // Trascinamento di una cartella sulla finestra: il backend imposta la
+    // cartella di partenza e ci manda lo stato aggiornato (con l'anteprima).
+    // Assorbiamo tutto come farebbe una scansione manuale.
+    useEffect(() => {
+        EventsOn('folder:dropped', (payload: unknown) => {
+            const next = payload as main.StateResponse
+            if (!next) return
+            setState(next)
+            if (next.config) setDraft(cloneConfig(next.config))
+            setResults(null)
+            syncOptions(next)
+            const ok = next.folder !== ''
+            const msg = ok ? 'Cartella impostata dal trascinamento.' : 'Trascinamento non valido.'
+            setStatus({ message: msg, ok })
+            notify(ok, msg)
+        })
+        return () => {
+            EventsOff('folder:dropped')
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
     function toggleWatch(next: boolean) {
         guard(async () => {
             const resp = await SetWatchEnabled(next)
@@ -360,6 +440,19 @@ function App() {
                 setStatus({ message: 'Selezione annullata.', ok: false })
             }
         })
+    }
+
+    // Apre una cartella nel file manager di sistema (Esplora risorse). Non è
+    // un'operazione bloccante: non usiamo `guard` per non accendere la barra.
+    // In caso di errore mostriamo un toast (utile anche a diagnosticare: se il
+    // binding non fosse disponibile, la Promise verrebbe rifiutata).
+    function openFolder(path: string) {
+        if (!path) return
+        Promise.resolve(OpenFolder(path))
+            .then((resp) => {
+                if (resp && !resp.ok) notify(false, resp.message || 'Impossibile aprire la cartella.')
+            })
+            .catch((err) => notify(false, 'Impossibile aprire la cartella: ' + (err?.message ?? String(err))))
     }
 
     // Processo unificato: normalizzazione nomi + scrittura tag in un colpo solo.
@@ -495,11 +588,64 @@ function App() {
         setDraft({ ...draft, replacements } as rules.Config)
     }
 
+    // Scorciatoie da tastiera. Il gestore è tenuto in un ref aggiornato ad ogni
+    // render, così il listener (registrato una sola volta) vede sempre lo stato
+    // corrente senza doversi ri-registrare ad ogni cambiamento.
+    const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {})
+    shortcutRef.current = (e: KeyboardEvent) => {
+        // Non intercettare mentre si scrive in un campo editabile.
+        const target = e.target as HTMLElement | null
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+            return
+        }
+
+        // Esc chiude, in ordine: modali aperte, poi il pannello impostazioni.
+        if (e.key === 'Escape') {
+            if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
+            else if (confirmDefault) setConfirmDefault(false)
+            else if (showSettings) setShowSettings(false)
+            return
+        }
+
+        if (!e.ctrlKey) return
+        switch (e.key.toLowerCase()) {
+            case 'o': // Scegli cartella di partenza
+                if (busy) return
+                e.preventDefault()
+                chooseFolder()
+                break
+            case 'r': // Aggiorna scansione
+                if (busy || !folder) return
+                e.preventDefault()
+                refresh()
+                break
+            case 'enter': // Converti (o, nella vista risultati, nuova scansione)
+                e.preventDefault()
+                if (results) {
+                    if (!busy && folder) refresh()
+                } else if (canProcess) {
+                    process()
+                }
+                break
+            case ',': // Mostra/nascondi impostazioni
+                if (busy) return
+                e.preventDefault()
+                setShowSettings((v) => !v)
+                break
+        }
+    }
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => shortcutRef.current(e)
+        window.addEventListener('keydown', handler)
+        return () => window.removeEventListener('keydown', handler)
+    }, [])
+
     return (
         <div className="app">
             <header>
                 <h1>RenameMusic</h1>
                 <div className="header-right">
+                    <ShortcutsLegend />
                     {state?.watchActive && (
                         <span className="watch-pill" title="Aggiornamento automatico attivo: variazioni nella cartella aggiornano l'anteprima">
                             <span className="watch-dot" aria-hidden="true" />
@@ -543,13 +689,13 @@ function App() {
                             {folder || 'Nessuna cartella selezionata'}
                         </div>
                         <button
-                            className="icon-btn"
-                            onClick={refresh}
+                            className="ghost with-icon"
+                            onClick={() => openFolder(folder)}
                             disabled={busy || !folder}
-                            aria-label="Aggiorna scansione"
+                            title="Apri la cartella in Esplora risorse"
                         >
-                            <RefreshIcon />
-                            <span className="info-tooltip" role="tooltip">Aggiorna la scansione della cartella</span>
+                            <span className="btn-icon"><FolderOpenIcon /></span>
+                            Apri
                         </button>
                         <button className="primary" onClick={chooseFolder} disabled={busy}>
                             Scegli cartella
@@ -578,6 +724,15 @@ function App() {
                                 <div className="folder-path" title={destFolder}>
                                     {destFolder || 'Nessuna destinazione selezionata'}
                                 </div>
+                                <button
+                                    className="ghost with-icon"
+                                    onClick={() => openFolder(destFolder)}
+                                    disabled={busy || !destFolder}
+                                    title="Apri la cartella in Esplora risorse"
+                                >
+                                    <span className="btn-icon"><FolderOpenIcon /></span>
+                                    Apri
+                                </button>
                                 <button className="primary" onClick={chooseDestination} disabled={busy}>
                                     Scegli destinazione
                                 </button>
@@ -741,10 +896,23 @@ function App() {
 
                 <div className="grid">
                     <section className="panel fade-in">
-                        <h2>
-                            <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>
-                            {results ? 'Risultato conversione' : 'Anteprima'}
-                        </h2>
+                        <div className="panel-head">
+                            <h2>
+                                <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>
+                                {results ? 'Risultato conversione' : 'Anteprima'}
+                            </h2>
+                            {!results && (
+                                <button
+                                    className="ghost small with-icon"
+                                    onClick={refresh}
+                                    disabled={busy || !folder}
+                                    title="Aggiorna la scansione della cartella"
+                                >
+                                    <span className="btn-icon"><RefreshIcon /></span>
+                                    Aggiorna
+                                </button>
+                            )}
+                        </div>
                         {results ? (
                             results.length === 0 ? (
                                 <div className="empty">Nessun file elaborato.</div>

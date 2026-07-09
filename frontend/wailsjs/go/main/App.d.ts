@@ -11,6 +11,8 @@ export function GetConfig():Promise<main.ActionResponse>;
 
 export function GetState():Promise<main.ActionResponse>;
 
+export function OpenFolder(arg1:string):Promise<main.ActionResponse>;
+
 export function ProcessAll():Promise<main.ActionResponse>;
 
 export function ResetConfig():Promise<main.ActionResponse>;

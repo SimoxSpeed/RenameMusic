@@ -18,6 +18,10 @@ export function GetState() {
   return window['go']['main']['App']['GetState']();
 }
 
+export function OpenFolder(arg1) {
+  return window['go']['main']['App']['OpenFolder'](arg1);
+}
+
 export function ProcessAll() {
   return window['go']['main']['App']['ProcessAll']();
 }

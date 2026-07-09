@@ -25,6 +25,11 @@ import (
 // solo l'anteprima senza avviare nulla — la conversione resta sempre manuale.
 const EventWatchChanged = "watch:changed"
 
+// EventFolderDropped è l'evento Wails emesso quando l'utente trascina una
+// cartella (o un file) sulla finestra: il payload è lo StateResponse aggiornato
+// con la nuova cartella di partenza e la relativa anteprima.
+const EventFolderDropped = "folder:dropped"
+
 type App struct {
 	ctx      context.Context
 	mu       sync.Mutex
@@ -167,6 +172,13 @@ func (a *App) persistStateLocked() {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// Trascinamento di una cartella (o file) sulla finestra: imposta la cartella
+	// di partenza. Avviene fuori dal ciclo richiesta/risposta della UI, quindi
+	// dopo l'aggiornamento notifichiamo il frontend con un evento dedicato.
+	wailsruntime.OnFileDrop(ctx, func(_, _ int, paths []string) {
+		a.handleFileDrop(paths)
+	})
+
 	// Se il watch era abilitato nella sessione precedente e c'è una cartella
 	// ricordata, riavvialo automaticamente.
 	a.mu.Lock()
@@ -181,6 +193,51 @@ func (a *App) startup(ctx context.Context) {
 			a.mu.Unlock()
 		}
 	}
+}
+
+// handleFileDrop gestisce il rilascio di elementi sulla finestra: usa il primo
+// percorso (se è un file, risale alla cartella che lo contiene), imposta la
+// cartella di partenza riusando SetFolder e notifica la UI con l'anteprima
+// aggiornata. Percorsi multipli: si considera solo il primo (l'app lavora su una
+// cartella per volta).
+func (a *App) handleFileDrop(paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+
+	folder := paths[0]
+	if !appfs.IsDir(folder) {
+		folder = filepath.Dir(folder)
+	}
+
+	resp := a.SetFolder(folder)
+	if len(paths) > 1 {
+		a.mu.Lock()
+		a.addLogLocked(LogInfo, fmt.Sprintf("Trascinati %d elementi: uso solo il primo.", len(paths)))
+		resp.State = a.snapshot()
+		a.mu.Unlock()
+	}
+
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, EventFolderDropped, resp.State)
+	}
+}
+
+// OpenFolder apre il percorso indicato nel file manager di sistema (Esplora
+// risorse su Windows). Nota: explorer.exe restituisce spesso exit code 1 anche
+// quando apre correttamente, quindi l'errore di avvio non è trattato come
+// fallimento.
+func (a *App) OpenFolder(path string) ActionResponse {
+	path = strings.Trim(path, `" `)
+	if !appfs.IsDir(path) {
+		return ActionResponse{OK: false, Message: "La cartella non esiste.", State: a.snapshotLocked()}
+	}
+	// Apertura tramite la shell già in esecuzione (ShellExecuteW): quasi
+	// istantanea, niente cold-start di un nuovo processo explorer.exe.
+	if err := openFolderInShell(filepath.Clean(path)); err != nil {
+		return ActionResponse{OK: false, Message: "Impossibile aprire la cartella: " + err.Error(), State: a.snapshotLocked()}
+	}
+	return ActionResponse{OK: true, State: a.snapshotLocked()}
 }
 
 func (a *App) GetState() ActionResponse {
