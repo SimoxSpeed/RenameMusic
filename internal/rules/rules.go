@@ -26,6 +26,11 @@ type Config struct {
 	OccurrenciesToRemove        []string      `json:"occurrenciesToRemove"`
 	OccurrenciesToReplaceWithFt []string      `json:"occurrenciesToReplaceWithFt"`
 	Replacements                []Replacement `json:"replacements"`
+
+	// ArtistExceptions elenca i nomi d'arte che contengono " & " o " x " e che NON
+	// vanno spezzati in più artisti quando si deducono i tag (es. "Jkyl & Hyde").
+	// Prima erano hardcoded nel parser; ora sono editabili come le altre regole.
+	ArtistExceptions []string `json:"artistExceptions"`
 }
 
 // FactoryConfig è il seed di fabbrica usato SOLO al primo avvio per inizializzare
@@ -94,6 +99,12 @@ func FactoryConfig() Config {
 			{From: "tha Supreme", To: "thasup"},
 			{From: "Prod.", To: "prod."},
 			{From: " X ", To: " x "},
+		},
+		ArtistExceptions: []string{
+			"Jkyl & Hyde",
+			"Case & Point",
+			"Meg & Dia",
+			"Dodge & Fuski",
 		},
 	}
 }

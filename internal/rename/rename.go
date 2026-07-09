@@ -152,7 +152,7 @@ func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 		}
 
 		if it.ext == "mp3" {
-			if err := WriteTags(it.newPath); err != nil {
+			if err := s.WriteTags(it.newPath); err != nil {
 				// Il file è stato rinominato/copiato, ma i tag non sono stati scritti.
 				result.Failed = true
 				result.Reason = "rinominato, ma scrittura tag fallita: " + err.Error()
@@ -166,12 +166,13 @@ func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 	return results, nil
 }
 
-func WriteTags(path string) error {
+func (s *Service) WriteTags(path string) error {
 	name := filepath.Base(path)
 	if parser.Extension(name) != "mp3" {
 		return nil
 	}
-	return tags.WriteMP3Tags(path, parser.TagTitle(name), parser.TagArtist(name))
+	exceptions := s.Config.ArtistExceptions
+	return tags.WriteMP3Tags(path, parser.TagTitle(name, exceptions), parser.TagArtist(name, exceptions))
 }
 
 // moveFile sposta src su dst sovrascrivendo un eventuale file esistente, con

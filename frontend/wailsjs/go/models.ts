@@ -166,6 +166,7 @@ export namespace rules {
 	    occurrenciesToRemove: string[];
 	    occurrenciesToReplaceWithFt: string[];
 	    replacements: Replacement[];
+	    artistExceptions: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -178,6 +179,7 @@ export namespace rules {
 	        this.occurrenciesToRemove = source["occurrenciesToRemove"];
 	        this.occurrenciesToReplaceWithFt = source["occurrenciesToReplaceWithFt"];
 	        this.replacements = this.convertValues(source["replacements"], Replacement);
+	        this.artistExceptions = source["artistExceptions"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
