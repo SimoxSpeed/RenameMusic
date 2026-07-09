@@ -758,6 +758,7 @@ func normalizeConfig(cfg rules.Config) rules.Config {
 	cfg.SupportedExtensions = cleanList(cfg.SupportedExtensions)
 	cfg.OccurrenciesToRemove = cleanList(cfg.OccurrenciesToRemove)
 	cfg.OccurrenciesToReplaceWithFt = cleanList(cfg.OccurrenciesToReplaceWithFt)
+	cfg.ArtistExceptions = cleanList(cfg.ArtistExceptions)
 
 	replacements := make([]rules.Replacement, 0, len(cfg.Replacements))
 	for _, r := range cfg.Replacements {

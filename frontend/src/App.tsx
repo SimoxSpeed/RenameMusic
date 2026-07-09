@@ -191,6 +191,7 @@ function cloneConfig(cfg: rules.Config): rules.Config {
         occurrenciesToRemove: [...(cfg.occurrenciesToRemove ?? [])],
         occurrenciesToReplaceWithFt: [...(cfg.occurrenciesToReplaceWithFt ?? [])],
         replacements: (cfg.replacements ?? []).map((r) => ({ from: r.from, to: r.to })),
+        artistExceptions: [...(cfg.artistExceptions ?? [])],
     } as rules.Config
 }
 
@@ -463,7 +464,11 @@ function App() {
     }
 
     function updateDraftList(
-        key: 'supportedExtensions' | 'occurrenciesToRemove' | 'occurrenciesToReplaceWithFt',
+        key:
+            | 'supportedExtensions'
+            | 'occurrenciesToRemove'
+            | 'occurrenciesToReplaceWithFt'
+            | 'artistExceptions',
         text: string,
     ) {
         if (!draft) return
@@ -659,6 +664,15 @@ function App() {
                                     onChange={(e) =>
                                         updateDraftList('occurrenciesToReplaceWithFt', e.target.value)
                                     }
+                                    disabled={busy}
+                                />
+                            </label>
+                            <label>
+                                <span>Nomi d'arte da non separare (una per riga)</span>
+                                <textarea
+                                    rows={6}
+                                    value={listToText(draft.artistExceptions)}
+                                    onChange={(e) => updateDraftList('artistExceptions', e.target.value)}
                                     disabled={busy}
                                 />
                             </label>

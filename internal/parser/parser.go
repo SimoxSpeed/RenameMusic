@@ -25,30 +25,32 @@ func RemoveExtension(name string) string {
 	return name[:idx]
 }
 
-func TagArtist(fileName string) string {
+// TagArtist deduce l'artista (o gli artisti) dal nome file. `exceptions` elenca i
+// nomi d'arte con " & "/" x " che non vanno spezzati (vedi ReplaceWithComma).
+func TagArtist(fileName string, exceptions []string) string {
 	title := RemoveExtension(fileName)
 	artists := ""
 
 	if IsRemixed(title) {
 		artists = substring(title, strings.LastIndex(title, " (")+2, strings.LastIndex(title, " "))
-		artists = ReplaceWithComma(artists) + ", "
+		artists = ReplaceWithComma(artists, exceptions) + ", "
 		firstRemixer := substring(title, 0, strings.LastIndex(title, " ("))
 		if IsRemixed(firstRemixer) {
 			firstRemixer = substring(firstRemixer, strings.LastIndex(firstRemixer, " (")+2, strings.LastIndex(firstRemixer, " "))
-			artists += ReplaceWithComma(firstRemixer) + ", "
+			artists += ReplaceWithComma(firstRemixer, exceptions) + ", "
 		}
 	}
 
 	if strings.Contains(title, " - ") {
-		artists += ReplaceWithComma(javaSplit(title, " - ")[0])
+		artists += ReplaceWithComma(javaSplit(title, " - ")[0], exceptions)
 		if strings.Contains(title, " ft ") {
 			artists += ", "
 			if IsRemixed(title) {
-				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " (")))
+				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " (")), exceptions)
 			} else if vipAfterFt(title) {
-				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " VIP")))
+				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " VIP")), exceptions)
 			} else {
-				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, len(title)))
+				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, len(title)), exceptions)
 			}
 		}
 	} else {
@@ -58,7 +60,8 @@ func TagArtist(fileName string) string {
 	return removeDuplicates(artists)
 }
 
-func TagTitle(fileName string) string {
+// TagTitle deduce il titolo dal nome file. `exceptions` come in TagArtist.
+func TagTitle(fileName string, exceptions []string) string {
 	title := RemoveExtension(fileName)
 	if strings.Contains(title, " - ") {
 		parts := javaSplit(title, " - ")
@@ -68,10 +71,10 @@ func TagTitle(fileName string) string {
 		tagTitle := parts[1]
 		if strings.Contains(tagTitle, " ft ") {
 			if IsRemixed(tagTitle) {
-				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " (")))
+				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " (")), exceptions)
 				return substring(tagTitle, 0, strings.Index(tagTitle, " ft ")) + " ft " + ret + substring(tagTitle, strings.LastIndex(tagTitle, " ("), len(tagTitle))
 			} else if vipAfterFt(tagTitle) {
-				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " VIP")))
+				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " VIP")), exceptions)
 				return substring(tagTitle, 0, strings.Index(tagTitle, " ft ")) + " ft " + ret + " VIP"
 			}
 			return tagTitle
@@ -116,13 +119,22 @@ func IsRemixed(title string) bool {
 	return hasRemixMarker && !hasPlainMarker
 }
 
-func ReplaceWithComma(value string) string {
+// ReplaceWithComma converte i separatori multi-artista (" & " e " x ") in ", ",
+// preservando però i nomi d'arte elencati in `exceptions` (es. "Jkyl & Hyde"),
+// che non vanno spezzati. Per ogni eccezione si calcola la sua forma "spezzata"
+// (applicando la stessa conversione) e la si ripristina alla forma originale.
+func ReplaceWithComma(value string, exceptions []string) string {
 	value = strings.ReplaceAll(value, " & ", ", ")
 	value = strings.ReplaceAll(value, " x ", ", ")
-	value = strings.ReplaceAll(value, "Jkyl, Hyde", "Jkyl & Hyde")
-	value = strings.ReplaceAll(value, "Case, Point", "Case & Point")
-	value = strings.ReplaceAll(value, "Meg, Dia", "Meg & Dia")
-	return strings.ReplaceAll(value, "Dodge, Fuski", "Dodge & Fuski")
+	for _, ex := range exceptions {
+		broken := strings.ReplaceAll(ex, " & ", ", ")
+		broken = strings.ReplaceAll(broken, " x ", ", ")
+		if broken == ex {
+			continue // nessun separatore da preservare
+		}
+		value = strings.ReplaceAll(value, broken, ex)
+	}
+	return value
 }
 
 func removeDuplicates(artists string) string {
