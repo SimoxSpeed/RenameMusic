@@ -502,8 +502,75 @@ tr.failed td {
     background: var(--row-error);
 }
 
-.note.error {
+/* Etichetta "Errore" nella colonna esito: chip rosso con tooltip su hover/focus. */
+.result-error {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 0;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(164, 59, 59, 0.5);
+    background: rgba(164, 59, 59, 0.12);
     color: var(--danger);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    cursor: help;
+}
+
+.result-error svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* Tooltip del messaggio d'errore: compare verso l'ALTO (le righe possono stare
+   in fondo alla tabella), con caret che punta in basso verso l'etichetta. */
+.result-error-tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    z-index: 20;
+    width: max-content;
+    max-width: 280px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--tooltip-bg, #1f2937);
+    color: var(--tooltip-text, #f8fafc);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.result-error-tip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--tooltip-bg, #1f2937);
+}
+
+.result-error:hover .result-error-tip,
+.result-error:focus-visible .result-error-tip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .result-error-tip { transition: none; }
 }
 
 /* Righe dove l'anteprima del nuovo nome differisce dal nome attuale */
@@ -884,4 +951,91 @@ th {
     .grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* Toast: notifiche effimere impilate in basso a destra. Sotto ai modali (z 50). */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: min(380px, calc(100vw - 40px));
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 12px 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    border-left-width: 4px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    pointer-events: auto;
+    animation: toastIn 0.18s ease;
+}
+
+.toast-ok {
+    border-left-color: var(--ok);
+}
+
+.toast-err {
+    border-left-color: var(--danger);
+}
+
+.toast-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    margin-top: 1px;
+}
+
+.toast-ok .toast-icon {
+    color: var(--ok);
+}
+
+.toast-err .toast-icon {
+    color: var(--danger);
+}
+
+.toast-msg {
+    flex: 1 1 auto;
+    font-size: 13px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.toast-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.toast-close:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--line-soft);
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast { animation: none; }
 }
