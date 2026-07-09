@@ -114,7 +114,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 func LoadConfig() (rules.Config, bool, error) { return load(currentFile) }
 func SaveConfig(cfg rules.Config) error       { return save(currentFile, cfg) }
 
-// LoadDefaults / SaveDefaults gestiscono i default (editabili e persistiti).
+// LoadDefaults / SaveDefaults gestiscono i predefiniti (editabili e persistiti).
 func LoadDefaults() (rules.Config, bool, error) { return load(defaultsFile) }
 func SaveDefaults(cfg rules.Config) error       { return save(defaultsFile, cfg) }
 

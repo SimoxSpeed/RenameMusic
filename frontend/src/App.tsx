@@ -416,7 +416,7 @@ function App() {
         setStatus({ message: 'Ripristinate le regole salvate.', ok: true })
     }
 
-    // Rende le regole attuali il nuovo default (dopo conferma dal popup).
+    // Rende le regole attuali il nuovo predefinito (dopo conferma dal popup).
     // Non tocca le regole correnti né il draft in editing: aggiorna solo il log/stato.
     function confirmMakeDefault() {
         if (!draft) return
@@ -890,10 +890,10 @@ function App() {
             {confirmDefault && (
                 <div className="modal-overlay" onClick={() => setConfirmDefault(false)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Rendere queste regole il nuovo default?</h3>
+                        <h3>Rendere queste regole il nuovo predefinito?</h3>
                         <p>
-                            I default attuali verranno <strong>sovrascritti</strong> con le regole
-                            correnti e salvati su disco. "Ripristina default" userà d'ora in poi queste
+                            I predefiniti attuali verranno <strong>sovrascritti</strong> con le regole
+                            correnti e salvati su disco. "Ripristina predefiniti" userà d'ora in poi queste
                             regole.
                         </p>
                         <div className="modal-actions">

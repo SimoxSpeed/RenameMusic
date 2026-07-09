@@ -110,19 +110,19 @@ type ActionResponse struct {
 func NewApp() *App {
 	logs := []LogEntry{newLogEntry(LogInfo, "App pronta.")}
 
-	// I default sono persistiti: se il file non esiste lo si crea dal seed di fabbrica.
+	// I predefiniti sono persistiti: se il file non esiste lo si crea dal seed di fabbrica.
 	defaults, defExisted, err := settings.LoadDefaults()
 	if err != nil {
-		logs = []LogEntry{newLogEntry(LogError, "Impossibile leggere i default salvati: uso il seed di fabbrica.")}
+		logs = []LogEntry{newLogEntry(LogError, "Impossibile leggere i predefiniti salvati: uso il seed di fabbrica.")}
 	}
 	if !defExisted {
 		_ = settings.SaveDefaults(defaults)
 	}
 
-	// Le regole correnti: se il file non esiste si inizializzano dai default.
+	// Le regole correnti: se il file non esiste si inizializzano dai predefiniti.
 	current, curExisted, err := settings.LoadConfig()
 	if err != nil {
-		logs = []LogEntry{newLogEntry(LogError, "Impossibile leggere la configurazione salvata: uso i default.")}
+		logs = []LogEntry{newLogEntry(LogError, "Impossibile leggere la configurazione salvata: uso i predefiniti.")}
 	}
 	if !curExisted {
 		current = defaults
@@ -295,7 +295,7 @@ func (a *App) SelectFolder() ActionResponse {
 }
 
 // SetConfig applica una nuova configurazione di regole/cartella (correnti) e la salva su disco.
-// Le voci vuote vengono scartate. Non tocca i default.
+// Le voci vuote vengono scartate. Non tocca i predefiniti.
 func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	cfg = normalizeConfig(cfg)
 
@@ -338,7 +338,7 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	return ActionResponse{OK: true, Message: "Configurazione salvata.", State: state}
 }
 
-// SetAsDefault rende le regole fornite il nuovo default (persistito in defaults.json).
+// SetAsDefault rende le regole fornite i nuovi predefiniti (persistiti in defaults.json).
 // NON le applica come configurazione corrente: quella si salva a parte con SetConfig.
 func (a *App) SetAsDefault(cfg rules.Config) ActionResponse {
 	cfg = normalizeConfig(cfg)
@@ -347,20 +347,20 @@ func (a *App) SetAsDefault(cfg rules.Config) ActionResponse {
 	a.mu.Lock()
 	a.defaults = cfg
 	if defErr != nil {
-		a.addLogLocked(LogError, "Default aggiornati ma NON salvati su disco: "+defErr.Error())
+		a.addLogLocked(LogError, "Predefiniti aggiornati ma NON salvati su disco: "+defErr.Error())
 	} else {
-		a.addLogLocked(LogSuccess, "Nuovo default salvato.")
+		a.addLogLocked(LogSuccess, "Nuovi predefiniti salvati.")
 	}
 	state := a.snapshot()
 	a.mu.Unlock()
 
 	if defErr != nil {
-		return ActionResponse{OK: false, Message: "Default non salvati su disco.", State: state}
+		return ActionResponse{OK: false, Message: "Predefiniti non salvati su disco.", State: state}
 	}
-	return ActionResponse{OK: true, Message: "Nuovo default salvato.", State: state}
+	return ActionResponse{OK: true, Message: "Nuovi predefiniti salvati.", State: state}
 }
 
-// ResetConfig ripristina la configurazione corrente ai default persistiti e la salva.
+// ResetConfig ripristina la configurazione corrente ai predefiniti persistiti e la salva.
 func (a *App) ResetConfig() ActionResponse {
 	a.mu.Lock()
 	cfg := a.defaults
@@ -369,7 +369,7 @@ func (a *App) ResetConfig() ActionResponse {
 
 	saveErr := settings.SaveConfig(cfg)
 
-	// Riscansiona con le regole di default (vedi nota in SetConfig).
+	// Riscansiona con le regole predefinite (vedi nota in SetConfig).
 	files, rescanned, scanErr := a.rescanWith(cfg)
 
 	a.mu.Lock()
@@ -379,12 +379,12 @@ func (a *App) ResetConfig() ActionResponse {
 		a.watchPaused = false
 	}
 	if saveErr != nil {
-		a.addLogLocked(LogError, "Default ripristinati ma NON salvati: "+saveErr.Error())
+		a.addLogLocked(LogError, "Predefiniti ripristinati ma NON salvati: "+saveErr.Error())
 	} else {
-		a.addLogLocked(LogSuccess, "Configurazione ripristinata ai default e salvata.")
+		a.addLogLocked(LogSuccess, "Configurazione ripristinata ai predefiniti e salvata.")
 	}
 	if scanErr != nil {
-		a.addLogLocked(LogError, "Scansione con le regole di default fallita: "+scanErr.Error())
+		a.addLogLocked(LogError, "Scansione con le regole predefinite fallita: "+scanErr.Error())
 	}
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
@@ -395,9 +395,9 @@ func (a *App) ResetConfig() ActionResponse {
 	}
 
 	if saveErr != nil {
-		return ActionResponse{OK: false, Message: "Default ripristinati ma non salvati su disco.", State: state}
+		return ActionResponse{OK: false, Message: "Predefiniti ripristinati ma non salvati su disco.", State: state}
 	}
-	return ActionResponse{OK: true, Message: "Configurazione ripristinata ai default e salvata.", State: state}
+	return ActionResponse{OK: true, Message: "Configurazione ripristinata ai predefiniti e salvata.", State: state}
 }
 
 func (a *App) Scan() ActionResponse {
