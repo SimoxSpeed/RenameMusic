@@ -49,4 +49,8 @@ Metodi principali (bindati): `GetState` (scansiona lazy la cartella ricordata al
 - Commenti e stringhe UI/log **in italiano**.
 - Riferimenti a file clickabili come `path:line`.
 - `docs/` è locale e ignorata da git (`.gitignore`).
-- Non committare/mettere in stage senza richiesta esplicita.
+
+### Commit
+
+- Si usano i **Conventional Commits** con gitmoji, con il **subject in inglese** e **senza corpo/descrizione** (es. `fix: 🐛 use atomic processes to write files & settings`), coerente con lo storico del repo.
+- Claude **non esegue mai commit** né staging finalizzato a un commit: al massimo **propone** il messaggio quando l'utente lo richiede. **Committa sempre l'utente.**
