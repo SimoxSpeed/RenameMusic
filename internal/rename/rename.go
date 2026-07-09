@@ -27,6 +27,11 @@ type Service struct {
 type Options struct {
 	DestinationFolder string // "" => stessa cartella di partenza
 	DeleteOriginals   bool   // true => sposta/rinomina; false => scrive una copia lasciando gli originali
+
+	// OnProgress, se valorizzata, viene invocata dopo l'elaborazione di ogni file
+	// supportato con (done, total): done = file completati finora, total = numero
+	// totale di file supportati nel batch. Serve a mostrare l'avanzamento in UI.
+	OnProgress func(done, total int)
 }
 
 type Result struct {
@@ -136,66 +141,98 @@ func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 		}
 	}
 
-	// 3) Applica.
-	results := make([]Result, 0, len(paths))
+	// 3) Applica. total = numero di file supportati (quelli che produrranno un
+	// Result), usato per l'avanzamento.
+	total := 0
 	for i := range items {
-		it := items[i]
-		if !it.support {
+		if items[i].support {
+			total++
+		}
+	}
+
+	results := make([]Result, 0, len(paths))
+	done := 0
+	for i := range items {
+		if !items[i].support {
 			continue
 		}
-		result := Result{OldPath: it.path, NewName: it.newName, NewPath: it.newPath}
-
-		if it.skip {
-			result.Skipped = true
-			if opts.DeleteOriginals {
-				if err := os.Remove(it.path); err != nil {
-					result.Failed = true
-					result.Reason = "nome già esistente, ma eliminazione dell'originale fallita: " + err.Error()
-				} else {
-					result.Reason = "nome già esistente (originale eliminato)"
-				}
-			} else {
-				result.Reason = "nome già esistente"
-			}
-			results = append(results, result)
-			continue
+		results = append(results, s.applyItem(items[i], opts))
+		done++
+		if opts.OnProgress != nil {
+			opts.OnProgress(done, total)
 		}
-
-		samePath := filepath.Clean(it.newPath) == filepath.Clean(it.path)
-		switch {
-		case samePath:
-			// Nome già corretto: nulla da spostare/copiare (i tag si scrivono comunque).
-		case opts.DeleteOriginals:
-			// Sposta/rinomina, sovrascrivendo un eventuale file preesistente con quel nome.
-			if err := moveFile(it.path, it.newPath); err != nil {
-				result.Failed = true
-				result.Reason = "spostamento fallito: " + err.Error()
-				results = append(results, result)
-				continue
-			}
-		default:
-			// Copia lasciando l'originale, sovrascrivendo un eventuale file di destinazione.
-			if err := copyFile(it.path, it.newPath); err != nil {
-				result.Failed = true
-				result.Reason = "copia fallita: " + err.Error()
-				results = append(results, result)
-				continue
-			}
-		}
-
-		if it.ext == "mp3" {
-			if err := s.WriteTags(it.newPath); err != nil {
-				// Il file è stato rinominato/copiato, ma i tag non sono stati scritti.
-				result.Failed = true
-				result.Reason = "rinominato, ma scrittura tag fallita: " + err.Error()
-				results = append(results, result)
-				continue
-			}
-			result.Tagged = true
-		}
-		results = append(results, result)
 	}
 	return results, nil
+}
+
+// applyItem esegue l'elaborazione di un singolo file supportato (spostamento o
+// copia secondo le Options, più scrittura tag per gli MP3) e ne restituisce il
+// Result. Un errore sul file NON interrompe il batch: viene riportato in Failed.
+func (s *Service) applyItem(it workItem, opts Options) Result {
+	result := Result{OldPath: it.path, NewName: it.newName, NewPath: it.newPath}
+
+	if it.skip {
+		result.Skipped = true
+		if opts.DeleteOriginals {
+			if err := os.Remove(it.path); err != nil {
+				result.Failed = true
+				result.Reason = "nome già esistente, ma eliminazione dell'originale fallita: " + err.Error()
+			} else {
+				result.Reason = "nome già esistente (originale eliminato)"
+			}
+		} else {
+			result.Reason = "nome già esistente"
+		}
+		return result
+	}
+
+	samePath := filepath.Clean(it.newPath) == filepath.Clean(it.path)
+	switch {
+	case samePath:
+		// Nome già corretto: nulla da spostare/copiare (i tag si scrivono comunque).
+	case opts.DeleteOriginals:
+		// Sposta/rinomina, sovrascrivendo un eventuale file preesistente con quel nome.
+		if err := moveFile(it.path, it.newPath); err != nil {
+			result.Failed = true
+			result.Reason = "spostamento fallito: " + err.Error()
+			return result
+		}
+	default:
+		// Copia lasciando l'originale, sovrascrivendo un eventuale file di destinazione.
+		if err := copyFile(it.path, it.newPath); err != nil {
+			result.Failed = true
+			result.Reason = "copia fallita: " + err.Error()
+			return result
+		}
+	}
+
+	if it.ext == "mp3" {
+		if err := s.WriteTags(it.newPath); err != nil {
+			// Il file è stato rinominato/copiato, ma i tag non sono stati scritti.
+			result.Failed = true
+			result.Reason = "rinominato, ma scrittura tag fallita: " + err.Error()
+			return result
+		}
+		result.Tagged = true
+	}
+	return result
+}
+
+// ClearTags cancella i tag ID3 da tutti gli MP3 tra i percorsi indicati, in
+// posto (senza rinominare). I file non-MP3 vengono ignorati. Restituisce quanti
+// file sono stati ripuliti e quanti hanno fallito.
+func (s *Service) ClearTags(paths []string) (cleared, failed int) {
+	for _, p := range paths {
+		if parser.Extension(filepath.Base(p)) != "mp3" {
+			continue
+		}
+		if err := tags.ClearMP3Tags(p); err != nil {
+			failed++
+		} else {
+			cleared++
+		}
+	}
+	return cleared, failed
 }
 
 func (s *Service) WriteTags(path string) error {

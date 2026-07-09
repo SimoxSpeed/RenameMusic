@@ -10,6 +10,10 @@ export function ClearLogs() {
   return window['go']['main']['App']['ClearLogs']();
 }
 
+export function ClearTags() {
+  return window['go']['main']['App']['ClearTags']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }

@@ -30,6 +30,16 @@ const EventWatchChanged = "watch:changed"
 // con la nuova cartella di partenza e la relativa anteprima.
 const EventFolderDropped = "folder:dropped"
 
+// EventProcessProgress è emesso durante ProcessAll dopo ogni file elaborato, con
+// l'avanzamento corrente (done/total), così la UI può mostrare "(x/totale)".
+const EventProcessProgress = "process:progress"
+
+// ProgressEvent è il payload di EventProcessProgress.
+type ProgressEvent struct {
+	Done  int `json:"done"`
+	Total int `json:"total"`
+}
+
 type App struct {
 	ctx      context.Context
 	mu       sync.Mutex
@@ -546,9 +556,15 @@ func (a *App) ProcessAll() ActionResponse {
 		}
 	}
 
+	ctx := a.ctx
 	results, err := service.Process(files, rename.Options{
 		DestinationFolder: destination,
 		DeleteOriginals:   deleteOriginals,
+		OnProgress: func(done, total int) {
+			if ctx != nil {
+				wailsruntime.EventsEmit(ctx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
+			}
+		},
 	})
 	if err != nil {
 		return ActionResponse{OK: false, Message: "Errore elaborazione: " + err.Error(), State: a.snapshotLocked()}
@@ -609,6 +625,34 @@ func (a *App) ProcessAll() ActionResponse {
 		}
 	}
 	return ActionResponse{OK: true, Message: "Elaborazione completata.", State: state, Results: views}
+}
+
+// ClearTags cancella TUTTI i tag ID3 dagli MP3 attualmente scansionati, in posto
+// (senza rinominare né spostare). Azione distruttiva: la UI la conferma prima.
+func (a *App) ClearTags() ActionResponse {
+	a.mu.Lock()
+	cfg := a.config
+	files := append([]string(nil), a.scanned...)
+	a.mu.Unlock()
+
+	if len(files) == 0 {
+		return ActionResponse{OK: false, Message: "Nessun file da elaborare.", State: a.snapshotLocked()}
+	}
+
+	cleared, failed := rename.NewService(cfg).ClearTags(files)
+
+	a.mu.Lock()
+	a.addLogLocked(LogSuccess, fmt.Sprintf("Cancellati i tag di %d file MP3.", cleared))
+	if failed > 0 {
+		a.addLogLocked(LogError, fmt.Sprintf("Cancellazione tag fallita per %d file.", failed))
+	}
+	state := a.snapshot()
+	a.mu.Unlock()
+
+	if failed > 0 {
+		return ActionResponse{OK: false, Message: fmt.Sprintf("Tag cancellati per %d file, %d falliti.", cleared, failed), State: state}
+	}
+	return ActionResponse{OK: true, Message: fmt.Sprintf("Tag cancellati per %d file.", cleared), State: state}
 }
 
 // SetWatchEnabled attiva o disattiva la modalità watch (elaborazione automatica

@@ -7,6 +7,8 @@ export function ChooseDirectory():Promise<string>;
 
 export function ClearLogs():Promise<main.ActionResponse>;
 
+export function ClearTags():Promise<main.ActionResponse>;
+
 export function GetConfig():Promise<main.ActionResponse>;
 
 export function GetState():Promise<main.ActionResponse>;

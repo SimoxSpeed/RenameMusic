@@ -13,6 +13,7 @@ import {
     SetOptions,
     SetWatchEnabled,
     OpenFolder,
+    ClearTags,
 } from '../wailsjs/go/main/App'
 import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime'
 import { main, rules } from '../wailsjs/go/models'
@@ -201,6 +202,18 @@ function TrashIcon() {
     )
 }
 
+// TagOffIcon: azione "Cancella tag" (cartellino barrato).
+function TagOffIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6Z" />
+            <circle cx="7.5" cy="7.5" r="1" fill="currentColor" />
+            <path d="M4 3 20 21" />
+        </svg>
+    )
+}
+
 // SettingsIcon: azione "Impostazioni".
 function SettingsIcon() {
     return (
@@ -268,6 +281,13 @@ function App() {
     const [deleteOriginals, setDeleteOriginals] = useState(false)
     const [watchEnabled, setWatchEnabled] = useState(false)
     const [confirmDeleteOriginals, setConfirmDeleteOriginals] = useState(false)
+    const [confirmClearTags, setConfirmClearTags] = useState(false)
+    // progress: avanzamento dell'ultima elaborazione (x/totale), popolato dagli
+    // eventi process:progress durante ProcessAll; null quando non pertinente.
+    const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+    // showOnlyChanged: vista dell'anteprima limitata ai soli file che cambieranno
+    // nome. È SOLO una vista: l'elaborazione tratta comunque tutti i file.
+    const [showOnlyChanged, setShowOnlyChanged] = useState(false)
     // booted diventa true al termine del caricamento iniziale: finché è false
     // mostriamo un placeholder di caricamento invece del messaggio "vuoto",
     // così al refresh non si vede un lampo di stato vuoto prima dei dati.
@@ -390,6 +410,18 @@ function App() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    // Avanzamento di ProcessAll: il backend emette un evento per ogni file
+    // completato; aggiorniamo il contatore mostrato accanto a "Operazione in corso".
+    useEffect(() => {
+        EventsOn('process:progress', (payload: unknown) => {
+            const p = payload as { done: number; total: number } | null
+            if (p) setProgress(p)
+        })
+        return () => {
+            EventsOff('process:progress')
+        }
+    }, [])
+
     function toggleWatch(next: boolean) {
         guard(async () => {
             const resp = await SetWatchEnabled(next)
@@ -462,10 +494,24 @@ function App() {
             setStatus({ message: 'Scegli una cartella di destinazione o riattiva "uguale alla partenza".', ok: false })
             return
         }
+        setProgress(null)
         guard(async () => {
             const resp = await ProcessAll()
             absorb(resp)
             setResults(resp.results ?? [])
+            setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
+        }).finally(() => setProgress(null))
+    }
+
+    // Cancella TUTTI i tag ID3 dagli MP3 della cartella (azione distruttiva:
+    // confermata da un popup). Non rinomina nulla, agisce in posto.
+    function confirmClearTagsAction() {
+        setConfirmClearTags(false)
+        guard(async () => {
+            const resp = await ClearTags()
+            absorb(resp)
+            setResults(null)
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         })
@@ -540,6 +586,12 @@ function App() {
     const failedCount = showingResults ? results!.filter((r) => r.failed).length : 0
     const destReady = destSameAsSource || destFolder !== ''
     const canProcess = !busy && folder !== '' && files.length > 0 && destReady
+    // "Cancella tag" agisce in posto sugli MP3 scansionati: serve almeno un MP3.
+    const canClearTags = !busy && files.some((f) => f.mp3)
+    // Anteprima filtrata: se il toggle è attivo, solo i file che cambieranno nome.
+    const previewFiles = showOnlyChanged
+        ? files.filter((f) => splitName(f.name).base !== splitName(f.preview).base)
+        : files
 
     // Attiva/disattiva "Elimina originali" con conferma esplicita quando si passa
     // da OFF a ON (è un'azione distruttiva). Spegnerlo non richiede conferma.
@@ -779,6 +831,15 @@ function App() {
                             Converti nomi e scrivi tag
                         </button>
                     )}
+                    <button
+                        className="ghost with-icon danger"
+                        onClick={() => setConfirmClearTags(true)}
+                        disabled={!canClearTags}
+                        title="Cancella tutti i tag ID3 dagli MP3 della cartella"
+                    >
+                        <span className="btn-icon"><TagOffIcon /></span>
+                        Cancella tag
+                    </button>
                     <button className="ghost with-icon" onClick={() => setShowSettings((v) => !v)} disabled={busy}>
                         <span className="btn-icon"><SettingsIcon /></span>
                         {showSettings ? 'Nascondi impostazioni' : 'Impostazioni'}
@@ -786,7 +847,9 @@ function App() {
                 </div>
 
                 <div className={'status ' + (status.message ? (status.ok ? 'ok' : 'err') : '')}>
-                    {status.message}
+                    {busy && progress
+                        ? `Operazione in corso... (${progress.done}/${progress.total})`
+                        : status.message}
                 </div>
 
                 {showSettings && draft && (
@@ -902,15 +965,26 @@ function App() {
                                 {results ? 'Risultato conversione' : 'Anteprima'}
                             </h2>
                             {!results && (
-                                <button
-                                    className="ghost small with-icon"
-                                    onClick={refresh}
-                                    disabled={busy || !folder}
-                                    title="Aggiorna la scansione della cartella"
-                                >
-                                    <span className="btn-icon"><RefreshIcon /></span>
-                                    Aggiorna
-                                </button>
+                                <div className="preview-tools">
+                                    <label className="toggle-changed" title="Mostra solo i file che cambieranno nome. È solo una vista: l'elaborazione tratta comunque tutti i file.">
+                                        <input
+                                            type="checkbox"
+                                            checked={showOnlyChanged}
+                                            onChange={(e) => setShowOnlyChanged(e.target.checked)}
+                                            disabled={busy}
+                                        />
+                                        Solo da rinominare
+                                    </label>
+                                    <button
+                                        className="ghost small with-icon"
+                                        onClick={refresh}
+                                        disabled={busy || !folder}
+                                        title="Aggiorna la scansione della cartella"
+                                    >
+                                        <span className="btn-icon"><RefreshIcon /></span>
+                                        Aggiorna
+                                    </button>
+                                </div>
                             )}
                         </div>
                         {results ? (
@@ -964,6 +1038,8 @@ function App() {
                             <div className="empty">Caricamento…</div>
                         ) : files.length === 0 ? (
                             <div className="empty">Scegli una cartella per vedere l'anteprima.</div>
+                        ) : previewFiles.length === 0 ? (
+                            <div className="empty">Nessun file da rinominare.</div>
                         ) : (
                             <table>
                                 <thead>
@@ -974,7 +1050,7 @@ function App() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {files.map((file, i) => {
+                                    {previewFiles.map((file, i) => {
                                         const src = splitName(file.name)
                                         const dst = splitName(file.preview)
                                         const changed = src.base !== dst.base
@@ -1049,6 +1125,27 @@ function App() {
                             </button>
                             <button className="danger-solid" onClick={confirmEnableDelete} disabled={busy}>
                                 Continua
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {confirmClearTags && (
+                <div className="modal-overlay" onClick={() => setConfirmClearTags(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Cancellare tutti i tag?</h3>
+                        <p>
+                            Verranno <strong>rimossi tutti i tag ID3</strong> (titolo, artista, ecc.)
+                            da tutti gli MP3 della cartella di partenza. I file non vengono rinominati
+                            né spostati, ma i metadati eliminati <strong>non sono recuperabili</strong>.
+                        </p>
+                        <div className="modal-actions">
+                            <button onClick={() => setConfirmClearTags(false)} disabled={busy}>
+                                Annulla
+                            </button>
+                            <button className="danger-solid" onClick={confirmClearTagsAction} disabled={busy}>
+                                Cancella tag
                             </button>
                         </div>
                     </div>
