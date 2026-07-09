@@ -18,6 +18,17 @@ func WriteMP3Tags(path string, title string, artist string) error {
 	return os.WriteFile(path, append(tag, audio...), 0644)
 }
 
+// ClearMP3Tags rimuove TUTTI i tag (ID3v2 in testa e ID3v1 in coda) da un file
+// MP3, riscrivendo solo il payload audio. Idempotente: su un file già privo di
+// tag riscrive gli stessi byte.
+func ClearMP3Tags(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, stripExistingTags(data), 0644)
+}
+
 func stripExistingTags(data []byte) []byte {
 	if len(data) >= 10 && string(data[:3]) == "ID3" {
 		size := syncSafeToInt(data[6:10])
