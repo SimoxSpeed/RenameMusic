@@ -45,6 +45,10 @@ export namespace main {
 	    path: string;
 	    preview: string;
 	    mp3: boolean;
+	    title?: string;
+	    artist?: string;
+	    titlePreview?: string;
+	    artistPreview?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileView(source);
@@ -56,6 +60,10 @@ export namespace main {
 	        this.path = source["path"];
 	        this.preview = source["preview"];
 	        this.mp3 = source["mp3"];
+	        this.title = source["title"];
+	        this.artist = source["artist"];
+	        this.titlePreview = source["titlePreview"];
+	        this.artistPreview = source["artistPreview"];
 	    }
 	}
 	export class StateResponse {

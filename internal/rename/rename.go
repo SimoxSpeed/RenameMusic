@@ -274,6 +274,27 @@ func (s *Service) ClearTags(paths []string, onProgress func(done, total int), ca
 	return cleared, failed
 }
 
+// TagInfo riporta i tag ID3 (titolo/artista) attualmente presenti su un file
+// MP3. Titolo/Artista vuoti indicano un tag mancante o illeggibile (vedi i
+// limiti del parser in tags.ReadMP3Tags).
+type TagInfo struct {
+	Title  string
+	Artist string
+}
+
+// CurrentTags legge i tag ID3 attuali del file mp3 in `path`. Non dipende
+// dalle regole configurate: legge semplicemente ciò che è scritto sul file,
+// così la UI può confrontarlo con il tag che verrebbe scritto (calcolato a
+// parte da parser.TagTitle/TagArtist sul nome normalizzato) e mostrare la
+// differenza esattamente come già fa per nome attuale/anteprima.
+func CurrentTags(path string) TagInfo {
+	title, artist, err := tags.ReadMP3Tags(path)
+	if err != nil {
+		return TagInfo{}
+	}
+	return TagInfo{Title: title, Artist: artist}
+}
+
 func (s *Service) WriteTags(path string) error {
 	name := filepath.Base(path)
 	if parser.Extension(name) != "mp3" {

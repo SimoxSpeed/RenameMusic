@@ -355,8 +355,6 @@ button.danger-solid:hover:not(:disabled) {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    margin-top: 20px;
-    margin-bottom: 20px;
 }
 
 .check {
@@ -594,7 +592,7 @@ tr.failed td {
     line-height: 1.4;
     text-transform: none;
     letter-spacing: normal;
-    white-space: normal;
+    white-space: pre-line;
     text-align: left;
     box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.22);
     opacity: 0;
@@ -627,13 +625,16 @@ tr.changed td {
     background: var(--row-changed);
 }
 
-tr.changed td:nth-child(2) {
+/* Valore nuovo (nome, titolo o artista) quando differisce da quello attuale:
+   applicata al singolo valore, non alla riga, così una riga "changed" per un
+   tag non colora per errore anche il nome se quello non cambia. */
+.value-changed {
     color: var(--accent-strong);
     font-weight: 600;
 }
 
-/* Nome vecchio (colonna 1) quando il file sta per essere rinominato: linea sottile
-   e leggermente attenuato, per far risaltare la nuova versione senza cancellarlo. */
+/* Nome/tag vecchio quando sta per essere sovrascritto: linea sottile e
+   leggermente attenuata, per far risaltare la nuova versione senza cancellarlo. */
 .old-name {
     color: var(--muted);
     text-decoration: line-through;
@@ -641,16 +642,36 @@ tr.changed td:nth-child(2) {
     text-decoration-thickness: 1px;
 }
 
+/* Trattino/placeholder neutro per i valori non applicabili (es. tag ID3 su
+   file non-mp3, o tag assente in File attuale). */
+.muted-dash {
+    color: var(--muted);
+}
+
+/* Righe "nome:"/"titolo:"/"artista:" impilate nella colonna File attuale. */
+.current-line {
+    line-height: 1.5;
+}
+
+.current-line + .current-line {
+    margin-top: 2px;
+}
+
+.current-label {
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
 .actions {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    margin-bottom: 14px;
 }
 
 .status {
     min-height: 24px;
-    margin-bottom: 12px;
     color: var(--muted);
 }
 
@@ -667,7 +688,6 @@ tr.changed td:nth-child(2) {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 16px;
-    margin-bottom: 16px;
 }
 
 .settings h2 {
@@ -751,11 +771,43 @@ tr.changed td:nth-child(2) {
     border-right: 1px solid var(--line);
 }
 
-.grid {
+/* Riga in cima: la testata (cartelle+opzioni+azioni) e Attività condividono la
+   stessa riga di griglia e quindi la stessa altezza (align-items di default è
+   "stretch"), così Attività non supera mai il fondo del pulsante
+   "Impostazioni" qualunque sia lo stato della checkbox "Destinazione uguale
+   alla cartella di partenza" (che aggiunge/toglie un field-group sopra, e
+   quindi sposta il fondo della testata). Stato e impostazioni restano nella
+   colonna sinistra ma su righe proprie, fuori dall'altezza condivisa con
+   Attività. Lascia la tabella di anteprima sotto libera di usare tutta la
+   larghezza. */
+.top-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
     gap: 16px;
-    align-items: start;
+    margin-bottom: 16px;
+}
+
+.top-row > .status,
+.top-row > .settings {
+    grid-column: 1;
+}
+
+.top-left-head {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Attività riempie tutta l'altezza assegnata dalla griglia (pari a quella
+   della testata a sinistra): non cresce con il numero di righe di log né è
+   ridimensionabile a mano, la lista scorre internamente (vedi .log). */
+.activity-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+.activity-panel .panel-head {
+    flex-shrink: 0;
 }
 
 .panel {
@@ -926,9 +978,9 @@ th {
     margin: 0;
     list-style: none;
     color: var(--text);
-    max-height: 280px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    resize: vertical;
 }
 
 .log-empty {

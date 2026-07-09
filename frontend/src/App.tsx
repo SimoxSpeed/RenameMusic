@@ -143,17 +143,41 @@ function ExtChip({ ext }: { ext: string }) {
     return <span className="ext-chip ext-same">{ext}</span>
 }
 
-// ErrorLabel: chip rosso "Errore" nella colonna esito. Il messaggio effettivo
-// compare in un tooltip scuro al passaggio del mouse (o al focus da tastiera),
-// così la tabella resta compatta ma il dettaglio è a un hover di distanza.
+// tagChanged confronta il tag ID3 attuale con quello che verrebbe scritto.
+function tagChanged(current: string | undefined, expected: string | undefined): boolean {
+    return (current ?? '') !== (expected ?? '')
+}
+
+// CurrentField mostra una riga "etichetta: valore" nella colonna File attuale
+// (nome/titolo/artista impilati in una sola cella). Se il valore sta per
+// cambiare compare sbarrato e attenuato (stessa classe .old-name della colonna
+// Nome); se manca del tutto (tag non presente) mostra un placeholder neutro.
+function CurrentField({ label, value, changed }: { label: string; value: string; changed: boolean }) {
+    return (
+        <div className="current-line">
+            <span className="current-label">{label}:</span>{' '}
+            {!value ? (
+                <span className="muted-dash">nessun tag</span>
+            ) : changed ? (
+                <s className="old-name">{value}</s>
+            ) : (
+                value
+            )}
+        </div>
+    )
+}
+
+// ErrorLabel: chip rosso "Errore" nella colonna esito. Non è un elemento
+// interattivo (niente click/animazione): serve solo a mostrare un tooltip al
+// passaggio del mouse o al focus da tastiera, così la tabella resta compatta
+// ma il dettaglio è a un hover di distanza.
 function ErrorLabel({ message }: { message: string }) {
     return (
-        <button type="button" className="result-error" aria-label={'Errore: ' + message}
-                onClick={(e) => e.preventDefault()}>
+        <span className="result-error" tabIndex={0} aria-label={'Errore: ' + message}>
             <AlertIcon />
             Errore
             <span className="result-error-tip" role="tooltip">{message}</span>
-        </button>
+        </span>
     )
 }
 
@@ -764,132 +788,165 @@ function App() {
                     aria-label="Operazione in corso"
                 />
 
-                <div className="field-group">
-                    <span className="field-label">Cartella di partenza</span>
-                    <div className="toolbar">
-                        <div className="folder-path" title={folder}>
-                            {folder || 'Nessuna cartella selezionata'}
-                        </div>
-                        <button
-                            className="ghost with-icon"
-                            onClick={() => openFolder(folder)}
-                            disabled={busy || !folder}
-                            title="Apri la cartella in Esplora risorse"
-                        >
-                            <span className="btn-icon"><FolderOpenIcon /></span>
-                            Apri
-                        </button>
-                        <button className="primary" onClick={chooseFolder} disabled={busy}>
-                            Scegli cartella
-                        </button>
-                    </div>
-                </div>
-
-                <div className="options">
-                    <div className="check">
-                        <label className="check-label">
-                            <input
-                                type="checkbox"
-                                checked={destSameAsSource}
-                                onChange={(e) => applyOptions(e.target.checked, destFolder, deleteOriginals)}
-                                disabled={busy}
-                            />
-                            Destinazione uguale alla cartella di partenza
-                        </label>
-                        <InfoIcon text="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata." />
-                    </div>
-
-                    {!destSameAsSource && (
+                <div className="top-row">
+                    <div className="top-left-head">
                         <div className="field-group">
-                            <span className="field-label">Cartella di destinazione</span>
+                            <span className="field-label">Cartella di partenza</span>
                             <div className="toolbar">
-                                <div className="folder-path" title={destFolder}>
-                                    {destFolder || 'Nessuna destinazione selezionata'}
+                                <div className="folder-path" title={folder}>
+                                    {folder || 'Nessuna cartella selezionata'}
                                 </div>
                                 <button
                                     className="ghost with-icon"
-                                    onClick={() => openFolder(destFolder)}
-                                    disabled={busy || !destFolder}
+                                    onClick={() => openFolder(folder)}
+                                    disabled={busy || !folder}
                                     title="Apri la cartella in Esplora risorse"
                                 >
                                     <span className="btn-icon"><FolderOpenIcon /></span>
                                     Apri
                                 </button>
-                                <button className="primary" onClick={chooseDestination} disabled={busy}>
-                                    Scegli destinazione
+                                <button className="primary" onClick={chooseFolder} disabled={busy}>
+                                    Scegli cartella
                                 </button>
                             </div>
                         </div>
-                    )}
 
-                    <div className="check">
-                        <label className="check-label">
-                            <input
-                                type="checkbox"
-                                checked={deleteOriginals}
-                                onChange={(e) => toggleDeleteOriginals(e.target.checked)}
-                                disabled={busy}
-                            />
-                            Eliminazione file originali
-                        </label>
-                        <InfoIcon text="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali." />
+                        {!destSameAsSource && (
+                            <div className="field-group">
+                                <span className="field-label">Cartella di destinazione</span>
+                                <div className="toolbar">
+                                    <div className="folder-path" title={destFolder}>
+                                        {destFolder || 'Nessuna destinazione selezionata'}
+                                    </div>
+                                    <button
+                                        className="ghost with-icon"
+                                        onClick={() => openFolder(destFolder)}
+                                        disabled={busy || !destFolder}
+                                        title="Apri la cartella in Esplora risorse"
+                                    >
+                                        <span className="btn-icon"><FolderOpenIcon /></span>
+                                        Apri
+                                    </button>
+                                    <button className="primary" onClick={chooseDestination} disabled={busy}>
+                                        Scegli cartella
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="options">
+                            <div className="check">
+                                <label className="check-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={destSameAsSource}
+                                        onChange={(e) => applyOptions(e.target.checked, destFolder, deleteOriginals)}
+                                        disabled={busy}
+                                    />
+                                    Destinazione uguale alla cartella di partenza
+                                </label>
+                                <InfoIcon text="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata." />
+                            </div>
+
+                            <div className="check">
+                                <label className="check-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={deleteOriginals}
+                                        onChange={(e) => toggleDeleteOriginals(e.target.checked)}
+                                        disabled={busy}
+                                    />
+                                    Eliminazione file originali
+                                </label>
+                                <InfoIcon text="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali." />
+                            </div>
+
+                            <div className="check">
+                                <label className="check-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={watchEnabled}
+                                        onChange={(e) => toggleWatch(e.target.checked)}
+                                        disabled={busy || !folder}
+                                    />
+                                    Aggiornamento automatico
+                                </label>
+                                <InfoIcon text="Quando attivo, l'applicazione osserva la cartella di partenza: se aggiungi, modifichi o rimuovi file, l'anteprima si aggiorna da sola. La conversione resta comunque manuale: nessun file viene mai rinominato senza il tuo comando esplicito. Quando disattivato, l'anteprima si aggiorna solo con 'Scegli cartella' o con il pulsante di aggiornamento." />
+                            </div>
+                        </div>
+
+                        <div className="actions">
+                            {results ? (
+                                <button className="accent with-icon" onClick={refresh} disabled={busy || !folder}>
+                                    <span className="btn-icon"><RefreshIcon /></span>
+                                    Avvia nuova scansione
+                                </button>
+                            ) : (
+                                <button className="accent with-icon" onClick={process} disabled={!canProcess}>
+                                    <span className="btn-icon"><ConvertIcon /></span>
+                                    Converti nomi e scrivi tag
+                                </button>
+                            )}
+                            {busy && cancellable && (
+                                <button className="danger-solid with-icon" onClick={cancelOp}>
+                                    <span className="btn-icon"><CloseIcon /></span>
+                                    Annulla
+                                </button>
+                            )}
+                            <button
+                                className="ghost with-icon danger"
+                                onClick={() => setConfirmClearTags(true)}
+                                disabled={!canClearTags}
+                                title="Cancella tutti i tag ID3 dagli MP3 della cartella"
+                            >
+                                <span className="btn-icon"><TagOffIcon /></span>
+                                Cancella tag
+                            </button>
+                            <button className="ghost with-icon" onClick={() => setShowSettings((v) => !v)} disabled={busy}>
+                                <span className="btn-icon"><SettingsIcon /></span>
+                                {showSettings ? 'Nascondi impostazioni' : 'Impostazioni'}
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="check">
-                        <label className="check-label">
-                            <input
-                                type="checkbox"
-                                checked={watchEnabled}
-                                onChange={(e) => toggleWatch(e.target.checked)}
-                                disabled={busy || !folder}
-                            />
-                            Aggiornamento automatico
-                        </label>
-                        <InfoIcon text="Quando attivo, l'applicazione osserva la cartella di partenza: se aggiungi, modifichi o rimuovi file, l'anteprima si aggiorna da sola. La conversione resta comunque manuale: nessun file viene mai rinominato senza il tuo comando esplicito. Quando disattivato, l'anteprima si aggiorna solo con 'Scegli cartella' o con il pulsante di aggiornamento." />
+                    <section className="panel fade-in activity-panel">
+                        <div className="panel-head">
+                            <h2>
+                                <span className="h2-icon"><ActivityIcon /></span>
+                                Attività
+                            </h2>
+                            <button
+                                className="ghost small with-icon"
+                                onClick={clearLogs}
+                                disabled={busy || logs.length === 0}
+                            >
+                                <span className="btn-icon"><TrashIcon /></span>
+                                Pulisci
+                            </button>
+                        </div>
+                        <ul className="log">
+                            {logs.length === 0 ? (
+                                <li className="log-empty">Nessuna attività.</li>
+                            ) : (
+                                logs.map((log, i) => (
+                                    <li key={i} className={'log-item log-' + (log.kind || 'info')}>
+                                        <span className="log-dot" aria-hidden="true" />
+                                        {log.time && <span className="log-time">{log.time}</span>}
+                                        <span className="log-msg">{log.message}</span>
+                                    </li>
+                                ))
+                            )}
+                        </ul>
+                    </section>
+
+                    <div className={'status ' + (status.message ? (status.ok ? 'ok' : 'err') : '')}>
+                        {busy && progress
+                            ? `Operazione in corso... (${progress.done}/${progress.total})`
+                            : status.message}
                     </div>
-                </div>
 
-                <div className="actions">
-                    {results ? (
-                        <button className="accent with-icon" onClick={refresh} disabled={busy || !folder}>
-                            <span className="btn-icon"><RefreshIcon /></span>
-                            Avvia nuova scansione
-                        </button>
-                    ) : (
-                        <button className="accent with-icon" onClick={process} disabled={!canProcess}>
-                            <span className="btn-icon"><ConvertIcon /></span>
-                            Converti nomi e scrivi tag
-                        </button>
-                    )}
-                    {busy && cancellable && (
-                        <button className="danger-solid with-icon" onClick={cancelOp}>
-                            <span className="btn-icon"><CloseIcon /></span>
-                            Annulla
-                        </button>
-                    )}
-                    <button
-                        className="ghost with-icon danger"
-                        onClick={() => setConfirmClearTags(true)}
-                        disabled={!canClearTags}
-                        title="Cancella tutti i tag ID3 dagli MP3 della cartella"
-                    >
-                        <span className="btn-icon"><TagOffIcon /></span>
-                        Cancella tag
-                    </button>
-                    <button className="ghost with-icon" onClick={() => setShowSettings((v) => !v)} disabled={busy}>
-                        <span className="btn-icon"><SettingsIcon /></span>
-                        {showSettings ? 'Nascondi impostazioni' : 'Impostazioni'}
-                    </button>
-                </div>
-
-                <div className={'status ' + (status.message ? (status.ok ? 'ok' : 'err') : '')}>
-                    {busy && progress
-                        ? `Operazione in corso... (${progress.done}/${progress.total})`
-                        : status.message}
-                </div>
-
-                {showSettings && draft && (
-                    <section className="settings">
+                    {showSettings && draft && (
+                        <section className="settings">
                         <h2>Impostazioni regole (salvate su disco)</h2>
                         <div className="settings-grid">
                             <label>
@@ -991,15 +1048,15 @@ function App() {
                             </div>
                         </div>
                     </section>
-                )}
+                    )}
+                </div>
 
-                <div className="grid">
-                    <section className="panel fade-in">
-                        <div className="panel-head">
-                            <h2>
-                                <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>
-                                {results ? 'Risultato conversione' : 'Anteprima'}
-                            </h2>
+                <section className="panel fade-in">
+                    <div className="panel-head">
+                        <h2>
+                            <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>
+                            {results ? 'Risultato conversione' : 'Anteprima'}
+                        </h2>
                             {!results && (
                                 <div className="preview-tools">
                                     <label className="toggle-changed" title="Mostra solo i file che cambieranno nome. È solo una vista: l'elaborazione tratta comunque tutti i file.">
@@ -1086,6 +1143,8 @@ function App() {
                                     <tr>
                                         <th>File attuale</th>
                                         <th>Anteprima nuovo nome</th>
+                                        <th>Anteprima nuovo titolo</th>
+                                        <th>Anteprima nuovo artista</th>
                                         <th>Stato</th>
                                     </tr>
                                 </thead>
@@ -1093,16 +1152,31 @@ function App() {
                                     {previewFiles.map((file, i) => {
                                         const src = splitName(file.name)
                                         const dst = splitName(file.preview)
-                                        const changed = src.base !== dst.base
+                                        const nameChanged = src.base !== dst.base
+                                        const titleChanged = file.mp3 && tagChanged(file.title, file.titlePreview)
+                                        const artistChanged = file.mp3 && tagChanged(file.artist, file.artistPreview)
+                                        const rowChanged = nameChanged || titleChanged || artistChanged
                                         return (
-                                            <tr key={i} className={changed ? 'changed' : ''}>
+                                            <tr key={i} className={rowChanged ? 'changed' : ''}>
                                                 <td>
-                                                    {changed ? <s className="old-name">{src.base}</s> : src.base}
+                                                    <CurrentField label="nome" value={src.base} changed={nameChanged} />
+                                                    {file.mp3 && (
+                                                        <CurrentField label="titolo" value={file.title ?? ''} changed={titleChanged} />
+                                                    )}
+                                                    {file.mp3 && (
+                                                        <CurrentField label="artista" value={file.artist ?? ''} changed={artistChanged} />
+                                                    )}
                                                 </td>
-                                                <td>{dst.base}</td>
+                                                <td className={nameChanged ? 'value-changed' : ''}>{dst.base}</td>
+                                                <td className={titleChanged ? 'value-changed' : ''}>
+                                                    {file.mp3 ? file.titlePreview : <span className="muted-dash">—</span>}
+                                                </td>
+                                                <td className={artistChanged ? 'value-changed' : ''}>
+                                                    {file.mp3 ? file.artistPreview : <span className="muted-dash">—</span>}
+                                                </td>
                                                 <td>
                                                     <div className="badges">
-                                                        {changed ? (
+                                                        {nameChanged ? (
                                                             <span className="badge badge-changed">Da rinominare</span>
                                                         ) : (
                                                             <span className="badge badge-neutral">Invariato</span>
@@ -1117,37 +1191,6 @@ function App() {
                             </table>
                         )}
                     </section>
-
-                    <section className="panel fade-in">
-                        <div className="panel-head">
-                            <h2>
-                                <span className="h2-icon"><ActivityIcon /></span>
-                                Attività
-                            </h2>
-                            <button
-                                className="ghost small with-icon"
-                                onClick={clearLogs}
-                                disabled={busy || logs.length === 0}
-                            >
-                                <span className="btn-icon"><TrashIcon /></span>
-                                Pulisci
-                            </button>
-                        </div>
-                        <ul className="log">
-                            {logs.length === 0 ? (
-                                <li className="log-empty">Nessuna attività.</li>
-                            ) : (
-                                logs.map((log, i) => (
-                                    <li key={i} className={'log-item log-' + (log.kind || 'info')}>
-                                        <span className="log-dot" aria-hidden="true" />
-                                        {log.time && <span className="log-time">{log.time}</span>}
-                                        <span className="log-msg">{log.message}</span>
-                                    </li>
-                                ))
-                            )}
-                        </ul>
-                    </section>
-                </div>
             </main>
 
             {confirmDeleteOriginals && (
