@@ -26,7 +26,7 @@ func TestServiceClearTags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cleared, failed := svc.ClearTags([]string{mp3, flac})
+	cleared, failed := svc.ClearTags([]string{mp3, flac}, nil, nil)
 	if cleared != 1 || failed != 0 {
 		t.Fatalf("cleared=%d failed=%d, attesi 1/0", cleared, failed)
 	}

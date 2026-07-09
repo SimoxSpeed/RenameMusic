@@ -3,6 +3,8 @@
 import {main} from '../models';
 import {rules} from '../models';
 
+export function Cancel():Promise<main.ActionResponse>;
+
 export function ChooseDirectory():Promise<string>;
 
 export function ClearLogs():Promise<main.ActionResponse>;

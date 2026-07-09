@@ -32,16 +32,21 @@ type Options struct {
 	// supportato con (done, total): done = file completati finora, total = numero
 	// totale di file supportati nel batch. Serve a mostrare l'avanzamento in UI.
 	OnProgress func(done, total int)
+
+	// Cancelled, se valorizzata, viene interrogata prima di ogni file: se ritorna
+	// true l'elaborazione si ferma (i file già elaborati restano nei Result).
+	Cancelled func() bool
 }
 
 type Result struct {
-	OldPath string
-	NewPath string
-	NewName string
-	Tagged  bool
-	Skipped bool
-	Failed  bool // errore sul singolo file: il batch prosegue comunque
-	Reason  string
+	OldPath  string
+	NewPath  string
+	NewName  string
+	Tagged   bool
+	Skipped  bool
+	Failed   bool // errore sul singolo file: il batch prosegue comunque
+	Canceled bool // file non elaborato perché l'operazione è stata annullata
+	Reason   string
 }
 
 func NewService(cfg rules.Config) *Service {
@@ -152,8 +157,25 @@ func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 
 	results := make([]Result, 0, len(paths))
 	done := 0
+	canceled := false
 	for i := range items {
 		if !items[i].support {
+			continue
+		}
+		if !canceled && opts.Cancelled != nil && opts.Cancelled() {
+			canceled = true
+		}
+		if canceled {
+			// Una volta annullato, i file supportati rimanenti non vengono
+			// elaborati ma restano nei Result marcati come Canceled, così la UI
+			// può mostrarli con stato "Annullato".
+			results = append(results, Result{
+				OldPath:  items[i].path,
+				NewName:  items[i].newName,
+				NewPath:  items[i].newPath,
+				Canceled: true,
+				Reason:   "operazione annullata",
+			})
 			continue
 		}
 		results = append(results, s.applyItem(items[i], opts))
@@ -219,10 +241,23 @@ func (s *Service) applyItem(it workItem, opts Options) Result {
 }
 
 // ClearTags cancella i tag ID3 da tutti gli MP3 tra i percorsi indicati, in
-// posto (senza rinominare). I file non-MP3 vengono ignorati. Restituisce quanti
-// file sono stati ripuliti e quanti hanno fallito.
-func (s *Service) ClearTags(paths []string) (cleared, failed int) {
+// posto (senza rinominare). I file non-MP3 vengono ignorati. onProgress (se non
+// nil) riceve (done, total) dopo ogni MP3; cancelled (se non nil) è interrogata
+// prima di ogni file e, se true, ferma l'operazione. Restituisce quanti file
+// sono stati ripuliti e quanti hanno fallito.
+func (s *Service) ClearTags(paths []string, onProgress func(done, total int), cancelled func() bool) (cleared, failed int) {
+	total := 0
 	for _, p := range paths {
+		if parser.Extension(filepath.Base(p)) == "mp3" {
+			total++
+		}
+	}
+
+	done := 0
+	for _, p := range paths {
+		if cancelled != nil && cancelled() {
+			break
+		}
 		if parser.Extension(filepath.Base(p)) != "mp3" {
 			continue
 		}
@@ -230,6 +265,10 @@ func (s *Service) ClearTags(paths []string) (cleared, failed int) {
 			failed++
 		} else {
 			cleared++
+		}
+		done++
+		if onProgress != nil {
+			onProgress(done, total)
 		}
 	}
 	return cleared, failed
