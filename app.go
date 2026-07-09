@@ -65,6 +65,10 @@ type App struct {
 
 	// watchDebounce coalisce eventi ravvicinati in un unico rescan globale.
 	watchDebounce *time.Timer
+
+	// opCancel è la funzione di cancellazione dell'operazione lunga in corso
+	// (ProcessAll o ClearTags), o nil se nessuna è attiva. La invoca Cancel().
+	opCancel context.CancelFunc
 }
 
 type FileView struct {
@@ -75,12 +79,13 @@ type FileView struct {
 }
 
 type ResultView struct {
-	OldName string `json:"oldName"`
-	NewName string `json:"newName"`
-	Tagged  bool   `json:"tagged"`
-	Skipped bool   `json:"skipped"`
-	Failed  bool   `json:"failed"`
-	Reason  string `json:"reason"`
+	OldName  string `json:"oldName"`
+	NewName  string `json:"newName"`
+	Tagged   bool   `json:"tagged"`
+	Skipped  bool   `json:"skipped"`
+	Failed   bool   `json:"failed"`
+	Canceled bool   `json:"canceled"`
+	Reason   string `json:"reason"`
 }
 
 // LogKind classifica la natura di una riga di attività. Viene assegnata alla
@@ -512,6 +517,42 @@ func (a *App) ChooseDirectory() string {
 	return path
 }
 
+// beginCancelable prepara un'operazione lunga cancellabile: crea un context
+// annullabile, lo registra come operazione corrente (per Cancel) e restituisce
+// il context più una funzione di cleanup da invocare in defer.
+func (a *App) beginCancelable() (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	a.mu.Lock()
+	if a.opCancel != nil {
+		a.opCancel() // difensivo: chiude un'eventuale operazione precedente non ripulita
+	}
+	a.opCancel = cancel
+	a.mu.Unlock()
+
+	return ctx, func() {
+		a.mu.Lock()
+		a.opCancel = nil
+		a.mu.Unlock()
+		cancel()
+	}
+}
+
+// Cancel richiede l'annullamento dell'operazione lunga in corso (ProcessAll o
+// ClearTags). Se non ce n'è alcuna, non fa nulla.
+func (a *App) Cancel() ActionResponse {
+	a.mu.Lock()
+	cancel := a.opCancel
+	if cancel != nil {
+		a.addLogLocked(LogInfo, "Annullamento richiesto…")
+	}
+	state := a.snapshot()
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return ActionResponse{OK: true, State: state}
+}
+
 // ProcessAll esegue in un colpo solo normalizzazione dei nomi + scrittura tag.
 // destination vuota => stessa cartella di partenza. deleteOriginals=false scrive
 // una copia lasciando intatti gli originali (e gli altri file presenti).
@@ -556,26 +597,33 @@ func (a *App) ProcessAll() ActionResponse {
 		}
 	}
 
-	ctx := a.ctx
+	opCtx, endOp := a.beginCancelable()
+	defer endOp()
+
+	emitCtx := a.ctx
 	results, err := service.Process(files, rename.Options{
 		DestinationFolder: destination,
 		DeleteOriginals:   deleteOriginals,
 		OnProgress: func(done, total int) {
-			if ctx != nil {
-				wailsruntime.EventsEmit(ctx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
+			if emitCtx != nil {
+				wailsruntime.EventsEmit(emitCtx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
 			}
 		},
+		Cancelled: func() bool { return opCtx.Err() != nil },
 	})
 	if err != nil {
 		return ActionResponse{OK: false, Message: "Errore elaborazione: " + err.Error(), State: a.snapshotLocked()}
 	}
+	canceled := opCtx.Err() != nil
 
-	tagged, skipped, failed := 0, 0, 0
+	tagged, skipped, failed, canceledFiles := 0, 0, 0, 0
 	views := make([]ResultView, 0, len(results))
 	for _, result := range results {
 		// Failed è esclusivo nel conteggio: un file fallito non è né "elaborato"
 		// né "saltato con successo", anche se collideva (Skipped+Failed insieme).
 		switch {
+		case result.Canceled:
+			canceledFiles++
 		case result.Failed:
 			failed++
 		case result.Skipped:
@@ -586,15 +634,16 @@ func (a *App) ProcessAll() ActionResponse {
 			}
 		}
 		views = append(views, ResultView{
-			OldName: filepath.Base(result.OldPath),
-			NewName: result.NewName,
-			Tagged:  result.Tagged,
-			Skipped: result.Skipped,
-			Failed:  result.Failed,
-			Reason:  result.Reason,
+			OldName:  filepath.Base(result.OldPath),
+			NewName:  result.NewName,
+			Tagged:   result.Tagged,
+			Skipped:  result.Skipped,
+			Failed:   result.Failed,
+			Canceled: result.Canceled,
+			Reason:   result.Reason,
 		})
 	}
-	processed := len(results) - skipped - failed
+	processed := len(results) - skipped - failed - canceledFiles
 
 	a.mu.Lock()
 	a.scanned = nil
@@ -602,7 +651,11 @@ func (a *App) ProcessAll() ActionResponse {
 	// del watcher (compresi quelli auto-generati da questa elaborazione) fino
 	// alla prossima Scan/cambio cartella.
 	a.watchPaused = true
-	a.addLogLocked(LogSuccess, fmt.Sprintf("Elaborati %d file (%d con tag MP3).", processed, tagged))
+	if canceled {
+		a.addLogLocked(LogInfo, fmt.Sprintf("Elaborazione annullata: %d file elaborati (%d con tag MP3).", processed, tagged))
+	} else {
+		a.addLogLocked(LogSuccess, fmt.Sprintf("Elaborati %d file (%d con tag MP3).", processed, tagged))
+	}
 	if skipped > 0 {
 		if deleteOriginals {
 			a.addLogLocked(LogInfo, fmt.Sprintf("Saltati ed eliminati %d file.", skipped))
@@ -616,6 +669,14 @@ func (a *App) ProcessAll() ActionResponse {
 	state := a.snapshot()
 	a.mu.Unlock()
 
+	if canceled {
+		return ActionResponse{
+			OK:      failed == 0,
+			Message: fmt.Sprintf("Elaborazione annullata: %d file elaborati.", processed),
+			State:   state,
+			Results: views,
+		}
+	}
 	if failed > 0 {
 		return ActionResponse{
 			OK:      false,
@@ -639,16 +700,35 @@ func (a *App) ClearTags() ActionResponse {
 		return ActionResponse{OK: false, Message: "Nessun file da elaborare.", State: a.snapshotLocked()}
 	}
 
-	cleared, failed := rename.NewService(cfg).ClearTags(files)
+	opCtx, endOp := a.beginCancelable()
+	defer endOp()
+
+	emitCtx := a.ctx
+	cleared, failed := rename.NewService(cfg).ClearTags(files,
+		func(done, total int) {
+			if emitCtx != nil {
+				wailsruntime.EventsEmit(emitCtx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
+			}
+		},
+		func() bool { return opCtx.Err() != nil },
+	)
+	canceled := opCtx.Err() != nil
 
 	a.mu.Lock()
-	a.addLogLocked(LogSuccess, fmt.Sprintf("Cancellati i tag di %d file MP3.", cleared))
+	if canceled {
+		a.addLogLocked(LogInfo, fmt.Sprintf("Cancellazione tag annullata: %d file ripuliti.", cleared))
+	} else {
+		a.addLogLocked(LogSuccess, fmt.Sprintf("Cancellati i tag di %d file MP3.", cleared))
+	}
 	if failed > 0 {
 		a.addLogLocked(LogError, fmt.Sprintf("Cancellazione tag fallita per %d file.", failed))
 	}
 	state := a.snapshot()
 	a.mu.Unlock()
 
+	if canceled {
+		return ActionResponse{OK: failed == 0, Message: fmt.Sprintf("Cancellazione annullata: tag rimossi da %d file.", cleared), State: state}
+	}
 	if failed > 0 {
 		return ActionResponse{OK: false, Message: fmt.Sprintf("Tag cancellati per %d file, %d falliti.", cleared, failed), State: state}
 	}

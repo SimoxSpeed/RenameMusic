@@ -14,6 +14,7 @@ import {
     SetWatchEnabled,
     OpenFolder,
     ClearTags,
+    Cancel,
 } from '../wailsjs/go/main/App'
 import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime'
 import { main, rules } from '../wailsjs/go/models'
@@ -288,6 +289,9 @@ function App() {
     // showOnlyChanged: vista dell'anteprima limitata ai soli file che cambieranno
     // nome. È SOLO una vista: l'elaborazione tratta comunque tutti i file.
     const [showOnlyChanged, setShowOnlyChanged] = useState(false)
+    // cancellable: true mentre è in corso un'operazione interrompibile (ProcessAll
+    // o ClearTags), così mostriamo il tasto "Annulla".
+    const [cancellable, setCancellable] = useState(false)
     // booted diventa true al termine del caricamento iniziale: finché è false
     // mostriamo un placeholder di caricamento invece del messaggio "vuoto",
     // così al refresh non si vede un lampo di stato vuoto prima dei dati.
@@ -495,25 +499,51 @@ function App() {
             return
         }
         setProgress(null)
+        setCancellable(true)
         guard(async () => {
             const resp = await ProcessAll()
+            // Operazione conclusa: non è più annullabile (evita che un click sul
+            // tasto Annulla durante la coda "busy" lasci lo status appeso).
+            setCancellable(false)
             absorb(resp)
             setResults(resp.results ?? [])
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
-        }).finally(() => setProgress(null))
+        }).finally(() => {
+            setProgress(null)
+            setCancellable(false)
+        })
     }
 
     // Cancella TUTTI i tag ID3 dagli MP3 della cartella (azione distruttiva:
     // confermata da un popup). Non rinomina nulla, agisce in posto.
     function confirmClearTagsAction() {
         setConfirmClearTags(false)
+        setProgress(null)
+        setCancellable(true)
         guard(async () => {
             const resp = await ClearTags()
+            setCancellable(false)
             absorb(resp)
             setResults(null)
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
+        }).finally(() => {
+            setProgress(null)
+            setCancellable(false)
+        })
+    }
+
+    // Richiede al backend di interrompere l'operazione in corso (conversione o
+    // cancellazione tag). Il backend si ferma tra un file e l'altro; la Promise
+    // dell'operazione si risolve poi con l'esito parziale.
+    function cancelOp() {
+        // Azzeriamo subito il contatore: altrimenti "(x/totale)" resterebbe
+        // congelato finché l'operazione non ritorna, mascherando il messaggio.
+        setProgress(null)
+        setStatus({ message: 'Annullamento in corso…', ok: false })
+        Cancel().catch(() => {
+            /* l'annullamento non deve generare errori bloccanti in UI */
         })
     }
 
@@ -831,6 +861,12 @@ function App() {
                             Converti nomi e scrivi tag
                         </button>
                     )}
+                    {busy && cancellable && (
+                        <button className="danger-solid with-icon" onClick={cancelOp}>
+                            <span className="btn-icon"><CloseIcon /></span>
+                            Annulla
+                        </button>
+                    )}
                     <button
                         className="ghost with-icon danger"
                         onClick={() => setConfirmClearTags(true)}
@@ -1003,23 +1039,27 @@ function App() {
                                         {results.map((r, i) => {
                                             const src = splitName(r.oldName)
                                             const dst = splitName(r.newName)
-                                            const renamed = !r.skipped && !r.failed && src.base !== dst.base
+                                            const renamed = !r.skipped && !r.failed && !r.canceled && src.base !== dst.base
                                             const rowClass = r.failed
                                                 ? 'failed'
-                                                : r.skipped
+                                                : r.canceled
                                                   ? 'skipped'
-                                                  : renamed
-                                                    ? 'changed'
-                                                    : ''
+                                                  : r.skipped
+                                                    ? 'skipped'
+                                                    : renamed
+                                                      ? 'changed'
+                                                      : ''
                                             return (
                                                 <tr key={i} className={rowClass}>
                                                     <td>
                                                         {renamed ? <s className="old-name">{src.base}</s> : src.base}
                                                     </td>
-                                                    <td>{r.skipped ? '—' : dst.base}</td>
+                                                    <td>{r.skipped || r.canceled ? '—' : dst.base}</td>
                                                     <td>
                                                         {r.failed ? (
                                                             <ErrorLabel message={r.reason} />
+                                                        ) : r.canceled ? (
+                                                            <span className="badge badge-neutral">Annullato</span>
                                                         ) : r.skipped ? (
                                                             <span className="note">Saltato: {r.reason}</span>
                                                         ) : (
