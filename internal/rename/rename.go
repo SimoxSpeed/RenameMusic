@@ -1,15 +1,23 @@
 package rename
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"renamemusic/internal/fs"
 	"renamemusic/internal/parser"
 	"renamemusic/internal/rules"
 	"renamemusic/internal/tags"
 )
+
+// tempSuffix marca i file temporanei creati durante copyFile: un crash tra la
+// scrittura del temp e il rename può lasciarli orfani. Il suffisso, volutamente
+// specifico, consente a CleanTempFiles di rimuovere SOLO i nostri residui e mai
+// un eventuale ".tmp" legittimo dell'utente nella cartella musicale.
+const tempSuffix = ".renamemusic.tmp"
 
 type Service struct {
 	Config rules.Config
@@ -37,6 +45,30 @@ func NewService(cfg rules.Config) *Service {
 
 func (s *Service) Scan() ([]string, error) {
 	return fs.ScanAudioFiles(s.Config.StartFolder, s.Config)
+}
+
+// CleanTempFiles rimuove dalla cartella indicata i file temporanei orfani
+// lasciati da una copia interrotta (crash): agisce SOLO sui file col suffisso
+// marcato (tempSuffix). Non ricorsivo. Restituisce quanti file ha rimosso;
+// una cartella inesistente/illeggibile non è un errore fatale (removed=0).
+func CleanTempFiles(folder string) int {
+	if folder == "" {
+		return 0
+	}
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return 0
+	}
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), tempSuffix) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(folder, e.Name())); err == nil {
+			removed++
+		}
+	}
+	return removed
 }
 
 type workItem struct {
@@ -172,7 +204,24 @@ func (s *Service) WriteTags(path string) error {
 		return nil
 	}
 	exceptions := s.Config.ArtistExceptions
-	return tags.WriteMP3Tags(path, parser.TagTitle(name, exceptions), parser.TagArtist(name, exceptions))
+	title := parser.TagTitle(name, exceptions)
+	artist := parser.TagArtist(name, exceptions)
+
+	if err := tags.WriteMP3Tags(path, title, artist); err != nil {
+		return err
+	}
+
+	// Verifica round-trip: rileggiamo i tag appena scritti con un parser
+	// indipendente. Se la rilettura fallisce o non corrisponde, la scrittura è
+	// difettosa e il file va segnalato come non elaborato correttamente.
+	gotTitle, gotArtist, err := tags.ReadMP3Tags(path)
+	if err != nil {
+		return fmt.Errorf("verifica tag non riuscita: %w", err)
+	}
+	if gotTitle != title || gotArtist != artist {
+		return fmt.Errorf("tag riletti non corrispondono (titolo %q≠%q, artista %q≠%q)", gotTitle, title, gotArtist, artist)
+	}
+	return nil
 }
 
 // moveFile sposta src su dst sovrascrivendo un eventuale file esistente, con
@@ -200,7 +249,7 @@ func copyFile(src, dst string) error {
 	}
 	defer in.Close()
 
-	tmp := dst + ".tmp"
+	tmp := dst + tempSuffix
 	out, err := os.Create(tmp)
 	if err != nil {
 		return err

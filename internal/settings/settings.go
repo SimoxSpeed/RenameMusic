@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"renamemusic/internal/rules"
 )
@@ -15,6 +16,12 @@ const (
 	stateFile    = "state.json"
 	filePerm     = 0o644
 	dirPermMode  = 0o755
+
+	// tempSuffix marca i file temporanei della scrittura atomica: un crash tra
+	// la scrittura del temp e il rename può lasciarli orfani nella cartella di
+	// configurazione. Il suffisso specifico consente a CleanTempFiles di
+	// rimuovere solo i nostri residui.
+	tempSuffix = ".renamemusic.tmp"
 )
 
 // State conserva lo stato non-regola persistito: cartella di partenza,
@@ -96,7 +103,7 @@ func save(name string, cfg rules.Config) error {
 // configurazione troncato/corrotto. Se il rename diretto fallisce (es. file di
 // sola lettura su Windows) si riprova rimuovendo prima il file esistente.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
+	tmp := path + tempSuffix
 	if err := os.WriteFile(tmp, data, perm); err != nil {
 		return err
 	}
@@ -108,6 +115,35 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		}
 	}
 	return nil
+}
+
+// CleanTempFiles rimuove i file temporanei orfani dalla cartella di
+// configurazione (%AppData%\RenameMusic). Restituisce quanti ne ha rimossi.
+func CleanTempFiles() int {
+	dir, err := Dir()
+	if err != nil {
+		return 0
+	}
+	return cleanTempFilesIn(dir)
+}
+
+// cleanTempFilesIn rimuove i file col suffisso marcato dalla cartella indicata.
+// Isolata da CleanTempFiles per essere testabile su una cartella temporanea.
+func cleanTempFilesIn(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), tempSuffix) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err == nil {
+			removed++
+		}
+	}
+	return removed
 }
 
 // LoadConfig / SaveConfig gestiscono le regole correnti (attive).
