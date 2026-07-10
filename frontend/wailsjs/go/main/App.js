@@ -58,8 +58,8 @@ export function SelectFolder() {
   return window['go']['main']['App']['SelectFolder']();
 }
 
-export function SetAsDefault(arg1) {
-  return window['go']['main']['App']['SetAsDefault'](arg1);
+export function SetAsDefault(arg1, arg2) {
+  return window['go']['main']['App']['SetAsDefault'](arg1, arg2);
 }
 
 export function SetConfig(arg1) {

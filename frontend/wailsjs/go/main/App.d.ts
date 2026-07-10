@@ -32,7 +32,7 @@ export function Scan():Promise<main.ActionResponse>;
 
 export function SelectFolder():Promise<main.ActionResponse>;
 
-export function SetAsDefault(arg1:rules.Config):Promise<main.ActionResponse>;
+export function SetAsDefault(arg1:rules.Config,arg2:Array<playlist.Playlist>):Promise<main.ActionResponse>;
 
 export function SetConfig(arg1:rules.Config):Promise<main.ActionResponse>;
 

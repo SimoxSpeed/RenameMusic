@@ -772,20 +772,23 @@ function App() {
         }
     }
 
-    // Riporta il draft alle regole salvate (scarta le modifiche non ancora salvate).
+    // Riporta regole e playlist ai valori salvati (scarta tutte le modifiche non
+    // ancora salvate delle Impostazioni, comprese quelle alle playlist).
     function revertDraft() {
         if (!state?.config) return
         setDraft(cloneConfig(state.config))
-        setStatus({ message: 'Ripristinate le regole salvate.', ok: true })
+        setPlaylistDraft((state?.playlists ?? []).map((p) => ({ name: p.name, url: p.url })))
+        setStatus({ message: 'Ripristinate le impostazioni salvate.', ok: true })
     }
 
-    // Rende le regole attuali il nuovo predefinito (dopo conferma dal popup).
-    // Non tocca le regole correnti né il draft in editing: aggiorna solo il log/stato.
+    // Rende regole e playlist in editing il nuovo predefinito (dopo conferma dal
+    // popup). Non tocca i valori correnti né i draft in editing: aggiorna solo il
+    // log/stato.
     function confirmMakeDefault() {
         if (!draft) return
         setConfirmDefault(false)
         guard(async () => {
-            const resp = await SetAsDefault(draft)
+            const resp = await SetAsDefault(draft, playlistDraft)
             setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as main.StateResponse) : resp.state))
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
@@ -1212,29 +1215,6 @@ function App() {
             </header>
             )}
 
-            {showSettings && draft && (
-                <div className="settings-topbar">
-                    <div className="settings-topbar-inner">
-                    <button className="ghost with-icon settings-back" onClick={backFromSettings} disabled={busy}>
-                        <span className="btn-icon"><BackIcon /></span>
-                        Indietro
-                    </button>
-                    <div className="settings-topbar-actions">
-                        <button className="warn-solid" onClick={() => setConfirmDefault(true)} disabled={busy}>
-                            Salva come predefinito
-                        </button>
-                        <span className="settings-actions-sep" aria-hidden="true" />
-                        <button className="primary" onClick={saveSettings} disabled={busy}>
-                            Salva
-                        </button>
-                        <button className="accent" onClick={saveSettingsAndExit} disabled={busy}>
-                            Salva ed esci
-                        </button>
-                    </div>
-                    </div>
-                </div>
-            )}
-
             <main className={showSettings ? 'settings-view' : ''}>
                 <div
                     className={'busy-bar' + (busy ? ' is-active' : '')}
@@ -1631,17 +1611,6 @@ function App() {
                                 </div>
                             ))}
                         </div>
-
-                        <div className="settings-actions">
-                            <div className="settings-actions-group">
-                                <button onClick={revertDraft} disabled={busy}>
-                                    Annulla modifiche
-                                </button>
-                                <button onClick={resetConfig} disabled={busy}>
-                                    Ripristina predefiniti
-                                </button>
-                            </div>
-                        </div>
                     </section>
                     </>
                 )}
@@ -1814,6 +1783,36 @@ function App() {
                     </section>
                 )}
             </main>
+
+            {showSettings && draft && (
+                <div className="settings-bottombar">
+                    <div className="settings-bottombar-inner">
+                        <button className="ghost with-icon settings-back" onClick={backFromSettings} disabled={busy}>
+                            <span className="btn-icon"><BackIcon /></span>
+                            Indietro
+                        </button>
+                        <div className="settings-bottombar-actions">
+                            <button onClick={revertDraft} disabled={busy || !settingsDirty}>
+                                Annulla modifiche
+                            </button>
+                            <button onClick={resetConfig} disabled={busy}>
+                                Ripristina predefiniti
+                            </button>
+                            <span className="settings-actions-sep" aria-hidden="true" />
+                            <button className="warn-solid" onClick={() => setConfirmDefault(true)} disabled={busy}>
+                                Salva come predefinito
+                            </button>
+                            <span className="settings-actions-sep" aria-hidden="true" />
+                            <button className="primary" onClick={saveSettings} disabled={busy}>
+                                Salva
+                            </button>
+                            <button className="accent" onClick={saveSettingsAndExit} disabled={busy}>
+                                Salva ed esci
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {confirmDeleteOriginals && (
                 <div className="modal-overlay" onClick={() => setConfirmDeleteOriginals(false)}>

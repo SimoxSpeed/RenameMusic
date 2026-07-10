@@ -58,7 +58,12 @@ type App struct {
 	// playlists sono le playlist YouTube salvate (nome -> link), gestite in
 	// Impostazioni e usate da DownloadPlaylist. Persistite a parte
 	// (playlists.json): non sono regole di rinomina.
-	playlists []playlist.Playlist
+	//
+	// defaultPlaylists è il preset predefinito delle playlist (defaults-playlists.json),
+	// analogo a `defaults` per le regole: "Salva come predefinito" lo aggiorna,
+	// "Ripristina predefiniti" lo ricopia in playlists.
+	playlists        []playlist.Playlist
+	defaultPlaylists []playlist.Playlist
 
 	// Opzioni di elaborazione persistite (state.json).
 	destSameAsSource bool
@@ -199,10 +204,15 @@ func NewApp() *App {
 	current.StartFolder = st.LastFolder
 	defaults.StartFolder = st.LastFolder
 
-	// Le playlist YouTube sono persistite a parte (non sono regole di rinomina).
+	// Le playlist YouTube sono persistite a parte (non sono regole di rinomina),
+	// con un preset predefinito analogo ai default delle regole.
 	playlists, err := settings.LoadPlaylists()
 	if err != nil {
 		logs = append([]LogEntry{newLogEntry(LogError, "Impossibile leggere le playlist salvate.")}, logs...)
+	}
+	defaultPlaylists, err := settings.LoadDefaultPlaylists()
+	if err != nil {
+		logs = append([]LogEntry{newLogEntry(LogError, "Impossibile leggere le playlist predefinite.")}, logs...)
 	}
 
 	w := watcher.New()
@@ -215,6 +225,7 @@ func NewApp() *App {
 		defaults:         defaults,
 		logs:             logs,
 		playlists:        playlists,
+		defaultPlaylists: defaultPlaylists,
 		destSameAsSource: st.DestinationSameAsSource,
 		destFolder:       st.DestinationFolder,
 		deleteOriginals:  st.DeleteOriginals,
@@ -525,46 +536,62 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	return ActionResponse{OK: true, Message: "Configurazione salvata.", State: state}
 }
 
-// SetAsDefault rende le regole fornite i nuovi predefiniti (persistiti in defaults.json).
-// NON le applica come configurazione corrente: quella si salva a parte con SetConfig.
-func (a *App) SetAsDefault(cfg rules.Config) ActionResponse {
+// SetAsDefault rende i nuovi predefiniti le regole fornite (persistite in
+// defaults.json) e l'elenco di playlist fornito (defaults-playlists.json). NON li
+// applica come configurazione/playlist correnti: quelle si salvano a parte con
+// SetConfig/SetPlaylists.
+func (a *App) SetAsDefault(cfg rules.Config, playlists []playlist.Playlist) ActionResponse {
 	cfg = normalizeConfig(cfg)
+	cleaned := cleanPlaylists(playlists)
 	defErr := settings.SaveDefaults(cfg)
+	plErr := settings.SaveDefaultPlaylists(cleaned)
 
 	a.mu.Lock()
 	a.defaults = cfg
-	if defErr != nil {
-		a.addLogLocked(LogError, "Predefiniti aggiornati ma NON salvati su disco: "+defErr.Error())
+	a.defaultPlaylists = cleaned
+	saveErr := defErr
+	if saveErr == nil {
+		saveErr = plErr
+	}
+	if saveErr != nil {
+		a.addLogLocked(LogError, "Predefiniti aggiornati ma NON salvati su disco: "+saveErr.Error())
 	} else {
 		a.addLogLocked(LogSuccess, "Nuovi predefiniti salvati.")
 	}
 	state := a.snapshot()
 	a.mu.Unlock()
 
-	if defErr != nil {
+	if saveErr != nil {
 		return ActionResponse{OK: false, Message: "Predefiniti non salvati su disco.", State: state}
 	}
 	return ActionResponse{OK: true, Message: "Nuovi predefiniti salvati.", State: state}
 }
 
-// ResetConfig ripristina la configurazione corrente ai predefiniti persistiti e la salva.
+// ResetConfig ripristina ai predefiniti persistiti sia le regole correnti sia
+// l'elenco di playlist, e li salva.
 func (a *App) ResetConfig() ActionResponse {
 	a.mu.Lock()
 	cfg := a.defaults
 	cfg.StartFolder = a.config.StartFolder // mantieni la cartella corrente
+	playlists := cleanPlaylists(a.defaultPlaylists)
 	a.mu.Unlock()
 
 	saveErr := settings.SaveConfig(cfg)
+	plErr := settings.SavePlaylists(playlists)
 
 	// Riscansiona con le regole predefinite (vedi nota in SetConfig).
 	files, currentTags, rescanned, scanErr := a.rescanWith(cfg)
 
 	a.mu.Lock()
 	a.config = cfg
+	a.playlists = playlists
 	if rescanned {
 		a.scanned = files
 		a.currentTags = currentTags
 		a.watchPaused = false
+	}
+	if saveErr == nil {
+		saveErr = plErr
 	}
 	if saveErr != nil {
 		a.addLogLocked(LogError, "Predefiniti ripristinati ma NON salvati: "+saveErr.Error())
@@ -623,9 +650,9 @@ func (a *App) performScan() (message string, ok bool) {
 	return "Scansione completata.", true
 }
 
-// SetPlaylists sostituisce l'elenco delle playlist YouTube salvate (nome ->
-// link) e lo persiste. Le voci senza nome o link vengono scartate.
-func (a *App) SetPlaylists(list []playlist.Playlist) ActionResponse {
+// cleanPlaylists normalizza un elenco di playlist scartando le voci senza nome o
+// link (con trim su entrambi). Restituisce sempre uno slice non-nil.
+func cleanPlaylists(list []playlist.Playlist) []playlist.Playlist {
 	cleaned := make([]playlist.Playlist, 0, len(list))
 	for _, p := range list {
 		p.Name = strings.TrimSpace(p.Name)
@@ -635,6 +662,13 @@ func (a *App) SetPlaylists(list []playlist.Playlist) ActionResponse {
 		}
 		cleaned = append(cleaned, p)
 	}
+	return cleaned
+}
+
+// SetPlaylists sostituisce l'elenco delle playlist YouTube salvate (nome ->
+// link) e lo persiste. Le voci senza nome o link vengono scartate.
+func (a *App) SetPlaylists(list []playlist.Playlist) ActionResponse {
+	cleaned := cleanPlaylists(list)
 
 	saveErr := settings.SavePlaylists(cleaned)
 

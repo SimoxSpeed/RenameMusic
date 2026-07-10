@@ -11,13 +11,14 @@ import (
 )
 
 const (
-	appDirName    = "RenameMusic"
-	currentFile   = "config.json"
-	defaultsFile  = "defaults.json"
-	stateFile     = "state.json"
-	playlistsFile = "playlists.json"
-	filePerm      = 0o644
-	dirPermMode   = 0o755
+	appDirName           = "RenameMusic"
+	currentFile          = "config.json"
+	defaultsFile         = "defaults.json"
+	stateFile            = "state.json"
+	playlistsFile        = "playlists.json"
+	defaultPlaylistsFile = "defaults-playlists.json"
+	filePerm             = 0o644
+	dirPermMode          = 0o755
 
 	// tempSuffix marca i file temporanei della scrittura atomica: un crash tra
 	// la scrittura del temp e il rename può lasciarli orfani nella cartella di
@@ -207,12 +208,25 @@ func SaveState(s State) error {
 	return writeFileAtomic(path, data, filePerm)
 }
 
-// LoadPlaylists restituisce le playlist YouTube salvate (nil se non ancora
-// salvate). Non sono "regole" di rinomina: vivono in un file a parte, così
-// "Ripristina predefiniti"/"Salva come predefinito" (che riguardano solo
-// rules.Config) non le toccano.
-func LoadPlaylists() ([]playlist.Playlist, error) {
-	path, err := pathFor(playlistsFile)
+// LoadPlaylists restituisce le playlist YouTube salvate (correnti), nil se non
+// ancora salvate. Non sono "regole" di rinomina, ma — come le regole — hanno un
+// preset predefinito a parte (defaults-playlists.json): "Salva come predefinito"
+// aggiorna quello, "Ripristina predefiniti" lo ripristina qui.
+func LoadPlaylists() ([]playlist.Playlist, error) { return loadPlaylists(playlistsFile) }
+
+// SavePlaylists persiste le playlist YouTube correnti.
+func SavePlaylists(list []playlist.Playlist) error { return savePlaylists(playlistsFile, list) }
+
+// LoadDefaultPlaylists / SaveDefaultPlaylists gestiscono il preset predefinito
+// (editabile e persistito) delle playlist, analogo a LoadDefaults/SaveDefaults
+// per le regole.
+func LoadDefaultPlaylists() ([]playlist.Playlist, error) { return loadPlaylists(defaultPlaylistsFile) }
+func SaveDefaultPlaylists(list []playlist.Playlist) error {
+	return savePlaylists(defaultPlaylistsFile, list)
+}
+
+func loadPlaylists(name string) ([]playlist.Playlist, error) {
+	path, err := pathFor(name)
 	if err != nil {
 		return nil, err
 	}
@@ -230,9 +244,8 @@ func LoadPlaylists() ([]playlist.Playlist, error) {
 	return list, nil
 }
 
-// SavePlaylists persiste le playlist YouTube.
-func SavePlaylists(list []playlist.Playlist) error {
-	path, err := pathFor(playlistsFile)
+func savePlaylists(name string, list []playlist.Playlist) error {
+	path, err := pathFor(name)
 	if err != nil {
 		return err
 	}
