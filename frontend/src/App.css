@@ -858,27 +858,28 @@ tr.changed td {
     margin-bottom: 16px;
 }
 
-/* Barra superiore della vista Impostazioni: "Indietro" a sinistra, azioni di
-   salvataggio a destra. In modalità Impostazioni l'header dell'app è nascosto,
-   quindi questa barra FA DA HEADER: è figlia diretta di .app (fuori dal <main>),
-   così occupa l'intera larghezza della finestra esattamente come l'header vero
-   — non è limitata al max-width del main né lascia bande di sfondo ai lati sui
-   monitor larghi. Resta ancorata in cima allo scorrere (sticky top:0), con
-   sfondo opaco e ombra che la staccano. */
-.settings-topbar {
+/* Barra inferiore della vista Impostazioni: "Indietro" a sinistra, azioni di
+   annullamento/ripristino/salvataggio a destra. In modalità Impostazioni l'header
+   dell'app è nascosto e questa barra fa da pié di pagina fisso: è figlia diretta
+   di .app (fuori dal <main>), così occupa l'intera larghezza della finestra — non
+   è limitata al max-width del main né lascia bande di sfondo ai lati sui monitor
+   larghi. Resta ancorata in fondo allo scorrere (sticky bottom:0), con sfondo
+   opaco e ombra verso l'alto che la staccano dal contenuto sottostante. */
+.settings-bottombar {
     position: sticky;
-    top: 0;
+    bottom: 0;
     z-index: 40;
     background: var(--header-bg);
     color: var(--header-text);
-    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.18);
+    box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.18);
 }
 
 /* Come per .header-inner: lo sfondo scuro resta a tutta larghezza (sui monitor
-   larghi niente bande laterali), ma il contenuto (Indietro + salvataggi) è
-   allineato allo stesso contenitore del main (max-width + padding), così i
-   bottoni non sfuggono oltre i margini delle sezioni sottostanti. */
-.settings-topbar-inner {
+   larghi niente bande laterali), ma il contenuto (Indietro + azioni) è allineato
+   allo stesso contenitore del main (max-width + padding), così i bottoni non
+   sfuggono oltre i margini delle sezioni soprastanti. Su schermi stretti le
+   azioni possono andare a capo (flex-wrap), restando comunque nella barra. */
+.settings-bottombar-inner {
     max-width: 1600px;
     width: 100%;
     margin: 0 auto;
@@ -889,19 +890,20 @@ tr.changed td {
     padding: 14px 24px;
 }
 
-/* Sullo sfondo scuro dell'header, "Indietro" (ghost) usa i colori chiari. */
-.settings-topbar .settings-back {
+/* Sullo sfondo scuro della barra, "Indietro" (ghost) usa i colori chiari. */
+.settings-bottombar .settings-back {
     color: var(--header-text);
     border-color: rgba(203, 213, 225, 0.35);
 }
 
-.settings-topbar .settings-back:hover:not(:disabled) {
+.settings-bottombar .settings-back:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(203, 213, 225, 0.6);
 }
 
-/* Separatore verticale tra "Salva come predefinito" e i salvataggi normali. */
-.settings-topbar .settings-actions-sep {
+/* Separatori verticali tra i gruppi di azioni (annulla/ripristina | predefinito |
+   salvataggi). */
+.settings-bottombar .settings-actions-sep {
     flex: 0 0 auto;
     align-self: stretch;
     width: 0;
@@ -911,8 +913,11 @@ tr.changed td {
     margin: 0 2px;
 }
 
-.settings-topbar-actions {
+.settings-bottombar-actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
     gap: 10px;
 }
 
@@ -971,30 +976,6 @@ tr.changed td {
 
 .replacement-row .arrow {
     color: var(--muted);
-}
-
-.settings-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    margin-top: 16px;
-}
-
-.settings-actions-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-/* Separatore leggero fra "salvataggio normale" e "salva come predefinito":
-   uno spaziatore flessibile con un sottile filo verticale che li distingue. */
-.settings-actions-sep {
-    flex: 1 1 16px;
-    align-self: stretch;
-    min-width: 16px;
-    min-height: 24px;
-    border-right: 1px solid var(--line);
 }
 
 /* Riga in cima: la testata (cartelle+opzioni+azioni) e Attività condividono la
