@@ -10,6 +10,10 @@ export function ChooseDirectory() {
   return window['go']['main']['App']['ChooseDirectory']();
 }
 
+export function ChooseYtDlpFile() {
+  return window['go']['main']['App']['ChooseYtDlpFile']();
+}
+
 export function ClearLogs() {
   return window['go']['main']['App']['ClearLogs']();
 }
@@ -18,12 +22,20 @@ export function ClearTags() {
   return window['go']['main']['App']['ClearTags']();
 }
 
+export function DownloadPlaylist(arg1) {
+  return window['go']['main']['App']['DownloadPlaylist'](arg1);
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
 export function GetState() {
   return window['go']['main']['App']['GetState']();
+}
+
+export function InstallYtDlp() {
+  return window['go']['main']['App']['InstallYtDlp']();
 }
 
 export function OpenFolder(arg1) {
@@ -62,6 +74,18 @@ export function SetOptions(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetOptions'](arg1, arg2, arg3);
 }
 
+export function SetPlaylists(arg1) {
+  return window['go']['main']['App']['SetPlaylists'](arg1);
+}
+
 export function SetWatchEnabled(arg1) {
   return window['go']['main']['App']['SetWatchEnabled'](arg1);
+}
+
+export function SetYtDlpConfig(arg1, arg2) {
+  return window['go']['main']['App']['SetYtDlpConfig'](arg1, arg2);
+}
+
+export function UninstallYtDlp() {
+  return window['go']['main']['App']['UninstallYtDlp']();
 }

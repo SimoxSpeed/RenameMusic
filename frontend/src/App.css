@@ -11,14 +11,24 @@ header {
     position: sticky;
     top: 0;
     z-index: 40;
+    background: var(--header-bg);
+    color: var(--header-text);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.18);
+}
+
+/* Il contenuto dell'header (titolo + azioni) è allineato allo stesso contenitore
+   di <main>: stessa max-width e stesso padding orizzontale, così i bottoni non
+   sfuggono oltre i margini del layout sottostante su schermi larghi. Lo sfondo
+   scuro resta invece a tutta larghezza (vive su <header>). */
+.header-inner {
+    max-width: 1600px;
+    width: 100%;
+    margin: 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     padding: 16px 24px;
-    background: var(--header-bg);
-    color: var(--header-text);
-    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.18);
 }
 
 header h1 {
@@ -83,13 +93,90 @@ header h1 {
     100% { box-shadow: 0 0 0 0 rgba(78, 168, 106, 0); }
 }
 
+/* Toggle "Aggiornamento automatico" nell'header: è un <button> cliccabile che
+   attiva/disattiva l'osservazione della cartella. Da spento è discreto (bordo
+   tenue, testo attenuato); da acceso si accende con lo stesso verde della pill
+   e il puntino pulsa. Sostituisce la vecchia checkbox nelle opzioni. */
+.watch-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(203, 213, 225, 0.35);
+    background: transparent;
+    color: var(--header-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.watch-toggle:hover:not(:disabled) {
+    border-color: rgba(203, 213, 225, 0.6);
+    color: var(--header-text);
+}
+
+.watch-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.watch-toggle.is-on {
+    background: rgba(78, 168, 106, 0.18);
+    border-color: rgba(78, 168, 106, 0.5);
+    color: #b7e5c4;
+}
+
+/* Il puntino pulsa SOLO quando l'aggiornamento automatico è attivo; da spento
+   resta un pallino statico e attenuato. */
+.watch-toggle .watch-dot {
+    animation: none;
+    background: var(--header-muted);
+}
+
+.watch-toggle.is-on .watch-dot {
+    background: var(--accent-strong);
+    animation: watchPulse 1.8s ease-out infinite;
+}
+
+/* Bottone azione nell'header (es. "Impostazioni"): coerente con il tema scuro
+   dell'header, bordo tenue e testo chiaro. */
+.header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(203, 213, 225, 0.35);
+    background: transparent;
+    color: var(--header-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.header-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(203, 213, 225, 0.6);
+}
+
+.header-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .watch-dot { animation: none; }
+    .watch-toggle.is-on .watch-dot { animation: none; }
 }
 
 main {
     position: relative;
-    max-width: 1180px;
+    max-width: 1600px;
     width: 100%;
     margin: 0 auto;
     padding: 20px 24px 32px;
@@ -128,7 +215,8 @@ main {
 }
 
 input,
-textarea {
+textarea,
+select {
     width: 100%;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -140,6 +228,7 @@ textarea {
 
 input:focus-visible,
 textarea:focus-visible,
+select:focus-visible,
 button:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
@@ -194,6 +283,41 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
     .busy-bar { transition: none; }
     .busy-bar.is-active::before { animation: none; }
+}
+
+/* Barra di avanzamento determinata (oltre alla busy-bar indeterminata in cima):
+   mostra il progresso reale delle operazioni con totale noto — in particolare il
+   download di una playlist (canzoni scaricate / totale). Appare solo mentre
+   l'operazione è in corso. */
+.op-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.op-progress-track {
+    flex: 1;
+    min-width: 0;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--panel-alt);
+    border: 1px solid var(--line);
+    overflow: hidden;
+}
+
+.op-progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+}
+
+.op-progress-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 input {
@@ -351,6 +475,20 @@ button.danger-solid:hover:not(:disabled) {
     filter: brightness(1.05);
 }
 
+/* "Salva come predefinito": azione gialla, distinta dal salvataggio normale
+   (verde/blu) e da quelle distruttive (rosse). Testo scuro per contrasto sul
+   giallo. */
+button.warn-solid {
+    background: #eab308;
+    border-color: #eab308;
+    color: #1f2937;
+}
+
+button.warn-solid:hover:not(:disabled) {
+    background: #f5c518;
+    border-color: #f5c518;
+}
+
 .options {
     display: flex;
     flex-direction: column;
@@ -474,6 +612,26 @@ button.danger-solid:hover:not(:disabled) {
 /* La toolbar contiene bottoni con tooltip: serve un contesto di posizionamento. */
 .toolbar .icon-btn {
     position: relative;
+}
+
+/* Wrapper generico per il tooltip moderno (componente Tooltip). Fornisce il
+   contesto di posizionamento al fumetto .info-tooltip e lo mostra su hover o
+   focus. Essendo il wrapper a ricevere l'hover, il tooltip appare anche quando
+   il bottone interno è disabilitato. */
+.tip {
+    position: relative;
+    display: inline-flex;
+}
+
+.tip-grow {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.tip:hover > .info-tooltip,
+.tip:focus-within > .info-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -664,10 +822,14 @@ tr.changed td {
     letter-spacing: 0.02em;
 }
 
+/* Blocco azioni: un bordo superiore fa da divisore fra le checkbox soprastanti e
+   i pulsanti (download playlist inclusi), che vivono tutti qui sotto. */
 .actions {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
 }
 
 .status {
@@ -688,6 +850,70 @@ tr.changed td {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 16px;
+}
+
+/* Vista Impostazioni a schermo intero: le sezioni sono impilate e larghe quanto
+   il contenuto principale. Distanzia le sezioni fra loro. */
+.settings-view .settings {
+    margin-bottom: 16px;
+}
+
+/* Barra superiore della vista Impostazioni: "Indietro" a sinistra, azioni di
+   salvataggio a destra. In modalità Impostazioni l'header dell'app è nascosto,
+   quindi questa barra FA DA HEADER: è figlia diretta di .app (fuori dal <main>),
+   così occupa l'intera larghezza della finestra esattamente come l'header vero
+   — non è limitata al max-width del main né lascia bande di sfondo ai lati sui
+   monitor larghi. Resta ancorata in cima allo scorrere (sticky top:0), con
+   sfondo opaco e ombra che la staccano. */
+.settings-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: var(--header-bg);
+    color: var(--header-text);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.18);
+}
+
+/* Come per .header-inner: lo sfondo scuro resta a tutta larghezza (sui monitor
+   larghi niente bande laterali), ma il contenuto (Indietro + salvataggi) è
+   allineato allo stesso contenitore del main (max-width + padding), così i
+   bottoni non sfuggono oltre i margini delle sezioni sottostanti. */
+.settings-topbar-inner {
+    max-width: 1600px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 24px;
+}
+
+/* Sullo sfondo scuro dell'header, "Indietro" (ghost) usa i colori chiari. */
+.settings-topbar .settings-back {
+    color: var(--header-text);
+    border-color: rgba(203, 213, 225, 0.35);
+}
+
+.settings-topbar .settings-back:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(203, 213, 225, 0.6);
+}
+
+/* Separatore verticale tra "Salva come predefinito" e i salvataggi normali. */
+.settings-topbar .settings-actions-sep {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: 0;
+    min-width: 0;
+    min-height: 22px;
+    border-right: 1px solid rgba(203, 213, 225, 0.3);
+    margin: 0 2px;
+}
+
+.settings-topbar-actions {
+    display: flex;
+    gap: 10px;
 }
 
 .settings h2 {
@@ -787,9 +1013,15 @@ tr.changed td {
     margin-bottom: 16px;
 }
 
-.top-row > .status,
-.top-row > .settings {
+.top-row > .status {
     grid-column: 1;
+}
+
+/* Le impostazioni occupano l'intera larghezza della griglia (entrambe le
+   colonne), così sono larghe come la tabella di conversione sottostante e non
+   solo come la colonna sinistra della testata. */
+.top-row > .settings {
+    grid-column: 1 / -1;
 }
 
 .top-left-head {
@@ -798,16 +1030,237 @@ tr.changed td {
     gap: 16px;
 }
 
-/* Attività riempie tutta l'altezza assegnata dalla griglia (pari a quella
-   della testata a sinistra): non cresce con il numero di righe di log né è
-   ridimensionabile a mano, la lista scorre internamente (vedi .log). */
+/* La cella Attività occupa la colonna destra della griglia e viene stirata
+   all'altezza della riga, che è dettata SOLO dalla colonna sinistra (i
+   bottoni): il pannello al suo interno è posizionato in assoluto, quindi non
+   contribuisce all'altezza della riga e non può mai superare i bottoni. */
+.activity-cell {
+    position: relative;
+    min-height: 0;
+}
+
+/* Attività riempie tutta l'altezza della cella (pari a quella della testata a
+   sinistra): non cresce con il numero di righe di log né è ridimensionabile a
+   mano, la lista scorre internamente (vedi .log). */
 .activity-panel {
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
 }
 
 .activity-panel .panel-head {
     flex-shrink: 0;
+}
+
+/* Controlli di download playlist (select + "+" + "Scarica"): stanno sotto il
+   divisore, su una riga propria (flex-basis 100% dentro il contenitore
+   flex-wrap .actions), subito sopra i bottoni di conversione/tag. */
+.download-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-basis: 100%;
+}
+
+/* Wrapper del dropdown playlist: contesto di posizionamento per la lista, che
+   viene ancorata subito sotto il trigger. */
+.playlist-select-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+/* Trigger: replica l'aspetto della vecchia <select> chiusa (bordo, raggio,
+   sfondo input, testo a peso normale) con la freccia a destra. */
+.playlist-select {
+    width: auto;
+    min-width: 160px;
+    max-width: 220px;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--input-bg);
+    font-weight: 400;
+    text-align: left;
+}
+
+.playlist-select:active:not(:disabled) {
+    transform: none;
+}
+
+.playlist-select-value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.playlist-select-caret {
+    display: inline-flex;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+}
+
+.playlist-select-caret.is-open {
+    transform: rotate(180deg);
+}
+
+/* Lista custom: sostituisce il menu "di sistema" del WebView con uno stile
+   coerente con l'app — angoli arrotondati, ombra e colori del tema. */
+.playlist-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 50;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    min-width: 100%;
+    max-width: 260px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.playlist-option {
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.playlist-option:hover {
+    background: var(--panel-alt);
+}
+
+.playlist-option.is-selected {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+/* Pannello di gestione yt-dlp (in cima alla sezione "Download da YouTube"):
+   riepilogo del "bin" (stato/percorso) + controlli di download/percorso. */
+.ytdlp-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+/* Intestazione: nome dello strumento, badge di stato e azione principale sulla
+   stessa riga, così la prima informazione che si legge è "cos'è e com'è messo",
+   con l'azione a portata di clic. */
+.ytdlp-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ytdlp-title {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text);
+}
+
+/* La checkbox "Gestisci autonomamente" sta un livello sopra la card yt-dlp,
+   subito sotto il titolo della sezione, sulla stessa riga della sua label
+   (l'icona info è centrata verticalmente da align-items:center di .check). */
+.ytdlp-toggle {
+    min-height: 0;
+    margin-bottom: 12px;
+}
+
+/* Le checkbox dentro .settings restano orizzontali: la regola generica
+   ".settings label { flex-direction: column }" (pensata per le label della
+   griglia con span+textarea impilati) altrimenti impilerebbe casella e testo. */
+.settings .check-label {
+    flex-direction: row;
+}
+
+/* Bottone icona "Disinstalla yt-dlp": spinto a destra del badge, compatto,
+   solo icona (cestino). Visibile solo in gestione automatica con yt-dlp presente. */
+.ytdlp-uninstall {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 7px;
+    line-height: 0;
+}
+
+.ytdlp-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 30px;
+}
+
+.ytdlp-label {
+    flex-shrink: 0;
+    width: 72px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.ytdlp-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ytdlp-ok {
+    background: color-mix(in srgb, var(--ok) 18%, transparent);
+    color: var(--ok);
+}
+
+.ytdlp-missing {
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+    color: var(--danger);
+}
+
+/* Percorso effettivo: monospace, tagliato con ellissi se troppo lungo (il
+   percorso completo resta nel title). */
+.ytdlp-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    color: var(--text);
+}
+
+/* In modalità manuale la riga "Percorso" diventa editabile: input + Sfoglia
+   occupano lo spazio della cella valore, unificando il percorso mostrato con
+   quello impostato a mano. */
+.ytdlp-path-edit {
+    display: flex;
+    flex: 1;
+    gap: 8px;
+    min-width: 0;
+}
+
+.ytdlp-path-edit input {
+    flex: 1;
+    min-width: 0;
 }
 
 .panel {
@@ -895,6 +1348,13 @@ table {
     width: 130px;
 }
 
+/* Colonna "File attuale": leggermente più larga delle tre colonne di
+   anteprima (nome/titolo/artista), che si dividono lo spazio restante. */
+.preview-table th:first-child,
+.preview-table td:first-child {
+    width: 30%;
+}
+
 th,
 td {
     padding: 10px 12px;
@@ -941,9 +1401,21 @@ th {
 }
 
 .badge-neutral {
-    border-color: var(--line);
+    /* Bordo ben visibile (colore del testo attenuato, non la linea tenue delle
+       tabelle) così "Invariato" si legge come un'etichetta racchiusa, alla pari
+       di "Da rinominare". */
+    border-color: var(--muted);
     background: transparent;
     color: var(--muted);
+}
+
+/* "Da taggare": file il cui nome resta invariato ma i cui tag ID3
+   (titolo/artista) verranno riscritti. Arancione, per distinguerlo dal verde di
+   "Da rinominare". */
+.badge-tag {
+    border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    color: var(--warn);
 }
 
 .badge-mp3 {

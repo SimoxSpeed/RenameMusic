@@ -8,6 +8,9 @@ export namespace main {
 	    failed: boolean;
 	    canceled: boolean;
 	    reason: string;
+	    mp3: boolean;
+	    title?: string;
+	    artist?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ResultView(source);
@@ -22,6 +25,9 @@ export namespace main {
 	        this.failed = source["failed"];
 	        this.canceled = source["canceled"];
 	        this.reason = source["reason"];
+	        this.mp3 = source["mp3"];
+	        this.title = source["title"];
+	        this.artist = source["artist"];
 	    }
 	}
 	export class LogEntry {
@@ -76,6 +82,12 @@ export namespace main {
 	    deleteOriginals: boolean;
 	    watchEnabled: boolean;
 	    watchActive: boolean;
+	    playlists: playlist.Playlist[];
+	    ytDlpManaged: boolean;
+	    ytDlpPath: string;
+	    ytDlpEffectivePath: string;
+	    ytDlpAvailable: boolean;
+	    ytDlpVersion: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StateResponse(source);
@@ -92,6 +104,12 @@ export namespace main {
 	        this.deleteOriginals = source["deleteOriginals"];
 	        this.watchEnabled = source["watchEnabled"];
 	        this.watchActive = source["watchActive"];
+	        this.playlists = this.convertValues(source["playlists"], playlist.Playlist);
+	        this.ytDlpManaged = source["ytDlpManaged"];
+	        this.ytDlpPath = source["ytDlpPath"];
+	        this.ytDlpEffectivePath = source["ytDlpEffectivePath"];
+	        this.ytDlpAvailable = source["ytDlpAvailable"];
+	        this.ytDlpVersion = source["ytDlpVersion"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -151,6 +169,25 @@ export namespace main {
 	
 	
 	
+
+}
+
+export namespace playlist {
+	
+	export class Playlist {
+	    name: string;
+	    url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Playlist(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.url = source["url"];
+	    }
+	}
 
 }
 

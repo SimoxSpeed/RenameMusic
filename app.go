@@ -13,6 +13,7 @@ import (
 
 	appfs "renamemusic/internal/fs"
 	"renamemusic/internal/parser"
+	"renamemusic/internal/playlist"
 	"renamemusic/internal/rename"
 	"renamemusic/internal/rules"
 	"renamemusic/internal/settings"
@@ -54,11 +55,26 @@ type App struct {
 	currentTags map[string]rename.TagInfo
 	logs        []LogEntry
 
+	// playlists sono le playlist YouTube salvate (nome -> link), gestite in
+	// Impostazioni e usate da DownloadPlaylist. Persistite a parte
+	// (playlists.json): non sono regole di rinomina.
+	playlists []playlist.Playlist
+
 	// Opzioni di elaborazione persistite (state.json).
 	destSameAsSource bool
 	destFolder       string
 	deleteOriginals  bool
 	watchEnabled     bool
+
+	// Gestione di yt-dlp (state.json). ytDlpManaged: l'app usa/aggiorna la sua
+	// copia in %AppData%\RenameMusic; se false si usa ytDlpPath (scelto a mano).
+	// ytDlpAvailable/ytDlpVersion sono una cache dello stato del percorso
+	// effettivo, ricalcolata da refreshYtDlpStatus (che stat-a il file ed esegue
+	// `yt-dlp --version`): così snapshot() non lancia un processo ad ogni chiamata.
+	ytDlpManaged   bool
+	ytDlpPath      string
+	ytDlpAvailable bool
+	ytDlpVersion   string
 
 	watcher *watcher.Watcher
 
@@ -100,6 +116,13 @@ type ResultView struct {
 	Failed   bool   `json:"failed"`
 	Canceled bool   `json:"canceled"`
 	Reason   string `json:"reason"`
+	// MP3 indica se il file è un MP3 (unico formato per cui si scrivono i tag);
+	// Title/Artist sono i tag ID3 scritti da ProcessAll, ricavati dal nuovo nome
+	// come in FileView, così la UI può mostrarli in colonna anche nel risultato
+	// della conversione, esattamente come già fa nell'anteprima.
+	MP3    bool   `json:"mp3"`
+	Title  string `json:"title,omitempty"`
+	Artist string `json:"artist,omitempty"`
 }
 
 // LogKind classifica la natura di una riga di attività. Viene assegnata alla
@@ -123,15 +146,21 @@ type LogEntry struct {
 }
 
 type StateResponse struct {
-	Folder                  string       `json:"folder"`
-	Files                   []FileView   `json:"files"`
-	Logs                    []LogEntry   `json:"logs"`
-	Config                  rules.Config `json:"config"`
-	DestinationSameAsSource bool         `json:"destinationSameAsSource"`
-	DestinationFolder       string       `json:"destinationFolder"`
-	DeleteOriginals         bool         `json:"deleteOriginals"`
-	WatchEnabled            bool         `json:"watchEnabled"`
-	WatchActive             bool         `json:"watchActive"`
+	Folder                  string              `json:"folder"`
+	Files                   []FileView          `json:"files"`
+	Logs                    []LogEntry          `json:"logs"`
+	Config                  rules.Config        `json:"config"`
+	DestinationSameAsSource bool                `json:"destinationSameAsSource"`
+	DestinationFolder       string              `json:"destinationFolder"`
+	DeleteOriginals         bool                `json:"deleteOriginals"`
+	WatchEnabled            bool                `json:"watchEnabled"`
+	WatchActive             bool                `json:"watchActive"`
+	Playlists               []playlist.Playlist `json:"playlists"`
+	YtDlpManaged            bool                `json:"ytDlpManaged"`
+	YtDlpPath               string              `json:"ytDlpPath"`
+	YtDlpEffectivePath      string              `json:"ytDlpEffectivePath"`
+	YtDlpAvailable          bool                `json:"ytDlpAvailable"`
+	YtDlpVersion            string              `json:"ytDlpVersion"`
 }
 
 type ActionResponse struct {
@@ -170,6 +199,12 @@ func NewApp() *App {
 	current.StartFolder = st.LastFolder
 	defaults.StartFolder = st.LastFolder
 
+	// Le playlist YouTube sono persistite a parte (non sono regole di rinomina).
+	playlists, err := settings.LoadPlaylists()
+	if err != nil {
+		logs = append([]LogEntry{newLogEntry(LogError, "Impossibile leggere le playlist salvate.")}, logs...)
+	}
+
 	w := watcher.New()
 	if os.Getenv("RENAMEMUSIC_WATCH_DEBUG") != "" {
 		w.Debug = true
@@ -179,10 +214,13 @@ func NewApp() *App {
 		config:           current,
 		defaults:         defaults,
 		logs:             logs,
+		playlists:        playlists,
 		destSameAsSource: st.DestinationSameAsSource,
 		destFolder:       st.DestinationFolder,
 		deleteOriginals:  st.DeleteOriginals,
 		watchEnabled:     st.WatchEnabled,
+		ytDlpManaged:     st.YtDlpManaged,
+		ytDlpPath:        st.YtDlpPath,
 		watcher:          w,
 	}
 }
@@ -195,7 +233,37 @@ func (a *App) persistStateLocked() {
 		DestinationFolder:       a.destFolder,
 		DeleteOriginals:         a.deleteOriginals,
 		WatchEnabled:            a.watchEnabled,
+		YtDlpManaged:            a.ytDlpManaged,
+		YtDlpPath:               a.ytDlpPath,
 	})
+}
+
+// ytDlpEffectivePath restituisce il percorso di yt-dlp effettivamente in uso: la
+// copia gestita in %AppData%\RenameMusic se "gestisci autonomamente" è attivo,
+// altrimenti il percorso personalizzato scelto dall'utente. Va chiamata con il
+// lock acquisito (legge ytDlpManaged/ytDlpPath).
+func (a *App) ytDlpEffectivePath() string {
+	if a.ytDlpManaged {
+		if p, err := settings.YtDlpManagedPath(); err == nil {
+			return p
+		}
+		return ""
+	}
+	return a.ytDlpPath
+}
+
+// refreshYtDlpStatus ricalcola la cache presenza/versione dal percorso effettivo.
+// Esegue un `yt-dlp --version`, quindi NON va chiamata su ogni snapshot ma solo
+// quando lo stato può essere cambiato (avvio, cambio configurazione, download).
+// Va chiamata con il lock acquisito (o durante la costruzione, senza concorrenza).
+func (a *App) refreshYtDlpStatus() {
+	path := a.ytDlpEffectivePath()
+	a.ytDlpAvailable = playlist.IsAvailable(path)
+	if a.ytDlpAvailable {
+		a.ytDlpVersion = playlist.Version(path)
+	} else {
+		a.ytDlpVersion = ""
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -208,6 +276,12 @@ func (a *App) startup(ctx context.Context) {
 		a.addLogLocked(LogInfo, fmt.Sprintf("Rimossi %d file temporanei di configurazione residui.", n))
 		a.mu.Unlock()
 	}
+
+	// Rileva presenza/versione di yt-dlp una volta all'avvio, così il primo
+	// GetState riporta già lo stato del "bin" senza attese in UI.
+	a.mu.Lock()
+	a.refreshYtDlpStatus()
+	a.mu.Unlock()
 
 	// Trascinamento di una cartella (o file) sulla finestra: imposta la cartella
 	// di partenza. Avviene fuori dal ciclo richiesta/risposta della UI, quindi
@@ -515,6 +589,15 @@ func (a *App) ResetConfig() ActionResponse {
 }
 
 func (a *App) Scan() ActionResponse {
+	message, ok := a.performScan()
+	return ActionResponse{OK: ok, Message: message, State: a.snapshotLocked()}
+}
+
+// performScan esegue una scansione con la config corrente e aggiorna lo stato
+// (a.scanned/a.currentTags/a.watchPaused), loggando l'esito. Fa I/O su disco:
+// va chiamata SENZA lock. Usata sia da Scan sia da DownloadPlaylist (che
+// scansiona automaticamente a valle del download).
+func (a *App) performScan() (message string, ok bool) {
 	cfg := a.currentConfig()
 
 	// Rimuove eventuali temporanei orfani da run precedenti prima di scansionare.
@@ -526,7 +609,7 @@ func (a *App) Scan() ActionResponse {
 
 	files, err := rename.NewService(cfg).Scan()
 	if err != nil {
-		return ActionResponse{OK: false, Message: "Errore scansione: " + err.Error(), State: a.snapshotLocked()}
+		return "Errore scansione: " + err.Error(), false
 	}
 	currentTags := currentTagsFor(files)
 
@@ -535,10 +618,225 @@ func (a *App) Scan() ActionResponse {
 	a.currentTags = currentTags
 	a.watchPaused = false
 	a.addLogLocked(LogInfo, fmt.Sprintf("Scansione completata: %d file audio.", len(files)))
+	a.mu.Unlock()
+
+	return "Scansione completata.", true
+}
+
+// SetPlaylists sostituisce l'elenco delle playlist YouTube salvate (nome ->
+// link) e lo persiste. Le voci senza nome o link vengono scartate.
+func (a *App) SetPlaylists(list []playlist.Playlist) ActionResponse {
+	cleaned := make([]playlist.Playlist, 0, len(list))
+	for _, p := range list {
+		p.Name = strings.TrimSpace(p.Name)
+		p.URL = strings.TrimSpace(p.URL)
+		if p.Name == "" || p.URL == "" {
+			continue
+		}
+		cleaned = append(cleaned, p)
+	}
+
+	saveErr := settings.SavePlaylists(cleaned)
+
+	a.mu.Lock()
+	a.playlists = cleaned
+	if saveErr != nil {
+		a.addLogLocked(LogError, "Playlist aggiornate ma NON salvate su disco: "+saveErr.Error())
+	} else {
+		a.addLogLocked(LogSuccess, "Playlist salvate.")
+	}
 	state := a.snapshot()
 	a.mu.Unlock()
 
-	return ActionResponse{OK: true, Message: "Scansione completata.", State: state}
+	if saveErr != nil {
+		return ActionResponse{OK: false, Message: "Playlist non salvate su disco.", State: state}
+	}
+	return ActionResponse{OK: true, Message: "Playlist salvate.", State: state}
+}
+
+// SetYtDlpConfig aggiorna la modalità di gestione di yt-dlp: se `managed` è true
+// l'app usa (e aggiorna) la propria copia in %AppData%\RenameMusic; altrimenti
+// usa `path`, l'eseguibile yt-dlp scelto a mano dall'utente. Persiste su disco e
+// ricalcola presenza/versione del percorso effettivo.
+func (a *App) SetYtDlpConfig(managed bool, path string) ActionResponse {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ytDlpManaged = managed
+	a.ytDlpPath = strings.TrimSpace(path)
+	a.persistStateLocked()
+	a.refreshYtDlpStatus()
+	return ActionResponse{OK: true, State: a.snapshot()}
+}
+
+// ChooseYtDlpFile apre un selettore file per scegliere l'eseguibile yt-dlp
+// personalizzato. Restituisce il percorso scelto (vuoto se annullato). Non
+// persiste nulla: la UI applica poi la scelta con SetYtDlpConfig.
+func (a *App) ChooseYtDlpFile() string {
+	path, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: "Seleziona l'eseguibile yt-dlp",
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "Eseguibili (*.exe)", Pattern: "*.exe"},
+			{DisplayName: "Tutti i file (*.*)", Pattern: "*.*"},
+		},
+	})
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// InstallYtDlp scarica l'ultima versione ufficiale di yt-dlp nel percorso
+// effettivo in uso (la copia gestita in %AppData%\RenameMusic se "gestisci
+// autonomamente" è attivo, altrimenti il percorso personalizzato) sovrascrivendo
+// il file eventualmente presente: funge quindi anche da "Aggiorna".
+func (a *App) InstallYtDlp() ActionResponse {
+	a.mu.Lock()
+	dest := a.ytDlpEffectivePath()
+	a.mu.Unlock()
+
+	if dest == "" {
+		msg := "Specifica un percorso per yt-dlp o attiva la gestione automatica."
+		return ActionResponse{OK: false, Message: msg, State: a.snapshotLocked()}
+	}
+
+	a.mu.Lock()
+	a.addLogLocked(LogInfo, "Download di yt-dlp in corso...")
+	a.mu.Unlock()
+
+	err := playlist.Install(dest)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.refreshYtDlpStatus()
+	if err != nil {
+		a.addLogLocked(LogError, "Installazione di yt-dlp fallita: "+err.Error())
+		return ActionResponse{OK: false, Message: "Installazione di yt-dlp fallita: " + err.Error(), State: a.snapshot()}
+	}
+	msg := "yt-dlp installato."
+	if a.ytDlpVersion != "" {
+		msg = "yt-dlp installato (versione " + a.ytDlpVersion + ")."
+	}
+	a.addLogLocked(LogSuccess, msg)
+	return ActionResponse{OK: true, Message: msg, State: a.snapshot()}
+}
+
+// UninstallYtDlp rimuove la copia di yt-dlp gestita dall'app
+// (%AppData%\RenameMusic). Ha effetto solo in gestione automatica: in modalità
+// manuale il file è scelto dall'utente e non deve essere cancellato dall'app.
+func (a *App) UninstallYtDlp() ActionResponse {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if !a.ytDlpManaged {
+		msg := "In modalità manuale yt-dlp non viene rimosso: il file è tuo."
+		return ActionResponse{OK: false, Message: msg, State: a.snapshot()}
+	}
+
+	path, err := settings.YtDlpManagedPath()
+	if err != nil {
+		msg := "Percorso di yt-dlp non determinabile: " + err.Error()
+		a.addLogLocked(LogError, msg)
+		return ActionResponse{OK: false, Message: msg, State: a.snapshot()}
+	}
+
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		msg := "Rimozione di yt-dlp fallita: " + err.Error()
+		a.addLogLocked(LogError, msg)
+		return ActionResponse{OK: false, Message: msg, State: a.snapshot()}
+	}
+
+	a.refreshYtDlpStatus()
+	a.addLogLocked(LogSuccess, "yt-dlp rimosso.")
+	return ActionResponse{OK: true, Message: "yt-dlp rimosso.", State: a.snapshot()}
+}
+
+// DownloadPlaylist scarica in mp3 (in una cartella già selezionata come
+// cartella di partenza) tutti i video della playlist YouTube associata al
+// nome `name`, poi esegue una scansione così l'anteprima si aggiorna con i
+// nuovi file. Richiede yt-dlp.exe accanto all'eseguibile dell'app.
+func (a *App) DownloadPlaylist(name string) ActionResponse {
+	a.mu.Lock()
+	folder := a.config.StartFolder
+	ytdlp := a.ytDlpEffectivePath()
+	var url string
+	found := false
+	for _, p := range a.playlists {
+		if p.Name == name {
+			url = p.URL
+			found = true
+			break
+		}
+	}
+	a.mu.Unlock()
+
+	if !found {
+		return ActionResponse{OK: false, Message: "Playlist non trovata.", State: a.snapshotLocked()}
+	}
+	if !appfs.IsDir(folder) {
+		return ActionResponse{OK: false, Message: "Seleziona prima una cartella di partenza.", State: a.snapshotLocked()}
+	}
+
+	if !playlist.IsAvailable(ytdlp) {
+		return ActionResponse{OK: false, Message: "yt-dlp non disponibile: scaricalo o imposta un percorso valido nelle impostazioni.", State: a.snapshotLocked()}
+	}
+
+	a.mu.Lock()
+	// Sospende l'aggiornamento automatico per la durata del download: i file
+	// scaricati generano una raffica di eventi fsnotify che altrimenti farebbero
+	// ripartire scansioni a metà download. Il watcher viene riabilitato dalla
+	// performScan finale (che azzera watchPaused) una volta scaricato tutto.
+	a.watchPaused = true
+	a.addLogLocked(LogInfo, fmt.Sprintf("Avvio download playlist %q...", name))
+	a.mu.Unlock()
+
+	opCtx, endOp := a.beginCancelable()
+	defer endOp()
+
+	emitCtx := a.ctx
+	result, err := playlist.Download(playlist.Options{
+		YtDlpPath: ytdlp,
+		URL:       url,
+		Folder:    folder,
+		OnProgress: func(done, total int) {
+			if emitCtx != nil {
+				wailsruntime.EventsEmit(emitCtx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
+			}
+		},
+		Cancelled: func() bool { return opCtx.Err() != nil },
+	})
+	canceled := opCtx.Err() != nil
+
+	if err != nil {
+		a.mu.Lock()
+		a.watchPaused = false // download fallito senza rescan: riabilita l'aggiornamento automatico
+		a.addLogLocked(LogError, "Download playlist fallito: "+err.Error())
+		state := a.snapshot()
+		a.mu.Unlock()
+		return ActionResponse{OK: false, Message: "Download fallito: " + err.Error(), State: state}
+	}
+
+	a.mu.Lock()
+	switch {
+	case canceled:
+		a.addLogLocked(LogInfo, fmt.Sprintf("Download annullato: %d completati, %d falliti.", result.Downloaded, result.Failed))
+	case result.Failed > 0:
+		a.addLogLocked(LogError, fmt.Sprintf("Playlist %q: %d file scaricati, %d falliti.", name, result.Downloaded, result.Failed))
+	default:
+		a.addLogLocked(LogSuccess, fmt.Sprintf("Playlist %q scaricata: %d file.", name, result.Downloaded))
+	}
+	a.mu.Unlock()
+
+	// Scansiona la cartella per aggiornare l'anteprima con i nuovi file.
+	message, ok := a.performScan()
+	finalState := a.snapshotLocked()
+
+	if canceled {
+		return ActionResponse{OK: ok, Message: "Download annullato. " + message, State: finalState}
+	}
+	if result.Failed > 0 {
+		return ActionResponse{OK: false, Message: fmt.Sprintf("Download completato con %d errori.", result.Failed), State: finalState}
+	}
+	return ActionResponse{OK: ok, Message: message, State: finalState}
 }
 
 // ChooseDirectory apre il selettore cartella e restituisce il percorso scelto
@@ -669,7 +967,7 @@ func (a *App) ProcessAll() ActionResponse {
 				tagged++
 			}
 		}
-		views = append(views, ResultView{
+		view := ResultView{
 			OldName:  filepath.Base(result.OldPath),
 			NewName:  result.NewName,
 			Tagged:   result.Tagged,
@@ -677,7 +975,13 @@ func (a *App) ProcessAll() ActionResponse {
 			Failed:   result.Failed,
 			Canceled: result.Canceled,
 			Reason:   result.Reason,
-		})
+		}
+		if parser.Extension(result.NewName) == "mp3" {
+			view.MP3 = true
+			view.Title = parser.TagTitle(result.NewName, cfg.ArtistExceptions)
+			view.Artist = parser.TagArtist(result.NewName, cfg.ArtistExceptions)
+		}
+		views = append(views, view)
 	}
 	processed := len(results) - skipped - failed - canceledFiles
 
@@ -996,6 +1300,12 @@ func (a *App) snapshot() StateResponse {
 		DeleteOriginals:         a.deleteOriginals,
 		WatchEnabled:            a.watchEnabled,
 		WatchActive:             a.watcher != nil && a.watcher.Folder() != "",
+		Playlists:               append([]playlist.Playlist(nil), a.playlists...),
+		YtDlpManaged:            a.ytDlpManaged,
+		YtDlpPath:               a.ytDlpPath,
+		YtDlpEffectivePath:      a.ytDlpEffectivePath(),
+		YtDlpAvailable:          a.ytDlpAvailable,
+		YtDlpVersion:            a.ytDlpVersion,
 	}
 }
 
