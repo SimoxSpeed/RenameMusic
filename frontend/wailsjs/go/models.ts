@@ -1,5 +1,43 @@
 export namespace main {
 	
+	export class DownloadErrorView {
+	    videoId: string;
+	    title: string;
+	    url: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DownloadErrorView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.videoId = source["videoId"];
+	        this.title = source["title"];
+	        this.url = source["url"];
+	        this.message = source["message"];
+	    }
+	}
+	export class TagPromptView {
+	    path: string;
+	    originalBase: string;
+	    ext: string;
+	    title: string;
+	    artist: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TagPromptView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.originalBase = source["originalBase"];
+	        this.ext = source["ext"];
+	        this.title = source["title"];
+	        this.artist = source["artist"];
+	    }
+	}
 	export class ResultView {
 	    oldName: string;
 	    newName: string;
@@ -135,6 +173,8 @@ export namespace main {
 	    message: string;
 	    state: StateResponse;
 	    results?: ResultView[];
+	    prompts?: TagPromptView[];
+	    downloadErrors?: DownloadErrorView[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ActionResponse(source);
@@ -146,6 +186,8 @@ export namespace main {
 	        this.message = source["message"];
 	        this.state = this.convertValues(source["state"], StateResponse);
 	        this.results = this.convertValues(source["results"], ResultView);
+	        this.prompts = this.convertValues(source["prompts"], TagPromptView);
+	        this.downloadErrors = this.convertValues(source["downloadErrors"], DownloadErrorView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -166,6 +208,8 @@ export namespace main {
 		    return a;
 		}
 	}
+	
+	
 	
 	
 	

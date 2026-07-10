@@ -50,6 +50,10 @@ export function ResetConfig() {
   return window['go']['main']['App']['ResetConfig']();
 }
 
+export function ResolveTagPrompt(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResolveTagPrompt'](arg1, arg2, arg3);
+}
+
 export function Scan() {
   return window['go']['main']['App']['Scan']();
 }

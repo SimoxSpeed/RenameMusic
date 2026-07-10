@@ -21,6 +21,7 @@ import {
     UninstallYtDlp,
     SetYtDlpConfig,
     ChooseYtDlpFile,
+    ResolveTagPrompt,
 } from '../wailsjs/go/main/App'
 import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime'
 import { main, rules, playlist } from '../wailsjs/go/models'
@@ -29,6 +30,23 @@ type Status = { message: string; ok: boolean }
 
 // Toast: notifica effimera in basso a destra. `ok` decide colore/icona.
 type Toast = { id: number; ok: boolean; message: string }
+
+// Valori-sentinella dei tag "sconosciuti" (devono combaciare con le costanti
+// parser.UnknownTitle/UnknownArtist lato Go): identificano una traccia il cui
+// nome non permette di dedurre titolo/artista.
+const UNKNOWN_TITLE = 'Titolo Sconosciuto'
+const UNKNOWN_ARTIST = 'Artista Sconosciuto'
+
+// TagPrompt: richiesta (payload dell'evento process:needTagInput) di correggere
+// una traccia i cui tag risulterebbero sconosciuti. La UI ne accoda una alla
+// volta mostrando un popup con `originalBase` modificabile.
+type TagPrompt = {
+    path: string
+    originalBase: string
+    ext: string
+    title: string
+    artist: string
+}
 
 function listToText(list: string[] | undefined): string {
     return (list ?? []).join('\n')
@@ -496,6 +514,19 @@ function App() {
     // mostriamo un placeholder di caricamento invece del messaggio "vuoto",
     // così al refresh non si vede un lampo di stato vuoto prima dei dati.
     const [booted, setBooted] = useState(false)
+    // tagPrompts: coda delle tracce con tag sconosciuti segnalate durante
+    // ProcessAll (evento process:needTagInput). Mostriamo un popup per la prima
+    // della coda; risolverla (Salta/Continua) la rimuove e scopre la successiva.
+    // La conversione delle altre tracce prosegue in background nel frattempo.
+    const [tagPrompts, setTagPrompts] = useState<TagPrompt[]>([])
+    // promptDraft: nome modificabile nell'input del popup, inizializzato dal nome
+    // originale della traccia in testa alla coda.
+    const [promptDraft, setPromptDraft] = useState('')
+    // downloadErrors: video di playlist non scaricati nell'ultimo download (con
+    // dettaglio dell'errore). Popolato dalla risposta di DownloadPlaylist; un
+    // badge nell'area download apre il modale che li elenca (showDownloadErrors).
+    const [downloadErrors, setDownloadErrors] = useState<main.DownloadErrorView[]>([])
+    const [showDownloadErrors, setShowDownloadErrors] = useState(false)
 
     function absorb(resp: main.ActionResponse) {
         setState(resp.state)
@@ -631,6 +662,14 @@ function App() {
         }
     }, [])
 
+    // Quando cambia la traccia in testa alla coda, reimpostiamo l'input del popup
+    // al suo nome originale (l'utente riparte dal nome da correggere).
+    const headPromptPath = tagPrompts[0]?.path
+    useEffect(() => {
+        setPromptDraft(tagPrompts[0]?.originalBase ?? '')
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [headPromptPath])
+
     function toggleWatch(next: boolean) {
         guard(async () => {
             const resp = await SetWatchEnabled(next)
@@ -704,6 +743,7 @@ function App() {
             return
         }
         setProgress(null)
+        setTagPrompts([])
         setCancellable(true)
         guard(async () => {
             const resp = await ProcessAll()
@@ -714,10 +754,44 @@ function App() {
             setResults(resp.results ?? [])
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
+            // Tracce con tag sconosciuti: il backend NON le ha convertite, le
+            // rimette qui perché l'utente decida (una alla volta) col popup. Le
+            // tracce a posto sono già state convertite: niente blocca.
+            const pending = resp.prompts ?? []
+            setTagPrompts(pending.map((p) => ({
+                path: p.path,
+                originalBase: p.originalBase,
+                ext: p.ext,
+                title: p.title,
+                artist: p.artist,
+            })))
         }).finally(() => {
             setProgress(null)
             setCancellable(false)
         })
+    }
+
+    // Risolve il popup in testa alla coda: "Salta" (useEdited=false) converte la
+    // traccia col nome originale; "Continua" (useEdited=true) usa il nome
+    // modificato (da cui il backend riestrae i tag). La conversione della singola
+    // traccia è una chiamata a sé (non bloccante): il suo esito viene aggiunto
+    // alla tabella dei risultati e la coda avanza alla traccia successiva.
+    function resolvePrompt(useEdited: boolean) {
+        const head = tagPrompts[0]
+        if (!head) return
+        const edited = useEdited ? promptDraft : ''
+        // Rimuoviamo subito il popup dalla coda (mostra l'eventuale successivo);
+        // la conversione prosegue in background e ne aggiungiamo l'esito.
+        setTagPrompts((prev) => prev.slice(1))
+        ResolveTagPrompt(head.path, useEdited, edited)
+            .then((resp) => {
+                setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as main.StateResponse) : resp.state))
+                const added = resp.results ?? []
+                if (added.length > 0) {
+                    setResults((prev) => [...(prev ?? []), ...added])
+                }
+            })
+            .catch((err) => notify(false, 'Errore sulla traccia: ' + (err?.message ?? String(err))))
     }
 
     // Cancella TUTTI i tag ID3 dagli MP3 della cartella (azione distruttiva:
@@ -969,12 +1043,14 @@ function App() {
         // scaricate / totale) via gli eventi process:progress: azzeriamo il
         // contatore e mostriamo il tasto Annulla + la barra di avanzamento.
         setProgress(null)
+        setDownloadErrors([])
         setCancellable(true)
         guard(async () => {
             const resp = await DownloadPlaylist(selectedPlaylist)
             setCancellable(false)
             absorb(resp)
             setResults(null)
+            setDownloadErrors(resp.downloadErrors ?? [])
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         }).finally(() => {
@@ -990,6 +1066,7 @@ function App() {
     function confirmInstallThenDownload() {
         setConfirmInstallYtDlp(false)
         setProgress(null)
+        setDownloadErrors([])
         setCancellable(true)
         guard(async () => {
             if (!ytDlpManaged) {
@@ -1014,6 +1091,7 @@ function App() {
             setCancellable(false)
             absorb(resp)
             setResults(null)
+            setDownloadErrors(resp.downloadErrors ?? [])
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         }).finally(() => {
@@ -1106,7 +1184,8 @@ function App() {
 
         // Esc chiude, in ordine: modali aperte, poi il pannello impostazioni.
         if (e.key === 'Escape') {
-            if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
+            if (showDownloadErrors) setShowDownloadErrors(false)
+            else if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
             else if (confirmClearTags) setConfirmClearTags(false)
             else if (confirmInstallYtDlp) setConfirmInstallYtDlp(false)
             else if (confirmUninstallYtDlp) setConfirmUninstallYtDlp(false)
@@ -1324,6 +1403,19 @@ function App() {
                                         Scarica
                                     </button>
                                 </Tooltip>
+                                {downloadErrors.length > 0 && (
+                                    <Tooltip label={`${downloadErrors.length} download non riusciti: clicca per i dettagli`}>
+                                        <button
+                                            type="button"
+                                            className="ghost small with-icon danger download-errors-btn"
+                                            onClick={() => setShowDownloadErrors(true)}
+                                            aria-label={`${downloadErrors.length} download non riusciti`}
+                                        >
+                                            <AlertIcon />
+                                            {downloadErrors.length}
+                                        </button>
+                                    </Tooltip>
+                                )}
                             </div>
                             {results ? (
                                 <button className="accent with-icon" onClick={refresh} disabled={busy || !folder}>
@@ -1808,6 +1900,84 @@ function App() {
                             </button>
                             <button className="accent" onClick={saveSettingsAndExit} disabled={busy}>
                                 Salva ed esci
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {tagPrompts.length > 0 && (() => {
+                const head = tagPrompts[0]
+                const titleUnknown = head.title === UNKNOWN_TITLE
+                const artistUnknown = head.artist === UNKNOWN_ARTIST
+                const missing = titleUnknown && artistUnknown
+                    ? 'né il titolo né l’artista'
+                    : titleUnknown
+                      ? 'il titolo'
+                      : 'l’artista'
+                return (
+                    <div className="modal-overlay">
+                        <div className="modal" onClick={(e) => e.stopPropagation()}>
+                            <h3>Traccia non rinominabile</h3>
+                            <p>
+                                Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>:
+                                così com'è non può essere rinominata né taggata correttamente. Puoi{' '}
+                                <strong>correggere il nome</strong> qui sotto (i tag verranno riestratti da esso)
+                                oppure procedere lasciandolo invariato.
+                            </p>
+                            <label className="tag-prompt-field">
+                                <span>Nome traccia</span>
+                                <div className="tag-prompt-input">
+                                    <input
+                                        type="text"
+                                        value={promptDraft}
+                                        onChange={(e) => setPromptDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') resolvePrompt(true)
+                                        }}
+                                        // eslint-disable-next-line jsx-a11y/no-autofocus
+                                        autoFocus
+                                    />
+                                    <ExtChip ext={head.ext} />
+                                </div>
+                            </label>
+                            {tagPrompts.length > 1 && (
+                                <p className="tag-prompt-queue">
+                                    Altre {tagPrompts.length - 1} tracce in attesa di una scelta.
+                                </p>
+                            )}
+                            <div className="modal-actions">
+                                <button onClick={() => resolvePrompt(false)}>Salta</button>
+                                <button className="accent" onClick={() => resolvePrompt(true)}>
+                                    Continua
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            })()}
+
+            {showDownloadErrors && (
+                <div className="modal-overlay" onClick={() => setShowDownloadErrors(false)}>
+                    <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+                        <h3>Download non riusciti</h3>
+                        <p>
+                            Questi {downloadErrors.length} video della playlist non sono stati
+                            scaricati. Puoi riprovare più tardi: i file già scaricati non vengono
+                            riscaricati.
+                        </p>
+                        <ul className="download-errors-list">
+                            {downloadErrors.map((e, i) => (
+                                <li key={i} className="download-error-item">
+                                    <div className="dl-err-title">{e.title || e.videoId}</div>
+                                    {e.url && <div className="dl-err-url">{e.url}</div>}
+                                    <div className="dl-err-msg">{e.message || 'Errore sconosciuto.'}</div>
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="modal-actions">
+                            <button className="primary" onClick={() => setShowDownloadErrors(false)}>
+                                Chiudi
                             </button>
                         </div>
                     </div>

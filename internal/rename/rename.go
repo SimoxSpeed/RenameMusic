@@ -36,6 +36,13 @@ type Options struct {
 	// Cancelled, se valorizzata, viene interrogata prima di ogni file: se ritorna
 	// true l'elaborazione si ferma (i file già elaborati restano nei Result).
 	Cancelled func() bool
+
+	// NameOverrides, se presente, sostituisce per i percorsi indicati il
+	// nome-base logico usato per calcolare nuovo nome e tag (al posto del nome
+	// file reale). Serve alle tracce con titolo/artista sconosciuto il cui nome
+	// l'utente ha corretto nel popup: il nuovo nome viene normalizzato a partire
+	// da questo testo e i tag riestratti da lì, esattamente come per un nome file.
+	NameOverrides map[string]string
 }
 
 type Result struct {
@@ -117,7 +124,11 @@ func (s *Service) Process(paths []string, opts Options) ([]Result, error) {
 			items[i] = workItem{path: path}
 			continue
 		}
-		newName := s.Config.NormalizeFileBase(parser.RemoveExtension(name)) + "." + ext
+		base := parser.RemoveExtension(name)
+		if o, ok := opts.NameOverrides[path]; ok && strings.TrimSpace(o) != "" {
+			base = o
+		}
+		newName := s.Config.NormalizeFileBase(base) + "." + ext
 		items[i] = workItem{
 			path:    path,
 			newName: newName,

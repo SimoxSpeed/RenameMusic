@@ -628,8 +628,13 @@ button.warn-solid:hover:not(:disabled) {
     min-width: 0;
 }
 
+/* Mostra il tooltip su hover o su focus DA TASTIERA (:focus-visible). Usare
+   :focus-within lo lasciava aperto dopo un click del mouse su un controllo
+   interno (es. la checkbox "Solo da modificare"), che resta focalizzato: con
+   :has(:focus-visible) il click col mouse non lo tiene più aperto, mentre la
+   navigazione da tastiera continua a mostrarlo. */
 .tip:hover > .info-tooltip,
-.tip:focus-within > .info-tooltip {
+.tip:has(:focus-visible) > .info-tooltip {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
 }
@@ -1515,6 +1520,90 @@ th {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+}
+
+/* Popup "traccia non rinominabile": campo col nome modificabile e chip formato.
+   Il paragrafo descrittivo sopra usa già .modal p; qui gestiamo solo il campo. */
+.tag-prompt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 16px;
+}
+
+.tag-prompt-field > span {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+/* Input + chip estensione affiancati: l'input occupa lo spazio residuo, il chip
+   resta a destra (l'estensione non è mostrata nel nome, come nel resto della UI). */
+.tag-prompt-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tag-prompt-input input {
+    flex: 1;
+    min-width: 0;
+}
+
+.tag-prompt-queue {
+    margin: -6px 0 16px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Modale più largo per elenchi (es. errori di download). */
+.modal-wide {
+    max-width: 640px;
+}
+
+/* Badge accanto a "Scarica" quando l'ultimo download ha avuto errori: apre il
+   modale di dettaglio. Compatto, con icona di avviso e conteggio. */
+.download-errors-btn {
+    gap: 5px;
+}
+
+/* Elenco scrollabile degli errori di download nel modale. */
+.download-errors-list {
+    list-style: none;
+    margin: 0 0 18px;
+    padding: 0;
+    max-height: 46vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.download-error-item {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--danger, #e5484d);
+    border-radius: 8px;
+    padding: 9px 11px;
+    background: var(--input-bg);
+}
+
+.dl-err-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.dl-err-url {
+    font-size: 12px;
+    color: var(--muted);
+    word-break: break-all;
+    margin-top: 2px;
+}
+
+.dl-err-msg {
+    font-size: 12.5px;
+    color: var(--text);
+    margin-top: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 @media (max-width: 860px) {
