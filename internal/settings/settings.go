@@ -6,16 +6,18 @@ import (
 	"path/filepath"
 	"strings"
 
+	"renamemusic/internal/playlist"
 	"renamemusic/internal/rules"
 )
 
 const (
-	appDirName   = "RenameMusic"
-	currentFile  = "config.json"
-	defaultsFile = "defaults.json"
-	stateFile    = "state.json"
-	filePerm     = 0o644
-	dirPermMode  = 0o755
+	appDirName    = "RenameMusic"
+	currentFile   = "config.json"
+	defaultsFile  = "defaults.json"
+	stateFile     = "state.json"
+	playlistsFile = "playlists.json"
+	filePerm      = 0o644
+	dirPermMode   = 0o755
 
 	// tempSuffix marca i file temporanei della scrittura atomica: un crash tra
 	// la scrittura del temp e il rename può lasciarli orfani nella cartella di
@@ -32,12 +34,26 @@ type State struct {
 	DestinationFolder       string `json:"destinationFolder"`
 	DeleteOriginals         bool   `json:"deleteOriginals"`
 	WatchEnabled            bool   `json:"watchEnabled"`
+
+	// YtDlpManaged: se true l'app gestisce da sé yt-dlp, usando (e aggiornando)
+	// una propria copia in %AppData%\RenameMusic. Se false si usa YtDlpPath, il
+	// percorso all'eseguibile yt-dlp scelto a mano dall'utente.
+	YtDlpManaged bool   `json:"ytDlpManaged"`
+	YtDlpPath    string `json:"ytDlpPath"`
 }
 
-// DefaultState è lo stato al primo avvio: nessuna cartella, destinazione = partenza,
-// nessuna eliminazione degli originali.
+// DefaultState è lo stato al primo avvio: nessuna cartella, destinazione =
+// partenza, nessuna eliminazione degli originali, yt-dlp gestito dall'app.
 func DefaultState() State {
-	return State{DestinationSameAsSource: true}
+	return State{DestinationSameAsSource: true, YtDlpManaged: true}
+}
+
+// YtDlpManagedPath restituisce il percorso della copia di yt-dlp gestita
+// dall'app: dentro la cartella di configurazione (%AppData%\RenameMusic), così
+// è scrivibile senza permessi di amministratore anche se l'app fosse installata
+// in una cartella protetta.
+func YtDlpManagedPath() (string, error) {
+	return pathFor("yt-dlp.exe")
 }
 
 // Dir restituisce la cartella di configurazione (es. %AppData%\RenameMusic su Windows).
@@ -185,6 +201,45 @@ func SaveState(s State) error {
 		return err
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(path, data, filePerm)
+}
+
+// LoadPlaylists restituisce le playlist YouTube salvate (nil se non ancora
+// salvate). Non sono "regole" di rinomina: vivono in un file a parte, così
+// "Ripristina predefiniti"/"Salva come predefinito" (che riguardano solo
+// rules.Config) non le toccano.
+func LoadPlaylists() ([]playlist.Playlist, error) {
+	path, err := pathFor(playlistsFile)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var list []playlist.Playlist
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// SavePlaylists persiste le playlist YouTube.
+func SavePlaylists(list []playlist.Playlist) error {
+	path, err := pathFor(playlistsFile)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), dirPermMode); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {
 		return err
 	}
