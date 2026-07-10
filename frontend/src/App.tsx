@@ -670,13 +670,24 @@ function App() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [headPromptPath])
 
+    // Attiva/disattiva l'aggiornamento automatico. È un semplice cambio di
+    // impostazione (avvia/ferma il watcher, nessuna scansione): niente busy a
+    // tutta UI, che farebbe sembrare il toggle lento. Flippiamo subito in modo
+    // ottimistico e persistiamo in background, assorbendo lo stato reale al
+    // ritorno: se il backend non riesce ad avviare il watcher rimette
+    // watchEnabled a false e ci allineiamo. Come toggleYtDlpManaged.
     function toggleWatch(next: boolean) {
-        guard(async () => {
-            const resp = await SetWatchEnabled(next)
-            absorb(resp)
-            setWatchEnabled(resp.state.watchEnabled)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
-        })
+        setWatchEnabled(next)
+        SetWatchEnabled(next)
+            .then((resp) => {
+                absorb(resp)
+                setWatchEnabled(resp.state.watchEnabled)
+                setStatus({ message: resp.message ?? '', ok: resp.ok })
+            })
+            .catch((e) => {
+                setWatchEnabled(!next)
+                setStatus({ message: String(e), ok: false })
+            })
     }
 
     // Riscansiona la cartella corrente (utile se il contenuto è cambiato).
