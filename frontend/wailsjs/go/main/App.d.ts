@@ -28,6 +28,8 @@ export function ProcessAll():Promise<main.ActionResponse>;
 
 export function ResetConfig():Promise<main.ActionResponse>;
 
+export function ResolveTagPrompt(arg1:string,arg2:boolean,arg3:string):Promise<main.ActionResponse>;
+
 export function Scan():Promise<main.ActionResponse>;
 
 export function SelectFolder():Promise<main.ActionResponse>;

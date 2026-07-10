@@ -41,6 +41,24 @@ type ProgressEvent struct {
 	Total int `json:"total"`
 }
 
+// TagPromptView descrive una traccia i cui tag, una volta normalizzato il nome,
+// risulterebbero sconosciuti (titolo o artista). ProcessAll ne restituisce
+// l'elenco nella risposta (campo Prompts di ActionResponse): la UI mostra un
+// popup per ciascuna — con OriginalBase modificabile — e la risolve chiamando
+// ResolveTagPrompt, mentre le tracce a posto sono già state convertite. NON si
+// blocca nulla lato backend: ogni scelta è una chiamata a sé.
+//
+// OriginalBase è il nome (senza estensione) da mostrare/modificare; Ext serve
+// alla UI per il chip di formato; Title/Artist sono i tag dedotti (uno dei due,
+// o entrambi, sarà "sconosciuto").
+type TagPromptView struct {
+	Path         string `json:"path"`
+	OriginalBase string `json:"originalBase"`
+	Ext          string `json:"ext"`
+	Title        string `json:"title"`
+	Artist       string `json:"artist"`
+}
+
 type App struct {
 	ctx      context.Context
 	mu       sync.Mutex
@@ -168,11 +186,28 @@ type StateResponse struct {
 	YtDlpVersion            string              `json:"ytDlpVersion"`
 }
 
+// DownloadErrorView descrive un singolo video di playlist il cui download è
+// fallito: la UI ne fa l'elenco in un modale dedicato dopo un DownloadPlaylist
+// concluso con errori. Title può essere vuoto (dipende da yt-dlp).
+type DownloadErrorView struct {
+	VideoID string `json:"videoId"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Message string `json:"message"`
+}
+
 type ActionResponse struct {
 	OK      bool          `json:"ok"`
 	Message string        `json:"message"`
 	State   StateResponse `json:"state"`
 	Results []ResultView  `json:"results,omitempty"`
+	// Prompts elenca le tracce che, una volta normalizzate, avrebbero tag
+	// sconosciuti: ProcessAll le restituisce qui (senza convertirle) perché la UI
+	// chieda all'utente come procedere, una alla volta, via ResolveTagPrompt.
+	Prompts []TagPromptView `json:"prompts,omitempty"`
+	// DownloadErrors elenca i video non scaricati (con dettaglio) dopo un
+	// DownloadPlaylist con errori, così la UI può mostrarli in un modale.
+	DownloadErrors []DownloadErrorView `json:"downloadErrors,omitempty"`
 }
 
 func NewApp() *App {
@@ -864,11 +899,22 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 	message, ok := a.performScan()
 	finalState := a.snapshotLocked()
 
+	// Dettaglio dei video non scaricati, per il modale in UI (vuoto => omesso).
+	dlErrors := make([]DownloadErrorView, 0, len(result.Failures))
+	for _, f := range result.Failures {
+		dlErrors = append(dlErrors, DownloadErrorView{
+			VideoID: f.VideoID,
+			Title:   f.Title,
+			URL:     f.URL,
+			Message: f.Message,
+		})
+	}
+
 	if canceled {
-		return ActionResponse{OK: ok, Message: "Download annullato. " + message, State: finalState}
+		return ActionResponse{OK: ok, Message: "Download annullato. " + message, State: finalState, DownloadErrors: dlErrors}
 	}
 	if result.Failed > 0 {
-		return ActionResponse{OK: false, Message: fmt.Sprintf("Download completato con %d errori.", result.Failed), State: finalState}
+		return ActionResponse{OK: false, Message: fmt.Sprintf("Download completato con %d errori.", result.Failed), State: finalState, DownloadErrors: dlErrors}
 	}
 	return ActionResponse{OK: ok, Message: message, State: finalState}
 }
@@ -969,19 +1015,43 @@ func (a *App) ProcessAll() ActionResponse {
 	defer endOp()
 
 	emitCtx := a.ctx
-	results, err := service.Process(files, rename.Options{
+
+	// Separa le tracce che, una volta normalizzate, avrebbero tag sconosciuti
+	// (titolo o artista) da quelle già a posto. Le seconde le convertiamo subito
+	// qui; per le prime NON blocchiamo nulla: le restituiamo alla UI come
+	// `prompts`, che chiederà all'utente come procedere (una alla volta) e
+	// risolverà ognuna con una chiamata a sé (ResolveTagPrompt).
+	var goodFiles []string
+	var prompts []TagPromptView
+	for _, p := range files {
+		title, artist, unknown := unknownTagFor(p, cfg)
+		if unknown {
+			name := filepath.Base(p)
+			prompts = append(prompts, TagPromptView{
+				Path:         p,
+				OriginalBase: parser.RemoveExtension(name),
+				Ext:          parser.Extension(name),
+				Title:        title,
+				Artist:       artist,
+			})
+			continue
+		}
+		goodFiles = append(goodFiles, p)
+	}
+
+	total := len(goodFiles)
+	done := 0
+	results, _ := service.Process(goodFiles, rename.Options{
 		DestinationFolder: destination,
 		DeleteOriginals:   deleteOriginals,
-		OnProgress: func(done, total int) {
+		OnProgress: func(_, _ int) {
+			done++
 			if emitCtx != nil {
 				wailsruntime.EventsEmit(emitCtx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
 			}
 		},
 		Cancelled: func() bool { return opCtx.Err() != nil },
 	})
-	if err != nil {
-		return ActionResponse{OK: false, Message: "Errore elaborazione: " + err.Error(), State: a.snapshotLocked()}
-	}
 	canceled := opCtx.Err() != nil
 
 	tagged, skipped, failed, canceledFiles := 0, 0, 0, 0
@@ -1001,30 +1071,17 @@ func (a *App) ProcessAll() ActionResponse {
 				tagged++
 			}
 		}
-		view := ResultView{
-			OldName:  filepath.Base(result.OldPath),
-			NewName:  result.NewName,
-			Tagged:   result.Tagged,
-			Skipped:  result.Skipped,
-			Failed:   result.Failed,
-			Canceled: result.Canceled,
-			Reason:   result.Reason,
-		}
-		if parser.Extension(result.NewName) == "mp3" {
-			view.MP3 = true
-			view.Title = parser.TagTitle(result.NewName, cfg.ArtistExceptions)
-			view.Artist = parser.TagArtist(result.NewName, cfg.ArtistExceptions)
-		}
-		views = append(views, view)
+		views = append(views, resultViewFor(result, cfg))
 	}
 	processed := len(results) - skipped - failed - canceledFiles
 
 	a.mu.Lock()
 	a.scanned = nil
 	a.currentTags = nil
-	// Da qui in avanti l'UI mostra "Avvia nuova scansione": ignoriamo gli eventi
-	// del watcher (compresi quelli auto-generati da questa elaborazione) fino
-	// alla prossima Scan/cambio cartella.
+	// Da qui in avanti l'UI mostra i risultati (poi "Avvia nuova scansione"):
+	// ignoriamo gli eventi del watcher (compresi quelli auto-generati da questa
+	// elaborazione, e da quella delle tracce da confermare) fino alla prossima
+	// Scan/cambio cartella.
 	a.watchPaused = true
 	if canceled {
 		a.addLogLocked(LogInfo, fmt.Sprintf("Elaborazione annullata: %d file elaborati (%d con tag MP3).", processed, tagged))
@@ -1041,6 +1098,9 @@ func (a *App) ProcessAll() ActionResponse {
 	if failed > 0 {
 		a.addLogLocked(LogError, fmt.Sprintf("%d file non elaborati per errori (dettagli nella tabella).", failed))
 	}
+	if len(prompts) > 0 && !canceled {
+		a.addLogLocked(LogInfo, fmt.Sprintf("%d tracce senza titolo/artista: in attesa di conferma.", len(prompts)))
+	}
 	state := a.snapshot()
 	a.mu.Unlock()
 
@@ -1050,6 +1110,7 @@ func (a *App) ProcessAll() ActionResponse {
 			Message: fmt.Sprintf("Elaborazione annullata: %d file elaborati.", processed),
 			State:   state,
 			Results: views,
+			Prompts: prompts,
 		}
 	}
 	if failed > 0 {
@@ -1058,9 +1119,106 @@ func (a *App) ProcessAll() ActionResponse {
 			Message: fmt.Sprintf("Elaborazione completata con %d errori.", failed),
 			State:   state,
 			Results: views,
+			Prompts: prompts,
 		}
 	}
-	return ActionResponse{OK: true, Message: "Elaborazione completata.", State: state, Results: views}
+	msg := "Elaborazione completata."
+	if len(prompts) > 0 {
+		msg = fmt.Sprintf("Elaborati %d file; %d tracce richiedono una scelta.", processed, len(prompts))
+	}
+	return ActionResponse{OK: true, Message: msg, State: state, Results: views, Prompts: prompts}
+}
+
+// resultViewFor costruisce la ResultView (per la tabella dei risultati) da un
+// esito di conversione, ricavando i tag scritti dal nuovo nome come
+// nell'anteprima. Condivisa da ProcessAll e ResolveTagPrompt.
+func resultViewFor(result rename.Result, cfg rules.Config) ResultView {
+	view := ResultView{
+		OldName:  filepath.Base(result.OldPath),
+		NewName:  result.NewName,
+		Tagged:   result.Tagged,
+		Skipped:  result.Skipped,
+		Failed:   result.Failed,
+		Canceled: result.Canceled,
+		Reason:   result.Reason,
+	}
+	if parser.Extension(result.NewName) == "mp3" {
+		view.MP3 = true
+		view.Title = parser.TagTitle(result.NewName, cfg.ArtistExceptions)
+		view.Artist = parser.TagArtist(result.NewName, cfg.ArtistExceptions)
+	}
+	return view
+}
+
+// unknownTagFor calcola i tag che verrebbero scritti per `path` a partire dal
+// nome normalizzato (nessun I/O) e indica se titolo o artista risulterebbero
+// "sconosciuti". Solo gli MP3 producono tag: per gli altri isUnknown è false.
+func unknownTagFor(path string, cfg rules.Config) (title, artist string, isUnknown bool) {
+	name := filepath.Base(path)
+	ext := parser.Extension(name)
+	if ext != "mp3" {
+		return "", "", false
+	}
+	preview := cfg.NormalizeFileBase(parser.RemoveExtension(name)) + "." + ext
+	title = parser.TagTitle(preview, cfg.ArtistExceptions)
+	artist = parser.TagArtist(preview, cfg.ArtistExceptions)
+	return title, artist, title == parser.UnknownTitle || artist == parser.UnknownArtist
+}
+
+// ResolveTagPrompt converte una singola traccia segnalata da ProcessAll come
+// avente tag sconosciuti, secondo la scelta dell'utente: useEdited=false
+// ("Salta") la converte col nome originale (i tag resteranno "sconosciuto");
+// useEdited=true ("Continua") usa editedBase come nuovo nome — normalizzato
+// dalle regole correnti e con i tag riestratti da esso. Restituisce l'esito
+// come singolo Result, che la UI aggiunge alla tabella dei risultati. Usa le
+// stesse opzioni (destinazione/eliminazione) persistite, già validate da
+// ProcessAll; non si blocca né attende nulla.
+func (a *App) ResolveTagPrompt(path string, useEdited bool, editedBase string) ActionResponse {
+	a.mu.Lock()
+	cfg := a.config
+	destSame := a.destSameAsSource
+	destFolder := a.destFolder
+	deleteOriginals := a.deleteOriginals
+	a.mu.Unlock()
+
+	destination := ""
+	if !destSame {
+		destination = destFolder
+	}
+
+	opts := rename.Options{DestinationFolder: destination, DeleteOriginals: deleteOriginals}
+	if useEdited {
+		if b := strings.TrimSpace(editedBase); b != "" {
+			opts.NameOverrides = map[string]string{path: b}
+		}
+	}
+
+	results, _ := rename.NewService(cfg).Process([]string{path}, opts)
+
+	views := make([]ResultView, 0, len(results))
+	for _, r := range results {
+		views = append(views, resultViewFor(r, cfg))
+	}
+
+	origBase := parser.RemoveExtension(filepath.Base(path))
+	a.mu.Lock()
+	switch {
+	case len(results) == 0:
+		// Percorso non supportato/estensione ignota: nessun esito da riportare.
+	case results[0].Failed:
+		a.addLogLocked(LogError, fmt.Sprintf("Traccia %q non elaborata: %s", origBase, results[0].Reason))
+	case results[0].Skipped:
+		a.addLogLocked(LogInfo, fmt.Sprintf("Traccia %q saltata: %s", origBase, results[0].Reason))
+	case useEdited:
+		a.addLogLocked(LogSuccess, fmt.Sprintf("Traccia rinominata in %q.", parser.RemoveExtension(results[0].NewName)))
+	default:
+		a.addLogLocked(LogInfo, fmt.Sprintf("Traccia %q convertita col nome originale.", origBase))
+	}
+	state := a.snapshot()
+	a.mu.Unlock()
+
+	ok := len(results) > 0 && !results[0].Failed
+	return ActionResponse{OK: ok, State: state, Results: views}
 }
 
 // ClearTags cancella TUTTI i tag ID3 dagli MP3 attualmente scansionati, in posto

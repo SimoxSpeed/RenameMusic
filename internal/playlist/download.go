@@ -45,6 +45,17 @@ type Options struct {
 type Result struct {
 	Downloaded int
 	Failed     int
+	// Failures elenca i video il cui download è fallito, con il dettaglio
+	// dell'errore, così la UI può mostrarli in un modale dedicato.
+	Failures []Failure
+}
+
+// Failure descrive il fallimento del download di un singolo video.
+type Failure struct {
+	VideoID string
+	Title   string // titolo dedotto in fase di enumerazione (può essere vuoto)
+	URL     string
+	Message string // messaggio d'errore più significativo estratto da yt-dlp
 }
 
 // IsAvailable indica se `path` punta a un file yt-dlp utilizzabile (esiste ed
@@ -133,11 +144,11 @@ func Install(destPath string) error {
 // su tasklist), ogni processo yt-dlp viene atteso esplicitamente con
 // cmd.Run(): Download ritorna solo quando TUTTI i download sono conclusi.
 func Download(opts Options) (Result, error) {
-	ids, err := listVideoIDs(opts.YtDlpPath, opts.URL)
+	videos, err := listVideos(opts.YtDlpPath, opts.URL)
 	if err != nil {
 		return Result{}, err
 	}
-	total := len(ids)
+	total := len(videos)
 	if total == 0 {
 		return Result{}, fmt.Errorf("nessun video trovato nella playlist")
 	}
@@ -160,20 +171,30 @@ func Download(opts Options) (Result, error) {
 		downloaded int32
 		failed     int32
 		done       int32
+		mu         sync.Mutex
+		failures   []Failure
 	)
 
-	for _, id := range ids {
+	for _, v := range videos {
 		if opts.Cancelled != nil && opts.Cancelled() {
 			break
 		}
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(videoID string) {
+		go func(info videoInfo) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			if err := downloadOne(opts.YtDlpPath, opts.Folder, videoID); err != nil {
+			if err := downloadOne(opts.YtDlpPath, opts.Folder, info.id); err != nil {
 				atomic.AddInt32(&failed, 1)
+				mu.Lock()
+				failures = append(failures, Failure{
+					VideoID: info.id,
+					Title:   info.title,
+					URL:     "https://www.youtube.com/watch?v=" + info.id,
+					Message: err.Error(),
+				})
+				mu.Unlock()
 			} else {
 				atomic.AddInt32(&downloaded, 1)
 			}
@@ -181,36 +202,50 @@ func Download(opts Options) (Result, error) {
 			if opts.OnProgress != nil {
 				opts.OnProgress(int(d), total)
 			}
-		}(id)
+		}(v)
 	}
 
 	wg.Wait()
-	return Result{Downloaded: int(downloaded), Failed: int(failed)}, nil
+	return Result{Downloaded: int(downloaded), Failed: int(failed), Failures: failures}, nil
 }
 
-// listVideoIDs enumera gli ID video di una playlist senza scaricare nulla
-// (--flat-playlist --print id), un ID per riga in stdout.
-func listVideoIDs(ytdlp, url string) ([]string, error) {
-	cmd := exec.Command(ytdlp, "--flat-playlist", "--print", "id", url)
+// videoInfo è l'ID + titolo di un video enumerato dalla playlist.
+type videoInfo struct {
+	id    string
+	title string
+}
+
+// listVideos enumera i video di una playlist senza scaricare nulla
+// (--flat-playlist), stampando ID e titolo separati da un tab: una riga per
+// video. Il titolo serve solo a rendere leggibile l'eventuale elenco di errori.
+func listVideos(ytdlp, url string) ([]videoInfo, error) {
+	cmd := exec.Command(ytdlp, "--flat-playlist", "--print", "%(id)s\t%(title)s", url)
 	hideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("estrazione playlist fallita: %w", err)
 	}
 
-	var ids []string
+	var videos []videoInfo
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			ids = append(ids, line)
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
 		}
+		id, title, _ := strings.Cut(line, "\t")
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		videos = append(videos, videoInfo{id: id, title: strings.TrimSpace(title)})
 	}
-	return ids, nil
+	return videos, nil
 }
 
 // downloadOne scarica ed estrae in mp3 un singolo video, con nome file basato
-// sul titolo (stesse opzioni dello script bat originale).
+// sul titolo (stesse opzioni dello script bat originale). In caso di errore
+// cattura lo stderr di yt-dlp e ne restituisce il messaggio più significativo.
 func downloadOne(ytdlp, folder, videoID string) error {
 	out := filepath.Join(folder, "%(title)s.%(ext)s")
 	cmd := exec.Command(ytdlp,
@@ -220,5 +255,36 @@ func downloadOne(ytdlp, folder, videoID string) error {
 		"https://www.youtube.com/watch?v="+videoID,
 	)
 	hideWindow(cmd)
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := extractYtDlpError(stderr.String()); msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
+	}
+	return nil
+}
+
+// extractYtDlpError ricava dallo stderr di yt-dlp il messaggio d'errore più
+// utile: preferisce l'ultima riga che inizia con "ERROR:", altrimenti l'ultima
+// riga non vuota. Restituisce "" se lo stderr è vuoto.
+func extractYtDlpError(stderr string) string {
+	var last, errLine string
+	scanner := bufio.NewScanner(strings.NewReader(stderr))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		l := strings.TrimSpace(scanner.Text())
+		if l == "" {
+			continue
+		}
+		last = l
+		if strings.HasPrefix(l, "ERROR:") {
+			errLine = l
+		}
+	}
+	if errLine != "" {
+		return errLine
+	}
+	return last
 }
