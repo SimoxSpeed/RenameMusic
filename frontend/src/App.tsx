@@ -199,21 +199,25 @@ function Tooltip({ label, children, grow }: { label: string; children: ReactNode
     )
 }
 
-// PlaylistSelect: dropdown custom per la scelta della playlist da scaricare.
-// Il <select> nativo apre una lista disegnata dal WebView (aspetto "di sistema",
-// non stilabile): qui la sostituiamo con una lista nostra (angoli arrotondati,
-// ombra, colori del tema) mantenendo il trigger identico alla vecchia select
-// chiusa. Chiude su click-fuori ed Esc.
-function PlaylistSelect({
+// Select: dropdown custom riutilizzabile. Il <select> nativo apre una lista
+// disegnata dal WebView (aspetto "di sistema", non stilabile): qui la
+// sostituiamo con un trigger + lista nostra (angoli arrotondati, ombra, colori
+// del tema, caret coerente) usati in modo uniforme in tutta l'app — download
+// playlist e select delle impostazioni. Chiude su click-fuori ed Esc.
+function Select({
     value,
     options,
     onChange,
     disabled,
+    placeholder,
+    className,
 }: {
     value: string
-    options: { name: string }[]
-    onChange: (name: string) => void
+    options: { value: string; label: string }[]
+    onChange: (value: string) => void
     disabled?: boolean
+    placeholder?: string
+    className?: string
 }) {
     const [open, setOpen] = useState(false)
     const wrapRef = useRef<HTMLDivElement>(null)
@@ -235,43 +239,70 @@ function PlaylistSelect({
         }
     }, [open])
 
-    const empty = options.length === 0
-    const label = empty ? 'Nessuna playlist' : value || 'Seleziona playlist'
+    const selected = options.find((o) => o.value === value)
+    const label = selected ? selected.label : placeholder ?? ''
 
     return (
-        <div className="playlist-select-wrap" ref={wrapRef}>
+        <div className={'select-wrap' + (className ? ' ' + className : '')} ref={wrapRef}>
             <button
                 type="button"
-                className="playlist-select"
+                className="select-trigger"
                 aria-haspopup="listbox"
                 aria-expanded={open}
                 disabled={disabled}
                 onClick={() => setOpen((o) => !o)}
             >
-                <span className="playlist-select-value">{label}</span>
-                <span className={'playlist-select-caret' + (open ? ' is-open' : '')}>
+                <span className="select-value">{label}</span>
+                <span className={'select-caret' + (open ? ' is-open' : '')}>
                     <CaretIcon />
                 </span>
             </button>
-            {open && !empty && (
-                <ul className="playlist-menu" role="listbox">
-                    {options.map((p) => (
+            {open && options.length > 0 && (
+                <ul className="select-menu" role="listbox">
+                    {options.map((o) => (
                         <li
-                            key={p.name}
+                            key={o.value}
                             role="option"
-                            aria-selected={p.name === value}
-                            className={'playlist-option' + (p.name === value ? ' is-selected' : '')}
+                            aria-selected={o.value === value}
+                            className={'select-option' + (o.value === value ? ' is-selected' : '')}
                             onClick={() => {
-                                onChange(p.name)
+                                onChange(o.value)
                                 setOpen(false)
                             }}
                         >
-                            {p.name}
+                            {o.label}
                         </li>
                     ))}
                 </ul>
             )}
         </div>
+    )
+}
+
+// PlaylistSelect: la Select per la scelta della playlist da scaricare. Gestisce
+// lo stato "vuoto" (nessuna playlist salvata) disabilitando il trigger e usando
+// il nome come value/label.
+function PlaylistSelect({
+    value,
+    options,
+    onChange,
+    disabled,
+}: {
+    value: string
+    options: { name: string }[]
+    onChange: (name: string) => void
+    disabled?: boolean
+}) {
+    const empty = options.length === 0
+    return (
+        <Select
+            className="select-playlist"
+            value={value}
+            options={options.map((p) => ({ value: p.name, label: p.name }))}
+            onChange={onChange}
+            disabled={disabled || empty}
+            placeholder={empty ? 'Nessuna playlist' : 'Seleziona playlist'}
+        />
     )
 }
 
@@ -456,7 +487,7 @@ function cloneConfig(cfg: rules.Config): rules.Config {
         supportedExtensions: [...(cfg.supportedExtensions ?? [])],
         occurrenciesToRemove: [...(cfg.occurrenciesToRemove ?? [])],
         occurrenciesToReplaceWithFt: [...(cfg.occurrenciesToReplaceWithFt ?? [])],
-        replacements: (cfg.replacements ?? []).map((r) => ({ from: r.from, to: r.to })),
+        replacements: (cfg.replacements ?? []).map((r) => ({ from: r.from, to: r.to, scope: r.scope })),
         artistExceptions: [...(cfg.artistExceptions ?? [])],
     } as rules.Config
 }
@@ -943,7 +974,7 @@ function App() {
         setDraft({ ...draft, [key]: textToList(text) } as rules.Config)
     }
 
-    function updateReplacement(index: number, field: 'from' | 'to', value: string) {
+    function updateReplacement(index: number, field: 'from' | 'to' | 'scope', value: string) {
         if (!draft) return
         const replacements = (draft.replacements ?? []).map((r, i) =>
             i === index ? { ...r, [field]: value } : r,
@@ -1704,6 +1735,19 @@ function App() {
                                         onChange={(e) => updateReplacement(i, 'to', e.target.value)}
                                         disabled={busy}
                                     />
+                                    <Tooltip label="Dove applicare la sostituzione: su tutto il nome, solo sulla parte artista (prima di « - ») o solo sul titolo (dopo « - »)">
+                                        <Select
+                                            className="select-scope"
+                                            value={r.scope ?? ''}
+                                            options={[
+                                                { value: '', label: 'Tutto' },
+                                                { value: 'artist', label: 'Solo artista' },
+                                                { value: 'title', label: 'Solo titolo' },
+                                            ]}
+                                            onChange={(v) => updateReplacement(i, 'scope', v)}
+                                            disabled={busy}
+                                        />
+                                    </Tooltip>
                                     <button
                                         className="ghost small danger"
                                         onClick={() => removeReplacement(i)}

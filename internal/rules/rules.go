@@ -10,11 +10,24 @@ const (
 	DefaultDestinationFolder = `D:\Musica\Musica Convertita`
 )
 
+// Scope indica su quale parte del nome ("Artista - Titolo") una sostituzione va
+// applicata. Stringa vuota = tutto: è il default e mantiene la retrocompatibilità
+// con i config.json esistenti che non hanno il campo.
+type Scope string
+
+const (
+	ScopeAll    Scope = ""       // tutto il nome (default)
+	ScopeArtist Scope = "artist" // solo la parte artista (prima di " - ")
+	ScopeTitle  Scope = "title"  // solo la parte titolo (dopo " - ")
+)
+
 // Replacement è una sostituzione testuale generica From -> To,
-// applicata in ordine dalla pipeline di normalizzazione.
+// applicata in ordine dalla pipeline di normalizzazione. Scope limita la
+// sostituzione alla sola parte artista o titolo del nome (vuoto = tutto).
 type Replacement struct {
-	From string `json:"from"`
-	To   string `json:"to"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Scope Scope  `json:"scope,omitempty"`
 }
 
 // Config raccoglie tutte le regole configurabili in-sessione.
@@ -98,7 +111,7 @@ func FactoryConfig() Config {
 			{From: " Re-Crank", To: " Remix"},
 			{From: "tha Supreme", To: "thasup"},
 			{From: "Prod.", To: "prod."},
-			{From: " X ", To: " x "},
+			{From: " X ", To: " x ", Scope: ScopeArtist},
 		},
 		ArtistExceptions: []string{
 			"Jkyl & Hyde",
@@ -150,9 +163,36 @@ func (c Config) replaceFt(title string) string {
 
 func (c Config) applyReplacements(title string) string {
 	for _, r := range c.Replacements {
-		title = strings.ReplaceAll(title, r.From, r.To)
+		switch r.Scope {
+		case ScopeArtist, ScopeTitle:
+			title = applyScopedReplacement(title, r)
+		default:
+			title = strings.ReplaceAll(title, r.From, r.To)
+		}
 	}
 	return title
+}
+
+// applyScopedReplacement applica una sostituzione solo alla parte artista o
+// titolo del nome, individuate dal separatore " - " (artista prima, titolo dopo).
+// Se il separatore non c'è non sappiamo distinguere le due parti, quindi la
+// sostituzione con scope non si applica. Si usa il PRIMO " - " come confine,
+// coerentemente con l'estrazione dei tag nel parser.
+func applyScopedReplacement(name string, r Replacement) string {
+	const sep = " - "
+	idx := strings.Index(name, sep)
+	if idx < 0 {
+		return name
+	}
+	artist := name[:idx]
+	titlePart := name[idx+len(sep):]
+	switch r.Scope {
+	case ScopeArtist:
+		artist = strings.ReplaceAll(artist, r.From, r.To)
+	case ScopeTitle:
+		titlePart = strings.ReplaceAll(titlePart, r.From, r.To)
+	}
+	return artist + sep + titlePart
 }
 
 func replaceFtParenthesis(title string) string {

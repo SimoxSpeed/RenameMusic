@@ -973,7 +973,7 @@ tr.changed td {
 
 .replacement-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
@@ -1049,35 +1049,40 @@ tr.changed td {
     flex-basis: 100%;
 }
 
-/* Wrapper del dropdown playlist: contesto di posizionamento per la lista, che
-   viene ancorata subito sotto il trigger. */
-.playlist-select-wrap {
+/* Select custom riutilizzabile (component Select): sostituisce il <select>
+   nativo — non stilabile nel WebView e con caret "di sistema" attaccato al
+   bordo — con un trigger e una lista propri, usati in modo UNIFORME ovunque
+   (download playlist e select delle impostazioni). Le sole differenze tra usi
+   sono le larghezze, definite dai modificatori .select-playlist / .select-scope. */
+
+/* Wrapper: contesto di posizionamento per la lista, ancorata sotto il trigger. */
+.select-wrap {
     position: relative;
     display: inline-flex;
 }
 
-/* Trigger: replica l'aspetto della vecchia <select> chiusa (bordo, raggio,
-   sfondo input, testo a peso normale) con la freccia a destra. */
-.playlist-select {
+/* Trigger: aspetto di una <select> chiusa (bordo, raggio, sfondo input, testo a
+   peso normale) con il caret a destra. Il padding destro è più ampio del
+   sinistro così il caret non resta incollato al bordo. */
+.select-trigger {
     width: auto;
-    min-width: 160px;
-    max-width: 220px;
+    min-width: 130px;
     min-height: 38px;
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 10px;
+    padding: 8px 12px 8px 10px;
     background: var(--input-bg);
     font-weight: 400;
     text-align: left;
 }
 
-.playlist-select:active:not(:disabled) {
+.select-trigger:active:not(:disabled) {
     transform: none;
 }
 
-.playlist-select-value {
+.select-value {
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -1085,19 +1090,20 @@ tr.changed td {
     white-space: nowrap;
 }
 
-.playlist-select-caret {
+.select-caret {
     display: inline-flex;
+    flex: none;
     color: var(--muted);
     transition: transform 0.15s ease;
 }
 
-.playlist-select-caret.is-open {
+.select-caret.is-open {
     transform: rotate(180deg);
 }
 
 /* Lista custom: sostituisce il menu "di sistema" del WebView con uno stile
    coerente con l'app — angoli arrotondati, ombra e colori del tema. */
-.playlist-menu {
+.select-menu {
     position: absolute;
     top: calc(100% + 4px);
     left: 0;
@@ -1115,7 +1121,7 @@ tr.changed td {
     box-shadow: var(--shadow);
 }
 
-.playlist-option {
+.select-option {
     padding: 7px 10px;
     border-radius: 6px;
     color: var(--text);
@@ -1126,13 +1132,19 @@ tr.changed td {
     cursor: pointer;
 }
 
-.playlist-option:hover {
+.select-option:hover {
     background: var(--panel-alt);
 }
 
-.playlist-option.is-selected {
+.select-option.is-selected {
     color: var(--primary);
     font-weight: 600;
+}
+
+/* Larghezze specifiche per contesto d'uso. */
+.select-playlist .select-trigger {
+    min-width: 160px;
+    max-width: 220px;
 }
 
 /* Pannello di gestione yt-dlp (in cima alla sezione "Download da YouTube"):

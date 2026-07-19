@@ -240,6 +240,7 @@ export namespace rules {
 	export class Replacement {
 	    from: string;
 	    to: string;
+	    scope?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Replacement(source);
@@ -249,6 +250,7 @@ export namespace rules {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.from = source["from"];
 	        this.to = source["to"];
+	        this.scope = source["scope"];
 	    }
 	}
 	export class Config {

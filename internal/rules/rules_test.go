@@ -11,6 +11,32 @@ func TestNormalizeFileBaseKeepsJavaRuleOrder(t *testing.T) {
 	}
 }
 
+func TestScopedReplacementArtistOnly(t *testing.T) {
+	cfg := FactoryConfig() // " X " -> " x " ha Scope ScopeArtist
+
+	// " X " nella parte artista (prima di " - ") va convertita.
+	if got := cfg.NormalizeFileBase("A X B - Titolo"); got != "A x B - Titolo" {
+		t.Fatalf("artista: got %q", got)
+	}
+	// " X " nella parte titolo (dopo " - ") NON va convertita.
+	if got := cfg.NormalizeFileBase("Artista - A X B"); got != "Artista - A X B" {
+		t.Fatalf("titolo: got %q", got)
+	}
+	// Senza separatore " - " non si sa distinguere le parti: nessuna conversione.
+	if got := cfg.NormalizeFileBase("A X B"); got != "A X B" {
+		t.Fatalf("senza separatore: got %q", got)
+	}
+}
+
+func TestScopedReplacementTitleOnly(t *testing.T) {
+	cfg := FactoryConfig()
+	cfg.Replacements = []Replacement{{From: " X ", To: " x ", Scope: ScopeTitle}}
+
+	if got := cfg.NormalizeFileBase("A X B - C X D"); got != "A X B - C x D" {
+		t.Fatalf("solo titolo: got %q", got)
+	}
+}
+
 func TestNormalizeFileBaseFtParenthesis(t *testing.T) {
 	input := "Artist - Title (ft Guest)"
 	want := "Artist - Title ft Guest"
