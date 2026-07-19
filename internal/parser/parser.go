@@ -25,10 +25,14 @@ func RemoveExtension(name string) string {
 	return name[:idx]
 }
 
-// TagArtist deduce l'artista (o gli artisti) dal nome file. `exceptions` elenca i
-// nomi d'arte con " & "/" x " che non vanno spezzati (vedi ReplaceWithComma).
-func TagArtist(fileName string, exceptions []string) string {
+// TagArtist deduce l'artista (o gli artisti) dal nome file. `ftAlias` è il
+// marcatore di featuring configurato (di norma "ft"): cercato come " alias ",
+// deve combaciare con quello scritto da rules.NormalizeFileBase, altrimenti gli
+// artisti in featuring non verrebbero riconosciuti. `exceptions` elenca i nomi
+// d'arte con " & "/" x " che non vanno spezzati (vedi ReplaceWithComma).
+func TagArtist(fileName, ftAlias string, exceptions []string) string {
 	title := RemoveExtension(fileName)
+	ft := " " + ftAlias + " "
 	artists := ""
 
 	if IsRemixed(title) {
@@ -43,14 +47,14 @@ func TagArtist(fileName string, exceptions []string) string {
 
 	if strings.Contains(title, " - ") {
 		artists += ReplaceWithComma(javaSplit(title, " - ")[0], exceptions)
-		if strings.Contains(title, " ft ") {
+		if strings.Contains(title, ft) {
 			artists += ", "
 			if IsRemixed(title) {
-				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " (")), exceptions)
-			} else if vipAfterFt(title) {
-				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, strings.LastIndex(title, " VIP")), exceptions)
+				artists += ReplaceWithComma(substring(title, strings.Index(title, ft)+len(ft), strings.LastIndex(title, " (")), exceptions)
+			} else if vipAfterFt(title, ft) {
+				artists += ReplaceWithComma(substring(title, strings.Index(title, ft)+len(ft), strings.LastIndex(title, " VIP")), exceptions)
 			} else {
-				artists += ReplaceWithComma(substring(title, strings.Index(title, " ft ")+4, len(title)), exceptions)
+				artists += ReplaceWithComma(substring(title, strings.Index(title, ft)+len(ft), len(title)), exceptions)
 			}
 		}
 	} else {
@@ -60,22 +64,23 @@ func TagArtist(fileName string, exceptions []string) string {
 	return removeDuplicates(artists)
 }
 
-// TagTitle deduce il titolo dal nome file. `exceptions` come in TagArtist.
-func TagTitle(fileName string, exceptions []string) string {
+// TagTitle deduce il titolo dal nome file. `ftAlias`/`exceptions` come in TagArtist.
+func TagTitle(fileName, ftAlias string, exceptions []string) string {
 	title := RemoveExtension(fileName)
+	ft := " " + ftAlias + " "
 	if strings.Contains(title, " - ") {
 		parts := javaSplit(title, " - ")
 		if len(parts) < 2 {
 			return UnknownTitle
 		}
 		tagTitle := parts[1]
-		if strings.Contains(tagTitle, " ft ") {
+		if strings.Contains(tagTitle, ft) {
 			if IsRemixed(tagTitle) {
-				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " (")), exceptions)
-				return substring(tagTitle, 0, strings.Index(tagTitle, " ft ")) + " ft " + ret + substring(tagTitle, strings.LastIndex(tagTitle, " ("), len(tagTitle))
-			} else if vipAfterFt(tagTitle) {
-				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, " ft ")+4, strings.LastIndex(tagTitle, " VIP")), exceptions)
-				return substring(tagTitle, 0, strings.Index(tagTitle, " ft ")) + " ft " + ret + " VIP"
+				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, ft)+len(ft), strings.LastIndex(tagTitle, " (")), exceptions)
+				return substring(tagTitle, 0, strings.Index(tagTitle, ft)) + ft + ret + substring(tagTitle, strings.LastIndex(tagTitle, " ("), len(tagTitle))
+			} else if vipAfterFt(tagTitle, ft) {
+				ret := ReplaceWithComma(substring(tagTitle, strings.Index(tagTitle, ft)+len(ft), strings.LastIndex(tagTitle, " VIP")), exceptions)
+				return substring(tagTitle, 0, strings.Index(tagTitle, ft)) + ft + ret + " VIP"
 			}
 			return tagTitle
 		}
@@ -88,13 +93,14 @@ func IsVIP(title string) bool {
 	return strings.Contains(title, " VIP ")
 }
 
-// vipAfterFt indica se un marcatore " VIP" compare DOPO " ft ": solo in quel caso
-// "VIP" va trattato come suffisso finale (dopo gli artisti featuring). Se "VIP"
-// fa parte del titolo prima di "ft" (es. "Mock VIP ft Jabra") non si applica.
-func vipAfterFt(s string) bool {
-	ft := strings.Index(s, " ft ")
+// vipAfterFt indica se un marcatore " VIP" compare DOPO il featuring (`ft`, cioè
+// " alias "): solo in quel caso "VIP" va trattato come suffisso finale (dopo gli
+// artisti featuring). Se "VIP" fa parte del titolo prima del featuring (es. "Mock
+// VIP ft Jabra") non si applica.
+func vipAfterFt(s, ft string) bool {
+	ftIdx := strings.Index(s, ft)
 	vip := strings.LastIndex(s, " VIP")
-	return ft >= 0 && vip > ft
+	return ftIdx >= 0 && vip > ftIdx
 }
 
 func IsRemixed(title string) bool {

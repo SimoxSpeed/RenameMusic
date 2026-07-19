@@ -311,9 +311,10 @@ func (s *Service) WriteTags(path string) error {
 	if parser.Extension(name) != "mp3" {
 		return nil
 	}
+	alias := s.Config.FtDestination()
 	exceptions := s.Config.ArtistExceptions
-	title := parser.TagTitle(name, exceptions)
-	artist := parser.TagArtist(name, exceptions)
+	title := parser.TagTitle(name, alias, exceptions)
+	artist := parser.TagArtist(name, alias, exceptions)
 
 	if err := tags.WriteMP3Tags(path, title, artist); err != nil {
 		return err

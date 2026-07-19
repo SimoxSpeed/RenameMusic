@@ -960,6 +960,38 @@ tr.changed td {
     margin-top: 16px;
 }
 
+/* Microsezione "Featuring": alias di destinazione + occorrenze da sostituire.
+   È in cima alle regole; l'alias è un campo stretto, l'elenco occupa il resto
+   della riga. Su schermi stretti vanno a capo. Le label ereditano
+   flex-direction:column da .settings. */
+.ft-alias-body {
+    display: grid;
+    grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+}
+
+/* L'alias è breve (poche lettere): l'input non deve allargarsi oltre il minimo. */
+.ft-alias-dest input {
+    max-width: 150px;
+}
+
+@media (max-width: 640px) {
+    .ft-alias-body {
+        grid-template-columns: 1fr;
+    }
+    .ft-alias-dest input {
+        max-width: none;
+    }
+}
+
+/* Divisore sottile tra la microsezione "Featuring" e le altre regole. */
+.settings-divider {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 16px 0;
+}
+
 .replacements-head {
     display: flex;
     align-items: center;

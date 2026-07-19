@@ -46,6 +46,25 @@ func TestNormalizeFileBaseFtParenthesis(t *testing.T) {
 	}
 }
 
+func TestNormalizeFileBaseCustomFtAlias(t *testing.T) {
+	cfg := FactoryConfig()
+	cfg.FtAlias = "feat"
+
+	// Sia le occorrenze normali sia la forma "(ft ...)" usano l'alias scelto.
+	if got := cfg.NormalizeFileBase("Artist - Title feat. Guest"); got != "Artist - Title feat Guest" {
+		t.Fatalf("occorrenza: got %q", got)
+	}
+	if got := cfg.NormalizeFileBase("Artist - Title (ft. Guest)"); got != "Artist - Title feat Guest" {
+		t.Fatalf("(ft: got %q", got)
+	}
+
+	// Alias vuoto => si torna a "ft".
+	cfg.FtAlias = "   "
+	if got := cfg.NormalizeFileBase("Artist - Title feat. Guest"); got != "Artist - Title ft Guest" {
+		t.Fatalf("alias vuoto: got %q", got)
+	}
+}
+
 func TestNormalizeConvertsTypographicDashAndW(t *testing.T) {
 	cfg := FactoryConfig()
 	if got := cfg.NormalizeFileBase("Artista – Titolo"); got != "Artista - Titolo" {

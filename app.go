@@ -1144,8 +1144,8 @@ func resultViewFor(result rename.Result, cfg rules.Config) ResultView {
 	}
 	if parser.Extension(result.NewName) == "mp3" {
 		view.MP3 = true
-		view.Title = parser.TagTitle(result.NewName, cfg.ArtistExceptions)
-		view.Artist = parser.TagArtist(result.NewName, cfg.ArtistExceptions)
+		view.Title = parser.TagTitle(result.NewName, cfg.FtDestination(), cfg.ArtistExceptions)
+		view.Artist = parser.TagArtist(result.NewName, cfg.FtDestination(), cfg.ArtistExceptions)
 	}
 	return view
 }
@@ -1160,8 +1160,8 @@ func unknownTagFor(path string, cfg rules.Config) (title, artist string, isUnkno
 		return "", "", false
 	}
 	preview := cfg.NormalizeFileBase(parser.RemoveExtension(name)) + "." + ext
-	title = parser.TagTitle(preview, cfg.ArtistExceptions)
-	artist = parser.TagArtist(preview, cfg.ArtistExceptions)
+	title = parser.TagTitle(preview, cfg.FtDestination(), cfg.ArtistExceptions)
+	artist = parser.TagArtist(preview, cfg.FtDestination(), cfg.ArtistExceptions)
 	return title, artist, title == parser.UnknownTitle || artist == parser.UnknownArtist
 }
 
@@ -1476,8 +1476,8 @@ func (a *App) snapshot() StateResponse {
 			current := a.currentTags[path]
 			view.Title = current.Title
 			view.Artist = current.Artist
-			view.TitlePreview = parser.TagTitle(preview, a.config.ArtistExceptions)
-			view.ArtistPreview = parser.TagArtist(preview, a.config.ArtistExceptions)
+			view.TitlePreview = parser.TagTitle(preview, a.config.FtDestination(), a.config.ArtistExceptions)
+			view.ArtistPreview = parser.TagArtist(preview, a.config.FtDestination(), a.config.ArtistExceptions)
 		}
 		files = append(files, view)
 	}
@@ -1526,6 +1526,7 @@ func normalizeConfig(cfg rules.Config) rules.Config {
 	cfg.SupportedExtensions = cleanList(cfg.SupportedExtensions)
 	cfg.OccurrenciesToRemove = cleanList(cfg.OccurrenciesToRemove)
 	cfg.OccurrenciesToReplaceWithFt = cleanList(cfg.OccurrenciesToReplaceWithFt)
+	cfg.FtAlias = strings.TrimSpace(cfg.FtAlias)
 	cfg.ArtistExceptions = cleanList(cfg.ArtistExceptions)
 
 	replacements := make([]rules.Replacement, 0, len(cfg.Replacements))

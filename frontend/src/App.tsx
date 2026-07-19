@@ -487,6 +487,7 @@ function cloneConfig(cfg: rules.Config): rules.Config {
         supportedExtensions: [...(cfg.supportedExtensions ?? [])],
         occurrenciesToRemove: [...(cfg.occurrenciesToRemove ?? [])],
         occurrenciesToReplaceWithFt: [...(cfg.occurrenciesToReplaceWithFt ?? [])],
+        ftAlias: cfg.ftAlias,
         replacements: (cfg.replacements ?? []).map((r) => ({ from: r.from, to: r.to, scope: r.scope })),
         artistExceptions: [...(cfg.artistExceptions ?? [])],
     } as rules.Config
@@ -972,6 +973,11 @@ function App() {
     ) {
         if (!draft) return
         setDraft({ ...draft, [key]: textToList(text) } as rules.Config)
+    }
+
+    function updateFtAlias(value: string) {
+        if (!draft) return
+        setDraft({ ...draft, ftAlias: value } as rules.Config)
     }
 
     function updateReplacement(index: number, field: 'from' | 'to' | 'scope', value: string) {
@@ -1670,9 +1676,37 @@ function App() {
                         <section className="settings">
                         <h2>Regole di rinomina (salvate su disco)</h2>
 
+                        <div className="ft-alias">
+                            <div className="ft-alias-body">
+                                <label className="ft-alias-dest">
+                                    <span>Alias di destinazione</span>
+                                    <input
+                                        type="text"
+                                        placeholder="ft"
+                                        value={draft.ftAlias ?? ''}
+                                        onChange={(e) => updateFtAlias(e.target.value)}
+                                        disabled={busy}
+                                    />
+                                </label>
+                                <label className="ft-alias-sources">
+                                    <span>Occorrenze da sostituire</span>
+                                    <textarea
+                                        rows={6}
+                                        value={listToText(draft.occurrenciesToReplaceWithFt)}
+                                        onChange={(e) =>
+                                            updateDraftList('occurrenciesToReplaceWithFt', e.target.value)
+                                        }
+                                        disabled={busy}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+
+                        <hr className="settings-divider" />
+
                         <div className="settings-grid">
                             <label>
-                                <span>Estensioni supportate (una per riga)</span>
+                                <span>Estensioni supportate</span>
                                 <textarea
                                     rows={6}
                                     value={listToText(draft.supportedExtensions)}
@@ -1681,7 +1715,7 @@ function App() {
                                 />
                             </label>
                             <label>
-                                <span>Occorrenze da rimuovere (una per riga)</span>
+                                <span>Occorrenze da rimuovere</span>
                                 <textarea
                                     rows={6}
                                     value={listToText(draft.occurrenciesToRemove)}
@@ -1690,18 +1724,7 @@ function App() {
                                 />
                             </label>
                             <label>
-                                <span>Alias di "ft" (una per riga)</span>
-                                <textarea
-                                    rows={6}
-                                    value={listToText(draft.occurrenciesToReplaceWithFt)}
-                                    onChange={(e) =>
-                                        updateDraftList('occurrenciesToReplaceWithFt', e.target.value)
-                                    }
-                                    disabled={busy}
-                                />
-                            </label>
-                            <label>
-                                <span>Nomi d'arte da non separare (una per riga)</span>
+                                <span>Nomi d'arte da non separare</span>
                                 <textarea
                                     rows={6}
                                     value={listToText(draft.artistExceptions)}

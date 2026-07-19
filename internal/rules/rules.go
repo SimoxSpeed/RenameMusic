@@ -31,14 +31,23 @@ type Replacement struct {
 }
 
 // Config raccoglie tutte le regole configurabili in-sessione.
-// I passi strutturali (rimozione di [...], collapse spazi, trim,
-// dash iniziale, "(ft" -> "ft") restano fissi in NormalizeFileBase.
+// I passi strutturali (rimozione di [...], collapse spazi, trim, dash iniziale,
+// normalizzazione di "(ft ...)") restano fissi in NormalizeFileBase; l'alias di
+// destinazione del featuring è invece configurabile via FtAlias.
 type Config struct {
 	StartFolder                 string        `json:"startFolder"`
 	SupportedExtensions         []string      `json:"supportedExtensions"`
 	OccurrenciesToRemove        []string      `json:"occurrenciesToRemove"`
 	OccurrenciesToReplaceWithFt []string      `json:"occurrenciesToReplaceWithFt"`
 	Replacements                []Replacement `json:"replacements"`
+
+	// FtAlias è l'alias di DESTINAZIONE del featuring: tutte le occorrenze in
+	// OccurrenciesToReplaceWithFt vengono sostituite con questo (default "ft").
+	// È anche il marcatore che il parser cerca per separare gli artisti in
+	// featuring dai nomi normalizzati, quindi cambiandolo cambia sia il nome file
+	// sia l'estrazione dei tag. Vuoto = "ft" (vedi FtDestination), così i
+	// config.json esistenti senza il campo restano retrocompatibili.
+	FtAlias string `json:"ftAlias"`
 
 	// ArtistExceptions elenca i nomi d'arte che contengono " & " o " x " e che NON
 	// vanno spezzati in più artisti quando si deducono i tag (es. "Jkyl & Hyde").
@@ -100,6 +109,7 @@ func FactoryConfig() Config {
 			"ft.", "Ft.", "FT.",
 			"feat", "Feat", "FEAT",
 		},
+		FtAlias: "ft",
 		Replacements: []Replacement{
 			{From: "–", To: "-"},   // en dash -> trattino (es. "Artista – Titolo" di YouTube)
 			{From: "—", To: "-"},   // em dash -> trattino
@@ -125,6 +135,17 @@ func FactoryConfig() Config {
 var squareParenthesesPattern = regexp.MustCompile(`\[.*?\]`)
 var spacesPattern = regexp.MustCompile(` +`)
 
+// FtDestination è l'alias con cui la pipeline sostituisce le occorrenze di
+// featuring (OccurrenciesToReplaceWithFt) ed è lo stesso marcatore che il parser
+// cerca (" alias ") per dedurre gli artisti in featuring. Se FtAlias è vuoto o
+// solo spazi si torna al classico "ft".
+func (c Config) FtDestination() string {
+	if alias := strings.TrimSpace(c.FtAlias); alias != "" {
+		return alias
+	}
+	return "ft"
+}
+
 func (c Config) IsSupportedExtension(ext string) bool {
 	for _, supported := range c.SupportedExtensions {
 		if ext == supported {
@@ -139,7 +160,7 @@ func (c Config) IsSupportedExtension(ext string) bool {
 func (c Config) NormalizeFileBase(title string) string {
 	title = c.removeOccurrencies(title)
 	title = c.replaceFt(title)
-	title = replaceFtParenthesis(title)
+	title = replaceFtParenthesis(title, c.FtDestination())
 	title = c.applyReplacements(title)
 	title = removeBetweenSquareParenthesis(title)
 	title = removeTripleAndDoubleSpacesAndTrim(title)
@@ -155,8 +176,9 @@ func (c Config) removeOccurrencies(title string) string {
 }
 
 func (c Config) replaceFt(title string) string {
+	alias := c.FtDestination()
 	for _, occurrence := range c.OccurrenciesToReplaceWithFt {
-		title = strings.ReplaceAll(title, occurrence, "ft")
+		title = strings.ReplaceAll(title, occurrence, alias)
 	}
 	return title
 }
@@ -195,11 +217,12 @@ func applyScopedReplacement(name string, r Replacement) string {
 	return artist + sep + titlePart
 }
 
-func replaceFtParenthesis(title string) string {
-	if strings.Index(title, "(ft") > 0 {
-		parts := strings.Split(title, "(ft")
+func replaceFtParenthesis(title, alias string) string {
+	marker := "(" + alias
+	if strings.Index(title, marker) > 0 {
+		parts := strings.Split(title, marker)
 		title = parts[0]
-		title += "ft" + strings.Replace(parts[1], ")", "", 1)
+		title += alias + strings.Replace(parts[1], ")", "", 1)
 	}
 	return title
 }

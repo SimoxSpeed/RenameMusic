@@ -8,10 +8,10 @@ var noExceptions []string
 func TestTagArtistAndTitleSimple(t *testing.T) {
 	name := "Artist - Title.mp3"
 
-	if got := TagArtist(name, noExceptions); got != "Artist" {
+	if got := TagArtist(name, "ft", noExceptions); got != "Artist" {
 		t.Fatalf("TagArtist() = %q, want %q", got, "Artist")
 	}
-	if got := TagTitle(name, noExceptions); got != "Title" {
+	if got := TagTitle(name, "ft", noExceptions); got != "Title" {
 		t.Fatalf("TagTitle() = %q, want %q", got, "Title")
 	}
 }
@@ -19,10 +19,10 @@ func TestTagArtistAndTitleSimple(t *testing.T) {
 func TestTagArtistAndTitleRemix(t *testing.T) {
 	name := "Artist & Other x Third - Song ft Guest x Another (Remixer Remix).mp3"
 
-	if got := TagArtist(name, noExceptions); got != "Remixer, Artist, Other, Third, Guest, Another" {
+	if got := TagArtist(name, "ft", noExceptions); got != "Remixer, Artist, Other, Third, Guest, Another" {
 		t.Fatalf("TagArtist() = %q", got)
 	}
-	if got := TagTitle(name, noExceptions); got != "Song ft Guest, Another (Remixer Remix)" {
+	if got := TagTitle(name, "ft", noExceptions); got != "Song ft Guest, Another (Remixer Remix)" {
 		t.Fatalf("TagTitle() = %q", got)
 	}
 }
@@ -30,7 +30,7 @@ func TestTagArtistAndTitleRemix(t *testing.T) {
 func TestTagTitleVIPMatchesJavaSpacing(t *testing.T) {
 	name := "Artist - Song ft A x B VIP .mp3"
 
-	if got := TagTitle(name, noExceptions); got != "Song ft A, B VIP" {
+	if got := TagTitle(name, "ft", noExceptions); got != "Song ft A, B VIP" {
 		t.Fatalf("TagTitle() = %q", got)
 	}
 }
@@ -38,10 +38,10 @@ func TestTagTitleVIPMatchesJavaSpacing(t *testing.T) {
 func TestTagVIPInTitleNotTreatedAsSuffix(t *testing.T) {
 	name := "File example - Mock VIP ft Jabra.mp3"
 
-	if got := TagTitle(name, noExceptions); got != "Mock VIP ft Jabra" {
+	if got := TagTitle(name, "ft", noExceptions); got != "Mock VIP ft Jabra" {
 		t.Fatalf("TagTitle() = %q, want %q", got, "Mock VIP ft Jabra")
 	}
-	if got := TagArtist(name, noExceptions); got != "File example, Jabra" {
+	if got := TagArtist(name, "ft", noExceptions); got != "File example, Jabra" {
 		t.Fatalf("TagArtist() = %q, want %q", got, "File example, Jabra")
 	}
 }
@@ -49,10 +49,10 @@ func TestTagVIPInTitleNotTreatedAsSuffix(t *testing.T) {
 func TestUnknownArtistAndTitle(t *testing.T) {
 	name := "Loose Track.mp3"
 
-	if got := TagArtist(name, noExceptions); got != UnknownArtist {
+	if got := TagArtist(name, "ft", noExceptions); got != UnknownArtist {
 		t.Fatalf("TagArtist() = %q, want %q", got, UnknownArtist)
 	}
-	if got := TagTitle(name, noExceptions); got != UnknownTitle {
+	if got := TagTitle(name, "ft", noExceptions); got != UnknownTitle {
 		t.Fatalf("TagTitle() = %q, want %q", got, UnknownTitle)
 	}
 }
@@ -62,11 +62,28 @@ func TestUnknownArtistAndTitle(t *testing.T) {
 func TestTagArtistHonorsExceptions(t *testing.T) {
 	name := "Jkyl & Hyde - Song.mp3"
 
-	if got := TagArtist(name, []string{"Jkyl & Hyde"}); got != "Jkyl & Hyde" {
+	if got := TagArtist(name, "ft", []string{"Jkyl & Hyde"}); got != "Jkyl & Hyde" {
 		t.Fatalf("TagArtist() con eccezione = %q, want %q", got, "Jkyl & Hyde")
 	}
-	if got := TagArtist(name, noExceptions); got != "Jkyl, Hyde" {
+	if got := TagArtist(name, "ft", noExceptions); got != "Jkyl, Hyde" {
 		t.Fatalf("TagArtist() senza eccezione = %q, want %q", got, "Jkyl, Hyde")
+	}
+}
+
+// Con un alias di featuring diverso da "ft" (es. "feat"), l'estrazione dei tag
+// deve riconoscere quel marcatore, non più " ft ".
+func TestTagWithCustomFtAlias(t *testing.T) {
+	name := "Artist - Song feat Guest.mp3"
+
+	if got := TagArtist(name, "feat", noExceptions); got != "Artist, Guest" {
+		t.Fatalf("TagArtist() = %q, want %q", got, "Artist, Guest")
+	}
+	if got := TagTitle(name, "feat", noExceptions); got != "Song feat Guest" {
+		t.Fatalf("TagTitle() = %q, want %q", got, "Song feat Guest")
+	}
+	// Con l'alias di default " ft " non viene riconosciuto alcun featuring.
+	if got := TagArtist(name, "ft", noExceptions); got != "Artist" {
+		t.Fatalf("TagArtist() con alias ft = %q, want %q", got, "Artist")
 	}
 }
 
