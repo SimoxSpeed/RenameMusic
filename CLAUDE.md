@@ -16,6 +16,7 @@ Toolchain sulla macchina (vedi memoria `build-toolchain`): Go in `D:\Programmi\b
 - Build GUI: `wails build` → `build\bin\RenameMusic.exe`
 - Dev hot-reload: `wails dev`
 - Build APK: `powershell -ExecutionPolicy Bypass -File mobile\build-apk.ps1` → `build\bin\RenameMusic-arm64-v8a.apk` (telefono) e `-x86_64.apk` (emulatore). Cache/temporanei in `.android-build\` (ignorata da git).
+- Installa APK sul dispositivo collegato (adb, sceglie l'ABI giusto): `powershell -ExecutionPolicy Bypass -File mobile\install-apk.ps1 [-Build] [-Serial <id>]`. Dalla radice o da `frontend/`: `npm run apk:build`, `npm run apk:install`, `npm run apk` (build + installazione).
 - Test: `go test ./...`
 - Solo build frontend: `cd frontend; npm run build` (utile per verificare `tsc` + Vite senza Wails)
 - `go build ./...` fallisce se `frontend/dist` è vuota (per via dell'embed) → `wails build` la popola.

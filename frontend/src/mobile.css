@@ -31,10 +31,14 @@
     position: relative;
 }
 
+/* Bersaglio di tocco più grande; i margini negativi lo tolgono dal calcolo
+   dell'altezza della riga, che altrimenti si allargherebbe attorno all'icona. */
 .is-android .check .info-icon {
     position: static;
     width: 28px;
     height: 28px;
+    margin-block: -6px;
+    vertical-align: -0.2em;
 }
 
 .is-android .check .info-tooltip {
@@ -47,8 +51,24 @@
     font-size: 13px;
 }
 
+/* Visibilità decisa solo da .is-open (tocco sulla "i", vedi InfoIcon): hover e
+   focus su touch restano attivi dopo il tap e non lo lascerebbero chiudere. */
 .is-android .check .info-icon:hover .info-tooltip,
-.is-android .check .info-icon:focus .info-tooltip {
+.is-android .check .info-icon:focus-visible .info-tooltip {
+    opacity: 0;
+}
+
+/* Stesso discorso per il colore dell'icona: acceso solo a fumetto aperto. */
+.is-android .check .info-icon:hover:not(:disabled) {
+    color: var(--muted);
+}
+
+/* :not(:disabled) per pareggiare la specificità della regola :hover sopra. */
+.is-android .check .info-icon.is-open:not(:disabled) {
+    color: var(--primary);
+}
+
+.is-android .check .info-icon.is-open .info-tooltip {
     opacity: 1;
     transform: none;
 }

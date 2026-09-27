@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "apk:build": "powershell -NoProfile -ExecutionPolicy Bypass -File ../mobile/build-apk.ps1",
+    "apk:install": "powershell -NoProfile -ExecutionPolicy Bypass -File ../mobile/install-apk.ps1",
+    "apk": "powershell -NoProfile -ExecutionPolicy Bypass -File ../mobile/install-apk.ps1 -Build"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

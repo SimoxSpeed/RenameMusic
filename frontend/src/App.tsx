@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import './App.css'
 import './mobile.css'
@@ -126,15 +126,32 @@ function FolderOpenIcon() {
 // InfoIcon: pulsante con tooltip custom. \u00c8 un <button> per essere focusabile
 // da tastiera e per catturare il click impedendo che tocchi la <label> genitore
 // (altrimenti cliccare la "i" attiverebbe la checkbox associata).
+// Su Android il fumetto non segue hover/focus (su touch restano "attaccati"):
+// un tocco lo apre, un nuovo tocco o un tocco altrove lo chiude.
 function InfoIcon({ text }: { text: string }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef<HTMLButtonElement>(null)
+
+    useEffect(() => {
+        if (!open) return
+        const closeOutside = (e: PointerEvent) => {
+            if (!ref.current?.contains(e.target as Node)) setOpen(false)
+        }
+        document.addEventListener('pointerdown', closeOutside)
+        return () => document.removeEventListener('pointerdown', closeOutside)
+    }, [open])
+
     return (
         <button
+            ref={ref}
             type="button"
-            className="info-icon"
+            className={'info-icon' + (open ? ' is-open' : '')}
             aria-label={text}
+            aria-expanded={isAndroid ? open : undefined}
             onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
+                if (isAndroid) setOpen((o) => !o)
             }}
         >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -145,6 +162,47 @@ function InfoIcon({ text }: { text: string }) {
             </svg>
             <span className="info-tooltip" role="tooltip">{text}</span>
         </button>
+    )
+}
+
+// CheckOption: checkbox con testo e icona "i". L'icona sta nel flusso del
+// testo, così segue l'ultima parola anche quando il testo va a capo (dopo una
+// <label> a capo finirebbe sul bordo destro). Non può stare dentro la <label>
+// (un bottone in una label non è valido): la label è collegata alla casella
+// con htmlFor. L'ultima parola è tenuta insieme all'icona (check-tail), così
+// l'icona non va mai a capo da sola: per questo le label sono due, entrambe
+// collegate alla stessa casella.
+function CheckOption({ label, info, checked, onChange, disabled, className }: {
+    label: string
+    info: string
+    checked: boolean
+    onChange: (checked: boolean) => void
+    disabled?: boolean
+    className?: string
+}) {
+    const id = useId()
+    const cut = label.lastIndexOf(' ') + 1
+    const head = label.slice(0, cut)
+    const tail = label.slice(cut)
+    return (
+        <div className={'check' + (className ? ' ' + className : '')}>
+            <span className="check-box">
+                <input
+                    id={id}
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => onChange(e.target.checked)}
+                    disabled={disabled}
+                />
+            </span>
+            <span className="check-text">
+                {head && <label htmlFor={id} className="check-label">{head}</label>}
+                <span className="check-tail">
+                    <label htmlFor={id} className="check-label">{tail}</label>
+                    <InfoIcon text={info} />
+                </span>
+            </span>
+        </div>
     )
 }
 
@@ -1560,31 +1618,21 @@ function App() {
                         )}
 
                         <div className="options">
-                            <div className="check">
-                                <label className="check-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={destSameAsSource}
-                                        onChange={(e) => applyOptions(e.target.checked, destFolder, deleteOriginals)}
-                                        disabled={busy}
-                                    />
-                                    Destinazione uguale alla cartella di partenza
-                                </label>
-                                <InfoIcon text="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata." />
-                            </div>
+                            <CheckOption
+                                label="Destinazione uguale alla cartella di partenza"
+                                info="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata."
+                                checked={destSameAsSource}
+                                onChange={(checked) => applyOptions(checked, destFolder, deleteOriginals)}
+                                disabled={busy}
+                            />
 
-                            <div className="check">
-                                <label className="check-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={deleteOriginals}
-                                        onChange={(e) => toggleDeleteOriginals(e.target.checked)}
-                                        disabled={busy}
-                                    />
-                                    Eliminazione file originali
-                                </label>
-                                <InfoIcon text="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali." />
-                            </div>
+                            <CheckOption
+                                label="Eliminazione file originali"
+                                info="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali."
+                                checked={deleteOriginals}
+                                onChange={toggleDeleteOriginals}
+                                disabled={busy}
+                            />
                         </div>
 
                         <div className="actions">
@@ -1719,18 +1767,14 @@ function App() {
                         {/* Su Android yt-dlp è integrato nell'app: niente scelta
                             tra copia gestita e percorso personalizzato. */}
                         {!isAndroid && (
-                        <div className="check ytdlp-toggle">
-                            <label className="check-label">
-                                <input
-                                    type="checkbox"
-                                    checked={ytDlpManaged}
-                                    onChange={(e) => toggleYtDlpManaged(e.target.checked)}
-                                    disabled={busy}
-                                />
-                                Gestisci autonomamente yt-dlp
-                            </label>
-                            <InfoIcon text="Quando attivo, l'app scarica e aggiorna da sé yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore): al primo 'Scarica' di una playlist, se manca, lo scarica dopo una conferma. Quando disattivo, indichi a mano il percorso di una tua versione di yt-dlp." />
-                        </div>
+                        <CheckOption
+                            className="ytdlp-toggle"
+                            label="Gestisci autonomamente yt-dlp"
+                            info="Quando attivo, l'app scarica e aggiorna da sé yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore): al primo 'Scarica' di una playlist, se manca, lo scarica dopo una conferma. Quando disattivo, indichi a mano il percorso di una tua versione di yt-dlp."
+                            checked={ytDlpManaged}
+                            onChange={toggleYtDlpManaged}
+                            disabled={busy}
+                        />
                         )}
 
                         <div className="ytdlp-panel">

@@ -495,19 +495,37 @@ button.warn-solid:hover:not(:disabled) {
     gap: 16px;
 }
 
+/* Riga checkbox (CheckOption): casella a sinistra, poi testo e icona "i" nello
+   stesso flusso di testo, così l'icona segue l'ultima parola anche quando il
+   testo va a capo. */
 .check {
     display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-/* La label (input + testo) è cliccabile e toggola la checkbox; l'icona info è
-   fuori dalla label, quindi cliccarla non ha alcun effetto sulla checkbox. */
-.check-label {
-    display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     line-height: 1.4;
+}
+
+/* Alta quanto una riga di testo: la casella resta centrata sulla prima riga
+   anche quando il testo ne occupa più di una. */
+.check-box {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 1.4em;
+}
+
+.check-text {
+    min-width: 0;
+}
+
+/* Ultima parola + icona: vanno a capo insieme, mai l'icona da sola. */
+.check-tail {
+    white-space: nowrap;
+}
+
+/* La label è collegata alla casella (htmlFor): cliccarla toggola la checkbox.
+   L'icona info è fuori dalla label, quindi cliccarla non ha effetto. */
+.check-label {
     cursor: pointer;
 }
 
@@ -518,10 +536,9 @@ button.warn-solid:hover:not(:disabled) {
     cursor: pointer;
 }
 
-/* Avviciniamo l'icona informativa al testo della checkbox: qualche pixel a
-   sinistra rispetto al gap di default del contenitore. */
 .check .info-icon {
-    margin-left: -4px;
+    margin-left: 4px;
+    vertical-align: -0.2em;
 }
 
 /* Gruppo campo: etichetta sopra il controllo (cartelle di partenza/destinazione). */
@@ -560,6 +577,15 @@ button.warn-solid:hover:not(:disabled) {
 
 .info-icon:hover:not(:disabled) {
     color: var(--primary);
+}
+
+/* Non è un'azione: niente spostamento al click (button:active). Il transform
+   creerebbe un nuovo contesto di impilamento e il fumetto, finché si tiene
+   premuto, finirebbe sotto i riquadri successivi. Su Android renderebbe anche
+   l'icona il blocco contenitore del fumetto, che per un istante si
+   stringerebbe alla sua larghezza. */
+.info-icon:active:not(:disabled) {
+    transform: none;
 }
 
 /* Il tooltip è figlio di un contenitore position:relative (info-icon o un
@@ -1212,18 +1238,18 @@ tr.changed td {
 }
 
 /* La checkbox "Gestisci autonomamente" sta un livello sopra la card yt-dlp,
-   subito sotto il titolo della sezione, sulla stessa riga della sua label
-   (l'icona info è centrata verticalmente da align-items:center di .check). */
+   subito sotto il titolo della sezione, con l'icona info dopo la sua label. */
 .ytdlp-toggle {
     min-height: 0;
     margin-bottom: 12px;
 }
 
-/* Le checkbox dentro .settings restano orizzontali: la regola generica
-   ".settings label { flex-direction: column }" (pensata per le label della
-   griglia con span+textarea impilati) altrimenti impilerebbe casella e testo. */
+/* La label delle checkbox dentro .settings resta testo in linea: la regola
+   generica ".settings label { display: flex; flex-direction: column }"
+   (pensata per le label della griglia con span+textarea impilati) la
+   staccherebbe dall'icona "i". */
 .settings .check-label {
-    flex-direction: row;
+    display: inline;
 }
 
 /* Bottone icona "Disinstalla yt-dlp": spinto a destra del badge, compatto,
