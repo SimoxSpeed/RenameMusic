@@ -185,8 +185,12 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Toast come "snackbar" Android: in basso a tutta larghezza, a portata di
+   pollice e lontani dall'header. Sopra la barra di navigazione o, in
+   Impostazioni, sopra la barra inferiore (la cui altezza, --toast-offset,
+   comprende già la safe area). */
 .is-android .toast-container {
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(12px + max(var(--toast-offset, 0px), env(safe-area-inset-bottom, 0px)));
     left: 12px;
     right: 12px;
     max-width: none;
@@ -403,8 +407,8 @@
         padding-top: 14px;
     }
 
-    /* Testata, stato e Attività impilati: prima i comandi, poi lo stato
-       dell'ultima operazione, poi il registro attività (con altezza propria). */
+    /* Testata e Attività impilate: prima i comandi, poi il registro attività
+       (con altezza propria). L'esito delle azioni arriva nei toast. */
     .is-android .top-row {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -413,12 +417,8 @@
         order: 0;
     }
 
-    .is-android .top-row > .status {
-        order: 1;
-    }
-
     .is-android .activity-cell {
-        order: 2;
+        order: 1;
     }
 
     .is-android .activity-panel {

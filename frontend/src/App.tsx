@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import './App.css'
 import './mobile.css'
@@ -37,10 +37,10 @@ import {
 } from './api'
 import FolderPicker from './FolderPicker'
 
-type Status = { message: string; ok: boolean }
-
-// Toast: notifica effimera in basso a destra. `ok` decide colore/icona.
-type Toast = { id: number; ok: boolean; message: string }
+// Toast: notifica effimera (in basso a destra su desktop, in basso a tutta
+// larghezza su Android). È l'unico canale per l'esito delle azioni: `ok`
+// decide colore/icona, `duration` (ms) la durata prima della chiusura automatica.
+type Toast = { id: number; ok: boolean; message: string; duration: number }
 
 // Valori-sentinella dei tag "sconosciuti" (devono combaciare con le costanti
 // parser.UnknownTitle/UnknownArtist lato Go): identificano una traccia il cui
@@ -564,9 +564,12 @@ function cloneConfig(cfg: rules.Config): rules.Config {
 
 function App() {
     const [state, setState] = useState<core.StateResponse | null>(null)
-    const [status, setStatus] = useState<Status>({ message: '', ok: true })
     const [toasts, setToasts] = useState<Toast[]>([])
     const toastIdRef = useRef(0)
+    // toastOffset: altezza (px) della barra inferiore delle Impostazioni quando
+    // è visibile: i toast si alzano di tanto per non coprirne i bottoni.
+    const [toastOffset, setToastOffset] = useState(0)
+    const bottombarRef = useRef<HTMLDivElement>(null)
     const [busy, setBusy] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
     const [draft, setDraft] = useState<rules.Config | null>(null)
@@ -654,11 +657,10 @@ function App() {
     async function guard(fn: () => Promise<void>) {
         const start = performance.now()
         setBusy(true)
-        setStatus({ message: 'Operazione in corso...', ok: true })
         try {
             await fn()
         } catch (err: any) {
-            setStatus({ message: 'Errore: ' + (err?.message ?? String(err)), ok: false })
+            notify(false, 'Errore: ' + (err?.message ?? String(err)))
         } finally {
             const elapsed = performance.now() - start
             if (elapsed < MIN_BUSY_MS) {
@@ -668,16 +670,25 @@ function App() {
         }
     }
 
+    // Numero massimo di toast impilati: oltre, il più vecchio lascia il posto.
+    const MAX_TOASTS = 3
+
     // notify mostra un toast effimero. Gli errori restano più a lungo (portano
     // un messaggio da leggere); i successi spariscono in fretta. Messaggio vuoto
-    // => nessun toast.
+    // => nessun toast. Un messaggio identico a uno già visibile lo sostituisce
+    // (riportandolo in fondo e facendo ripartire il conto alla rovescia) invece
+    // di impilarsi. La chiusura automatica non usa un timer JS: la decide la
+    // fine dell'animazione della barra del toast (vedi render), così barra e
+    // scadenza coincidono anche quando la barra è in pausa (hover su desktop).
     function notify(ok: boolean, message: string) {
         if (!message) return
         const id = (toastIdRef.current += 1)
-        setToasts((prev) => [...prev, { id, ok, message }])
-        window.setTimeout(() => {
-            setToasts((prev) => prev.filter((t) => t.id !== id))
-        }, ok ? 3500 : 6000)
+        const duration = ok ? 2500 : 3500
+        setToasts((prev) =>
+            [...prev.filter((t) => t.ok !== ok || t.message !== message), { id, ok, message, duration }].slice(
+                -MAX_TOASTS,
+            ),
+        )
     }
 
     function dismissToast(id: number) {
@@ -713,7 +724,8 @@ function App() {
             const resp = await GetState()
             absorb(resp)
             syncOptions(resp.state)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
+            // Niente toast all'avvio: l'anteprima popolata basta a dire che la
+            // scansione è andata, e un eventuale errore finisce già in Attività.
         }).finally(() => setBooted(true))
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
@@ -809,20 +821,34 @@ function App() {
             syncOptions(next)
             const ok = next.folder !== ''
             const msg = ok ? 'Cartella impostata dal trascinamento.' : 'Trascinamento non valido.'
-            setStatus({ message: msg, ok })
             notify(ok, msg)
         })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     // Avanzamento di ProcessAll: il backend emette un evento per ogni file
-    // completato; aggiorniamo il contatore mostrato accanto a "Operazione in corso".
+    // completato; aggiorniamo il contatore della barra di avanzamento.
     useEffect(() => {
         return onEvent('process:progress', (payload: unknown) => {
             const p = payload as { done: number; total: number } | null
             if (p) setProgress(p)
         })
     }, [])
+
+    // Tiene i toast sopra la barra inferiore delle Impostazioni: ne misuriamo
+    // l'altezza (che cambia quando i bottoni vanno a capo su schermi stretti) e
+    // la passiamo al contenitore dei toast. Fuori dalle Impostazioni vale 0.
+    const bottombarVisible = showSettings && draft !== null
+    useEffect(() => {
+        const bar = bottombarRef.current
+        if (!bottombarVisible || !bar) {
+            setToastOffset(0)
+            return
+        }
+        const ro = new ResizeObserver(() => setToastOffset(bar.offsetHeight))
+        ro.observe(bar)
+        return () => ro.disconnect()
+    }, [bottombarVisible])
 
     // Quando cambia la traccia in testa alla coda, reimpostiamo l'input del popup
     // al suo nome originale (l'utente riparte dal nome da correggere).
@@ -844,11 +870,11 @@ function App() {
             .then((resp) => {
                 absorb(resp)
                 setWatchEnabled(resp.state.watchEnabled)
-                setStatus({ message: resp.message ?? '', ok: resp.ok })
+                notify(resp.ok, resp.message ?? '')
             })
             .catch((e) => {
                 setWatchEnabled(!next)
-                setStatus({ message: String(e), ok: false })
+                notify(false, String(e))
             })
     }
 
@@ -858,7 +884,7 @@ function App() {
             const resp = await Scan()
             absorb(resp)
             setResults(null)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
         })
     }
 
@@ -874,13 +900,13 @@ function App() {
             if (!selected.ok) {
                 absorb(selected)
                 setResults(null)
-                setStatus({ message: selected.message ?? '', ok: selected.ok })
+                notify(selected.ok, selected.message ?? '')
                 return
             }
             const scanned = await Scan()
             absorb(scanned)
             setResults(null)
-            setStatus({ message: scanned.message ?? '', ok: scanned.ok })
+            notify(scanned.ok, scanned.message ?? '')
         })
     }
 
@@ -891,7 +917,7 @@ function App() {
         setFolderPicker(null)
         if (target === 'dest') {
             applyOptions(destSameAsSource, path, deleteOriginals)
-            setStatus({ message: 'Cartella di destinazione impostata.', ok: true })
+            notify(true, 'Cartella di destinazione impostata.')
             return
         }
         guard(async () => {
@@ -899,13 +925,13 @@ function App() {
             if (!selected.ok) {
                 absorb(selected)
                 setResults(null)
-                setStatus({ message: selected.message ?? '', ok: selected.ok })
+                notify(selected.ok, selected.message ?? '')
                 return
             }
             const scanned = await Scan()
             absorb(scanned)
             setResults(null)
-            setStatus({ message: scanned.message ?? '', ok: scanned.ok })
+            notify(scanned.ok, scanned.message ?? '')
         })
     }
 
@@ -918,13 +944,12 @@ function App() {
             const path = await ChooseDirectory()
             if (path) {
                 applyOptions(destSameAsSource, path, deleteOriginals)
-                setStatus({ message: 'Cartella di destinazione impostata.', ok: true })
+                notify(true, 'Cartella di destinazione impostata.')
             } else {
-                // Selezione annullata: manteniamo la destinazione precedente e
-                // sblocchiamo lo stato (altrimenti resterebbe "Operazione in corso...").
-                // ok:false → messaggio in rosso, coerente con l'annullamento della
+                // Selezione annullata: manteniamo la destinazione precedente.
+                // ok:false → toast rosso, coerente con l'annullamento della
                 // cartella di partenza.
-                setStatus({ message: 'Selezione annullata.', ok: false })
+                notify(false, 'Selezione annullata.')
             }
         })
     }
@@ -946,7 +971,7 @@ function App() {
     // Usa le opzioni persistite lato backend.
     function process() {
         if (!destSameAsSource && destFolder === '') {
-            setStatus({ message: 'Scegli una cartella di destinazione o riattiva "uguale alla partenza".', ok: false })
+            notify(false, 'Scegli una cartella di destinazione o riattiva "uguale alla partenza".')
             return
         }
         setProgress(null)
@@ -955,11 +980,10 @@ function App() {
         guard(async () => {
             const resp = await ProcessAll()
             // Operazione conclusa: non è più annullabile (evita che un click sul
-            // tasto Annulla durante la coda "busy" lasci lo status appeso).
+            // tasto Annulla durante la coda "busy" lasci un annullamento appeso).
             setCancellable(false)
             absorb(resp)
             setResults(resp.results ?? [])
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
             // Tracce con tag sconosciuti: il backend NON le ha convertite, le
             // rimette qui perché l'utente decida (una alla volta) col popup. Le
@@ -1012,7 +1036,6 @@ function App() {
             setCancellable(false)
             absorb(resp)
             setResults(null)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         }).finally(() => {
             setProgress(null)
@@ -1024,10 +1047,10 @@ function App() {
     // cancellazione tag). Il backend si ferma tra un file e l'altro; la Promise
     // dell'operazione si risolve poi con l'esito parziale.
     function cancelOp() {
-        // Azzeriamo subito il contatore: altrimenti "(x/totale)" resterebbe
-        // congelato finché l'operazione non ritorna, mascherando il messaggio.
+        // Azzeriamo subito il contatore: altrimenti la barra "x / totale"
+        // resterebbe congelata finché l'operazione non ritorna.
         setProgress(null)
-        setStatus({ message: 'Annullamento in corso…', ok: false })
+        notify(false, 'Annullamento in corso…')
         Cancel().catch(() => {
             /* l'annullamento non deve generare errori bloccanti in UI */
         })
@@ -1038,7 +1061,6 @@ function App() {
             const resp = await ResetConfig()
             absorb(resp)
             setResults(null)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         })
     }
@@ -1059,7 +1081,7 @@ function App() {
         if (!state?.config) return
         setDraft(cloneConfig(state.config))
         setPlaylistDraft((state?.playlists ?? []).map((p) => ({ name: p.name, url: p.url })))
-        setStatus({ message: 'Ripristinate le impostazioni salvate.', ok: true })
+        notify(true, 'Ripristinate le impostazioni salvate.')
     }
 
     // Rende regole e playlist in editing il nuovo predefinito (dopo conferma dal
@@ -1071,7 +1093,6 @@ function App() {
         guard(async () => {
             const resp = await SetAsDefault(draft, playlistDraft)
             setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as core.StateResponse) : resp.state))
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         })
     }
@@ -1195,8 +1216,7 @@ function App() {
         const resp = await SetPlaylists(plDraft)
         absorb(resp)
         setResults(null)
-        setStatus({ message: resp.message ?? '', ok: resp.ok })
-        notify(resp.ok, 'Impostazioni salvate.')
+        notify(resp.ok, resp.ok ? 'Impostazioni salvate.' : (resp.message ?? ''))
     }
 
     function saveSettings() {
@@ -1264,7 +1284,6 @@ function App() {
             absorb(resp)
             setResults(null)
             setDownloadErrors(resp.downloadErrors ?? [])
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         }).finally(() => {
             setProgress(null)
@@ -1287,7 +1306,6 @@ function App() {
                 absorb(cfg)
                 syncOptions(cfg.state)
                 if (!cfg.ok) {
-                    setStatus({ message: cfg.message ?? '', ok: false })
                     notify(false, cfg.message ?? '')
                     return
                 }
@@ -1296,16 +1314,12 @@ function App() {
             absorb(inst)
             syncOptions(inst.state)
             notify(inst.ok, inst.message ?? '')
-            if (!inst.ok) {
-                setStatus({ message: inst.message ?? '', ok: false })
-                return
-            }
+            if (!inst.ok) return
             const resp = await DownloadPlaylist(selectedPlaylist)
             setCancellable(false)
             absorb(resp)
             setResults(null)
             setDownloadErrors(resp.downloadErrors ?? [])
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         }).finally(() => {
             setProgress(null)
@@ -1325,9 +1339,9 @@ function App() {
             .then((resp) => {
                 absorb(resp)
                 syncOptions(resp.state)
-                setStatus({ message: resp.message ?? '', ok: resp.ok })
+                notify(resp.ok, resp.message ?? '')
             })
-            .catch((e) => setStatus({ message: String(e), ok: false }))
+            .catch((e) => notify(false, String(e)))
     }
 
     // Persiste il percorso personalizzato (all'uscita dal campo): disattiva la
@@ -1337,7 +1351,7 @@ function App() {
             const resp = await SetYtDlpConfig(false, ytDlpPathDraft)
             absorb(resp)
             syncOptions(resp.state)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
         })
     }
 
@@ -1351,7 +1365,7 @@ function App() {
             const resp = await SetYtDlpConfig(false, path)
             absorb(resp)
             syncOptions(resp.state)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
+            notify(resp.ok, resp.message ?? '')
         })
     }
 
@@ -1365,7 +1379,6 @@ function App() {
             const resp = await InstallYtDlp()
             absorb(resp)
             syncOptions(resp.state)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         })
     }
@@ -1379,7 +1392,6 @@ function App() {
             const resp = await UninstallYtDlp()
             absorb(resp)
             syncOptions(resp.state)
-            setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         })
     }
@@ -1749,12 +1761,6 @@ function App() {
                             )}
                         </ul>
                     </section>
-                    </div>
-
-                    <div className={'status ' + (status.message ? (status.ok ? 'ok' : 'err') : '')}>
-                        {busy && progress
-                            ? `Operazione in corso... (${progress.done}/${progress.total})`
-                            : status.message}
                     </div>
                 </div>
                 )}
@@ -2172,7 +2178,7 @@ function App() {
             </main>
 
             {showSettings && draft && (
-                <div className="settings-bottombar">
+                <div className="settings-bottombar" ref={bottombarRef}>
                     <div className="settings-bottombar-inner">
                         <button className="ghost with-icon settings-back" onClick={backFromSettings} disabled={busy}>
                             <span className="btn-icon"><BackIcon /></span>
@@ -2465,7 +2471,12 @@ function App() {
                 </div>
             )}
 
-            <div className="toast-container" aria-live="polite" aria-atomic="false">
+            <div
+                className="toast-container"
+                aria-live="polite"
+                aria-atomic="false"
+                style={{ '--toast-offset': toastOffset + 'px' } as CSSProperties}
+            >
                 {toasts.map((t) => (
                     <div key={t.id} className={'toast ' + (t.ok ? 'toast-ok' : 'toast-err')} role="status">
                         <span className="toast-icon" aria-hidden="true">
@@ -2480,6 +2491,14 @@ function App() {
                         >
                             <CloseIcon />
                         </button>
+                        {/* Barra del tempo residuo: si svuota in `duration` ms e
+                            alla fine della sua animazione chiude il toast. */}
+                        <span
+                            className="toast-timer"
+                            aria-hidden="true"
+                            style={{ animationDuration: t.duration + 'ms' }}
+                            onAnimationEnd={() => dismissToast(t.id)}
+                        />
                     </div>
                 ))}
             </div>

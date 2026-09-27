@@ -863,19 +863,6 @@ tr.changed td {
     border-top: 1px solid var(--line);
 }
 
-.status {
-    min-height: 24px;
-    color: var(--muted);
-}
-
-.status.ok {
-    color: var(--ok);
-}
-
-.status.err {
-    color: var(--danger);
-}
-
 .settings {
     background: var(--panel);
     border: 1px solid var(--line);
@@ -1049,19 +1036,14 @@ tr.changed td {
    "stretch"), così Attività non supera mai il fondo del pulsante
    "Impostazioni" qualunque sia lo stato della checkbox "Destinazione uguale
    alla cartella di partenza" (che aggiunge/toglie un field-group sopra, e
-   quindi sposta il fondo della testata). Stato e impostazioni restano nella
-   colonna sinistra ma su righe proprie, fuori dall'altezza condivisa con
-   Attività. Lascia la tabella di anteprima sotto libera di usare tutta la
-   larghezza. */
+   quindi sposta il fondo della testata). Le impostazioni stanno su una riga
+   propria, fuori dall'altezza condivisa con Attività. Lascia la tabella di
+   anteprima sotto libera di usare tutta la larghezza. */
 .top-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
     gap: 16px;
     margin-bottom: 16px;
-}
-
-.top-row > .status {
-    grid-column: 1;
 }
 
 /* Le impostazioni occupano l'intera larghezza della griglia (entrambe le
@@ -1688,10 +1670,13 @@ th {
     }
 }
 
-/* Toast: notifiche effimere impilate in basso a destra. Sotto ai modali (z 50). */
+/* Toast: notifiche effimere impilate in basso a destra, lontane dall'header
+   (dove stanno i comandi) e dall'area delle cartelle. --toast-offset è l'altezza
+   della barra inferiore delle Impostazioni, se visibile (impostata da App.tsx),
+   così i toast non ne coprono i bottoni. Sotto ai modali (z 50). */
 .toast-container {
     position: fixed;
-    bottom: 20px;
+    bottom: calc(20px + var(--toast-offset, 0px));
     right: 20px;
     z-index: 45;
     display: flex;
@@ -1714,6 +1699,44 @@ th {
     box-shadow: var(--shadow);
     pointer-events: auto;
     animation: toastIn 0.18s ease;
+    /* Contesto per la barra del tempo residuo, ritagliata dagli angoli. */
+    position: relative;
+    overflow: hidden;
+}
+
+/* Barra del tempo residuo sul fondo del toast: parte piena e si svuota verso
+   sinistra in animation-duration (impostata inline da App.tsx); la fine
+   dell'animazione chiude il toast. scaleX (e non width) per restare sul
+   compositor senza ricalcolare il layout. */
+.toast-timer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    transform-origin: left center;
+    opacity: 0.55;
+    animation-name: toastTimer;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+}
+
+.toast-ok .toast-timer {
+    background: var(--ok);
+}
+
+.toast-err .toast-timer {
+    background: var(--danger);
+}
+
+/* Solo con un puntatore vero (desktop): col mouse sopra, o col focus sul tasto
+   di chiusura, il conto alla rovescia si ferma per leggere con calma. Su touch
+   l'hover resterebbe "attaccato" dopo un tocco e il toast non sparirebbe più. */
+@media (hover: hover) {
+    .toast:hover .toast-timer,
+    .toast:focus-within .toast-timer {
+        animation-play-state: paused;
+    }
 }
 
 .toast-ok {
@@ -1771,6 +1794,13 @@ th {
     to   { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes toastTimer {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+}
+
+/* Con movimento ridotto spegniamo solo l'entrata a scorrimento: la barra del
+   tempo resta, perché è la sua animazione a chiudere il toast. */
 @media (prefers-reduced-motion: reduce) {
     .toast { animation: none; }
 }
