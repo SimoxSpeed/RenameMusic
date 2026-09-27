@@ -996,6 +996,9 @@ tr.changed td {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    /* Spazio minimo tra etichetta e "+ Aggiungi" quando l'etichetta è lunga
+       (es. "Playlist YouTube (nome → link)" su schermi stretti). */
+    gap: 16px;
     margin-bottom: 8px;
     font-size: 12px;
     color: var(--muted);
