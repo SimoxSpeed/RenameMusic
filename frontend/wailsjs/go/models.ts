@@ -1,4 +1,4 @@
-export namespace main {
+export namespace core {
 	
 	export class DownloadErrorView {
 	    videoId: string;

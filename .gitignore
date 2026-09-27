@@ -11,5 +11,10 @@ frontend/dist/
 # Wails build output
 build/bin/
 
+# Build Android: cache/temporanei (Go, Gradle, npm, AVD) e output
+.android-build/
+frontend/android/app/libs/*.aar
+frontend/android/app/libs/*-sources.jar
+
 # Documentazione locale (non versionata)
 docs/

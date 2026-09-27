@@ -1,6 +1,6 @@
 # RenameMusic
 
-App desktop (Wails v2) per **normalizzare i nomi dei file musicali** e scrivere i **tag ID3 degli MP3**. Porting in Go di un progetto Java originale. GUI in React + TypeScript.
+App desktop (Wails v2) e **app Android** (APK, Capacitor) per **normalizzare i nomi dei file musicali** e scrivere i **tag ID3 degli MP3**. Porting in Go di un progetto Java originale. GUI in React + TypeScript, **la stessa** su entrambe le piattaforme; il core Go è condiviso.
 
 L'utente sceglie una cartella di file audio; l'app mostra un'**anteprima** del nuovo nome per ciascun file (applicando una pipeline di regole configurabili), e su comando esplicito **rinomina/converte** i file scrivendo anche i tag MP3 (titolo/artista dedotti dal nome). Nessun file viene mai toccato senza il comando dell'utente.
 
@@ -8,23 +8,31 @@ L'utente sceglie una cartella di file audio; l'app mostra un'**anteprima** del n
 
 - **Backend**: Go 1.25 (`module renamemusic`). Dipendenze: `wails/v2 v2.13.0`, `fsnotify v1.10.1`.
 - **Frontend**: React + TypeScript + Vite, in `frontend/` (build output in `frontend/dist`, embeddato nell'exe via `//go:embed all:frontend/dist` in [main.go](main.go)).
-- **Binding Wails**: generati in `frontend/wailsjs/` (`go/main/App.*` per i metodi, `go/models.ts` per i tipi). **NON scrivere a mano**: rigenerare con `wails generate module` dopo aver cambiato firme/tipi dei metodi esportati di `App`.
+- **Binding Wails**: generati in `frontend/wailsjs/` (`go/core/App.*` per i metodi, `go/models.ts` per i tipi, namespace `core`/`rules`/`playlist`). **NON scrivere a mano**: rigenerare con `wails generate module` dopo aver cambiato firme/tipi dei metodi esportati di `core.App`. La UI **non importa** direttamente `wailsjs/go/...`: passa da [frontend/src/api.ts](frontend/src/api.ts) (vedi Android); dopo aver aggiunto/cambiato un metodo va aggiornato anche lì.
+- **Android**: Capacitor 8 (`frontend/capacitor.config.ts`, progetto Gradle in `frontend/android/`), core Go compilato con `gomobile bind` (package [mobile/](mobile/)) in `frontend/android/app/libs/renamemusic.aar`, yt-dlp tramite `youtubedl-android` (Python + ffmpeg incorporati). `golang.org/x/mobile` è fissato a un commit compatibile con `go 1.25` (vedi `go.mod`): `gomobile`/`gobind` vanno installati alla stessa versione.
 
-Toolchain sulla macchina (vedi memoria `build-toolchain`): Go in `C:\Program Files\Go\bin` (non nel PATH delle shell non interattive → anteporlo), Wails CLI in `%USERPROFILE%\go\bin\wails.exe`, Node/npm nel PATH.
+Toolchain sulla macchina (vedi memoria `build-toolchain`): Go in `D:\Programmi\bin` (nel PATH), Wails CLI e `gomobile`/`gobind` in `%USERPROFILE%\go\bin`, Node/npm nel PATH, Android SDK+NDK in `%LOCALAPPDATA%\Android\Sdk`, JDK 21 in `D:\Web_Programming\Java\jdk` (`JAVA_HOME` punta invece a un JDK 18).
 
 - Build GUI: `wails build` → `build\bin\RenameMusic.exe`
 - Dev hot-reload: `wails dev`
+- Build APK: `powershell -ExecutionPolicy Bypass -File mobile\build-apk.ps1` → `build\bin\RenameMusic-arm64-v8a.apk` (telefono) e `-x86_64.apk` (emulatore). Cache/temporanei in `.android-build\` (ignorata da git).
 - Test: `go test ./...`
 - Solo build frontend: `cd frontend; npm run build` (utile per verificare `tsc` + Vite senza Wails)
 - `go build ./...` fallisce se `frontend/dist` è vuota (per via dell'embed) → `wails build` la popola.
 
-> Il binario embedda `frontend/dist` a compile-time: modifiche al frontend si vedono solo dopo `wails build` (o in `wails dev`).
+> Il binario embedda `frontend/dist` a compile-time: modifiche al frontend si vedono solo dopo `wails build` (o in `wails dev`). Per l'APK le copia `npx cap sync` (lo fa lo script).
 
 ## Architettura
 
-**`app.go`** — il "core" applicativo, l'unica struct bindata a Wails (`App`). Espone i metodi chiamati dalla UI e mantiene lo stato in memoria (cartella, regole correnti, ultimo scan, log, opzioni) sotto `sync.Mutex`. Tutte le risposte usano `ActionResponse { ok, message, state, results }`; `StateResponse` è lo snapshot completo che la UI assorbe (`absorb`).
+**`internal/core/app.go`** — il "core" applicativo (`core.App`), indipendente dalla piattaforma e condiviso da desktop e Android. Espone i metodi chiamati dalla UI e mantiene lo stato in memoria (cartella, regole correnti, ultimo scan, log, opzioni) sotto `sync.Mutex`. Tutte le risposte usano `ActionResponse { ok, message, state, results }`; `StateResponse` è lo snapshot completo che la UI assorbe (`absorb`). **Ogni metodo esportato di `core.App` è API della UI** (Wails lo binda, su Android è raggiungibile da `mobile.Call`): gli hook di ciclo di vita sono funzioni di package (`core.Start`, `core.HandleFileDrop`, `core.RefreshYtDlp`, `core.NotifyExternalChange`), non metodi.
 
-Metodi principali (bindati): `GetState` (scansiona lazy la cartella ricordata al primo accesso, così la UI si popola in un colpo solo), `SelectFolder`/`SetFolder`, `Scan`, `ProcessAll` (normalizza + scrive tag), `ChooseDirectory` (dialog destinazione), `SetOptions`, `SetConfig`/`ResetConfig`/`SetAsDefault`, `SetWatchEnabled`, `ClearLogs`.
+Metodi principali: `GetState` (scansiona lazy la cartella ricordata al primo accesso, così la UI si popola in un colpo solo), `SelectFolder`/`SetFolder`, `Scan`, `ProcessAll` (normalizza + scrive tag), `ChooseDirectory` (dialog destinazione), `SetOptions`, `SetConfig`/`ResetConfig`/`SetAsDefault`, `SetWatchEnabled`, `ClearLogs`, `DownloadPlaylist`, yt-dlp (`InstallYtDlp`, ...).
+
+**`internal/core/platform.go`** — ciò che dipende dalla piattaforma passa da due interfacce fornite a `core.New(core.Options{...})`: `Host` (eventi verso la UI, dialog di sistema, apertura cartella) e `YtDlp` (dove/come gira yt-dlp; `ExecYtDlp` è quella desktop con l'eseguibile esterno).
+
+**Desktop** — [main.go](main.go) (Wails, binda `*core.App`) + [host_desktop.go](host_desktop.go) (`Host` sopra il runtime Wails) + [open_windows.go](open_windows.go).
+
+**Android** — [mobile/](mobile/) è il package per `gomobile bind`: `Start(dataDir, host)`, `Call(method, argsJSON)` (dispatch via reflection sui metodi di `core.App` + quelli di `folderAPI`, argomenti/risultati JSON: l'equivalente dei binding Wails), `Resume()`, `YtDlpInitialized()`. `Host` è implementata in Java: [frontend/android/app/src/main/java/com/renamemusic/app/](frontend/android/app/src/main/java/com/renamemusic/app/) — `RenameMusicPlugin` (plugin Capacitor: smista le chiamate su un pool di thread, permesso "accesso a tutti i file", servizio in primo piano durante le operazioni lunghe, riscansione MediaStore), `GoHost` (eventi + yt-dlp via youtubedl-android con gli stessi argomenti del desktop), `WorkService`, `MediaRescan`.
 
 **`internal/`**:
 - **`rules`** — `Config` (regole configurabili: estensioni supportate, occorrenze da rimuovere, alias di "ft", sostituzioni From→To) e `NormalizeFileBase()`, la **pipeline di normalizzazione** del nome (stesso ordine del Java originale: rimozione occorrenze → alias ft → `(ft` → sostituzioni → rimozione `[...]` → collapse spazi/trim → dash iniziale). `FactoryConfig()` è il seed di fabbrica.
@@ -32,16 +40,20 @@ Metodi principali (bindati): `GetState` (scansiona lazy la cartella ricordata al
 - **`fs`** — `ScanAudioFiles` (elenca i file audio supportati nella cartella, **non ricorsivo**), `IsDir`.
 - **`rename`** — `Service.Process()`: calcola i nomi di destinazione, risolve le collisioni nel batch (un vincitore per nome), sposta/copia (`DeleteOriginals` on/off) e scrive i tag MP3. `Options { DestinationFolder, DeleteOriginals }`.
 - **`tags`** — scrittura tag ID3 MP3.
-- **`settings`** — persistenza JSON in `%AppData%\RenameMusic\`: `config.json` (regole correnti), `defaults.json` (default editabili), `state.json` (cartella, destinazione, elimina-originali, aggiornamento automatico). `Config` con campi mancanti eredita i valori di fabbrica.
+- **`settings`** — persistenza JSON in `%AppData%\RenameMusic\` (su Android nella cartella privata dell'app, via `settings.SetDir`): `config.json` (regole correnti), `defaults.json` (default editabili), `state.json` (cartella, destinazione, elimina-originali, aggiornamento automatico). `Config` con campi mancanti eredita i valori di fabbrica.
+- **`playlist`** — download di playlist con yt-dlp. `Runner` astrae l'esecuzione (`ExecRunner` su desktop, bridge verso youtubedl-android su Android): enumerazione, concorrenza ed estrazione errori sono comuni.
 - **`watcher`** — wrapper `fsnotify` per l'**aggiornamento automatico** della cartella sorgente.
 
-**`frontend/src/App.tsx`** — unico componente principale. `guard()` avvolge le azioni async (imposta `busy`, gestisce errori, garantisce una **durata minima** del busy per non far lampeggiare la barra). Eventi Wails: `watch:changed` aggiorna solo l'anteprima.
+**`frontend/src/App.tsx`** — unico componente principale. `guard()` avvolge le azioni async (imposta `busy`, gestisce errori, garantisce una **durata minima** del busy per non far lampeggiare la barra). Eventi del core (via `onEvent` di `api.ts`): `watch:changed` aggiorna solo l'anteprima, `process:progress`, `folder:dropped`, `ytdlp:changed`.
+
+**`frontend/src/api.ts`** — unico accesso della UI al core: su desktop `window.go.core.App`, su Android il plugin `RenameMusic` (`isAndroid`). Le differenze di UI Android sono condizionate a `isAndroid` (desktop invariato): selettore cartelle interno ([FolderPicker.tsx](frontend/src/FolderPicker.tsx)), banner per il permesso sui file, tasto Indietro, yt-dlp integrato (solo "Aggiorna"), layout mobile in [mobile.css](frontend/src/mobile.css) (tutto sotto `.is-android`).
 
 ## Concetti chiave / invarianti
 
 - **Regole correnti vs default**: le "correnti" (`config.json`) sono attive; i "default" (`defaults.json`) sono un preset ripristinabile. "Salva come predefinito" sovrascrive i default; "Ripristina default" copia i default nelle correnti. La cartella si gestisce a parte (`state.json`), mai dentro le regole.
 - **Aggiornamento automatico** (ex "watch"): osserva la cartella e aggiorna l'**anteprima** quando cambia il contenuto; **non converte mai** automaticamente. Dopo un `ProcessAll` il watcher va in pausa (`watchPaused`) fino al prossimo Scan, per ignorare gli eventi fsnotify auto-generati. In tutte le label UI il termine è **"Aggiornamento automatico"** (o "Agg. automatico"), non "watch".
 - **Formato file**: i file trattati sono **sempre e solo mp3** (nessuna conversione fra formati diversi). La UI mostra per riga un chip blu con l'estensione (`ExtChip`), perché **l'estensione non è mai mostrata nei nomi file**, solo nel chip. `rename` mantiene comunque l'estensione del file (sorgente = destinazione).
+- **Android**: l'app è installata a mano (mai sul Play Store), quindi usa `MANAGE_EXTERNAL_STORAGE` e lavora su **percorsi reali** come il desktop (niente SAF/URI `content://`). Il core Go è compilato solo per `arm64-v8a` e `x86_64`: gli APK sono divisi per ABI (`splits` in `app/build.gradle`).
 - **Log strutturati**: le righe di attività sono `LogEntry { time, kind, message }` con `LogKind` = `info | success | error | auto`, assegnato **alla sorgente** in `addLogLocked(kind, message)`. Il frontend le rende direttamente (niente parsing/euristiche sul testo). Max 12 righe, più recenti in cima.
 
 ## Convenzioni

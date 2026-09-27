@@ -1,4 +1,9 @@
-package main
+// Package core è il cuore applicativo di RenameMusic, indipendente dalla
+// piattaforma: stato (cartella, regole, ultimo scan, log, opzioni) e metodi
+// chiamati dalla UI. Lo usano sia l'app desktop (Wails, package main) sia l'app
+// Android (package mobile, via gomobile): le differenze di piattaforma passano
+// dalle interfacce Host e YtDlp (vedi platform.go).
+package core
 
 import (
 	"context"
@@ -9,8 +14,6 @@ import (
 	"sync"
 	"time"
 
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
 	appfs "renamemusic/internal/fs"
 	"renamemusic/internal/parser"
 	"renamemusic/internal/playlist"
@@ -20,13 +23,13 @@ import (
 	"renamemusic/internal/watcher"
 )
 
-// EventWatchChanged è l'evento Wails emesso quando la modalità watch rileva
+// EventWatchChanged è l'evento emesso quando la modalità watch rileva
 // una variazione nella cartella osservata: il payload è lo StateResponse
 // aggiornato (con la nuova lista di file/anteprime), così l'UI può aggiornare
 // solo l'anteprima senza avviare nulla — la conversione resta sempre manuale.
 const EventWatchChanged = "watch:changed"
 
-// EventFolderDropped è l'evento Wails emesso quando l'utente trascina una
+// EventFolderDropped è l'evento emesso quando l'utente trascina una
 // cartella (o un file) sulla finestra: il payload è lo StateResponse aggiornato
 // con la nuova cartella di partenza e la relativa anteprima.
 const EventFolderDropped = "folder:dropped"
@@ -34,6 +37,12 @@ const EventFolderDropped = "folder:dropped"
 // EventProcessProgress è emesso durante ProcessAll dopo ogni file elaborato, con
 // l'avanzamento corrente (done/total), così la UI può mostrare "(x/totale)".
 const EventProcessProgress = "process:progress"
+
+// EventYtDlpChanged è emesso quando lo stato di yt-dlp cambia fuori dal ciclo
+// richiesta/risposta della UI (su Android: fine dell'inizializzazione di
+// youtubedl-android, che avviene in background all'avvio). Il payload è lo
+// StateResponse aggiornato.
+const EventYtDlpChanged = "ytdlp:changed"
 
 // ProgressEvent è il payload di EventProcessProgress.
 type ProgressEvent struct {
@@ -60,7 +69,11 @@ type TagPromptView struct {
 }
 
 type App struct {
-	ctx      context.Context
+	// host e ytdlp sono i servizi di piattaforma (vedi platform.go), fissati
+	// da New e mai modificati dopo: si leggono senza lock tramite h() e yt().
+	host  Host
+	ytdlp YtDlp
+
 	mu       sync.Mutex
 	config   rules.Config
 	defaults rules.Config
@@ -210,7 +223,16 @@ type ActionResponse struct {
 	DownloadErrors []DownloadErrorView `json:"downloadErrors,omitempty"`
 }
 
-func NewApp() *App {
+// Options configura i servizi di piattaforma di un App. Campi nil => Host che
+// scarta gli eventi e gestione di yt-dlp desktop (ExecYtDlp).
+type Options struct {
+	Host  Host
+	YtDlp YtDlp
+}
+
+// New crea l'App caricando regole, predefiniti, stato e playlist persistiti.
+// Va poi avviato con Start.
+func New(opts Options) *App {
 	logs := []LogEntry{newLogEntry(LogInfo, "App pronta.")}
 
 	// I predefiniti sono persistiti: se il file non esiste lo si crea dal seed di fabbrica.
@@ -256,6 +278,8 @@ func NewApp() *App {
 	}
 
 	return &App{
+		host:             opts.Host,
+		ytdlp:            opts.YtDlp,
 		config:           current,
 		defaults:         defaults,
 		logs:             logs,
@@ -269,6 +293,27 @@ func NewApp() *App {
 		ytDlpPath:        st.YtDlpPath,
 		watcher:          w,
 	}
+}
+
+// h restituisce l'Host di piattaforma (nopHost se non fornito, es. nei test).
+func (a *App) h() Host {
+	if a.host == nil {
+		return nopHost{}
+	}
+	return a.host
+}
+
+// yt restituisce la gestione di yt-dlp (ExecYtDlp se non fornita).
+func (a *App) yt() YtDlp {
+	if a.ytdlp == nil {
+		return ExecYtDlp{}
+	}
+	return a.ytdlp
+}
+
+// emit invia un evento alla UI tramite l'Host.
+func (a *App) emit(event string, payload any) {
+	a.h().Emit(event, payload)
 }
 
 // persistStateLocked salva su disco cartella + opzioni. Va chiamata con il lock acquisito.
@@ -290,7 +335,7 @@ func (a *App) persistStateLocked() {
 // lock acquisito (legge ytDlpManaged/ytDlpPath).
 func (a *App) ytDlpEffectivePath() string {
 	if a.ytDlpManaged {
-		if p, err := settings.YtDlpManagedPath(); err == nil {
+		if p, err := a.yt().ManagedPath(); err == nil {
 			return p
 		}
 		return ""
@@ -304,17 +349,19 @@ func (a *App) ytDlpEffectivePath() string {
 // Va chiamata con il lock acquisito (o durante la costruzione, senza concorrenza).
 func (a *App) refreshYtDlpStatus() {
 	path := a.ytDlpEffectivePath()
-	a.ytDlpAvailable = playlist.IsAvailable(path)
+	a.ytDlpAvailable = a.yt().Available(path)
 	if a.ytDlpAvailable {
-		a.ytDlpVersion = playlist.Version(path)
+		a.ytDlpVersion = a.yt().Version(path)
 	} else {
 		a.ytDlpVersion = ""
 	}
 }
 
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-
+// Start esegue le operazioni di avvio (pulizia temporanei, stato di yt-dlp,
+// ripristino dell'aggiornamento automatico). È una funzione di package e non un
+// metodo di proposito: i metodi esportati di App sono l'API della UI (bindata da
+// Wails), mentre questo è un hook di ciclo di vita riservato alla piattaforma.
+func Start(a *App) {
 	// Pulizia dei file temporanei di configurazione lasciati orfani da un crash
 	// durante una scrittura atomica (%AppData%\RenameMusic).
 	if n := settings.CleanTempFiles(); n > 0 {
@@ -328,13 +375,6 @@ func (a *App) startup(ctx context.Context) {
 	a.mu.Lock()
 	a.refreshYtDlpStatus()
 	a.mu.Unlock()
-
-	// Trascinamento di una cartella (o file) sulla finestra: imposta la cartella
-	// di partenza. Avviene fuori dal ciclo richiesta/risposta della UI, quindi
-	// dopo l'aggiornamento notifichiamo il frontend con un evento dedicato.
-	wailsruntime.OnFileDrop(ctx, func(_, _ int, paths []string) {
-		a.handleFileDrop(paths)
-	})
 
 	// Se il watch era abilitato nella sessione precedente e c'è una cartella
 	// ricordata, riavvialo automaticamente.
@@ -352,12 +392,32 @@ func (a *App) startup(ctx context.Context) {
 	}
 }
 
-// handleFileDrop gestisce il rilascio di elementi sulla finestra: usa il primo
+// RefreshYtDlp ricalcola lo stato di yt-dlp e notifica la UI con
+// EventYtDlpChanged. Serve alle piattaforme in cui yt-dlp diventa disponibile
+// in modo asincrono (Android: inizializzazione di youtubedl-android).
+func RefreshYtDlp(a *App) {
+	a.mu.Lock()
+	a.refreshYtDlpStatus()
+	state := a.snapshot()
+	a.mu.Unlock()
+	a.emit(EventYtDlpChanged, state)
+}
+
+// NotifyExternalChange segnala che il contenuto della cartella potrebbe essere
+// cambiato senza che il watcher lo abbia visto (su Android: l'app torna in primo
+// piano dopo che l'utente ha usato un altro file manager). Se l'aggiornamento
+// automatico è attivo (e non in pausa) programma la stessa scansione+notifica
+// di un evento fsnotify; altrimenti non fa nulla.
+func NotifyExternalChange(a *App) {
+	a.onWatchFile("")
+}
+
+// HandleFileDrop gestisce il rilascio di elementi sulla finestra: usa il primo
 // percorso (se è un file, risale alla cartella che lo contiene), imposta la
 // cartella di partenza riusando SetFolder e notifica la UI con l'anteprima
 // aggiornata. Percorsi multipli: si considera solo il primo (l'app lavora su una
 // cartella per volta).
-func (a *App) handleFileDrop(paths []string) {
+func HandleFileDrop(a *App, paths []string) {
 	if len(paths) == 0 {
 		return
 	}
@@ -375,9 +435,7 @@ func (a *App) handleFileDrop(paths []string) {
 		a.mu.Unlock()
 	}
 
-	if a.ctx != nil {
-		wailsruntime.EventsEmit(a.ctx, EventFolderDropped, resp.State)
-	}
+	a.emit(EventFolderDropped, resp.State)
 }
 
 // OpenFolder apre il percorso indicato nel file manager di sistema (Esplora
@@ -389,9 +447,9 @@ func (a *App) OpenFolder(path string) ActionResponse {
 	if !appfs.IsDir(path) {
 		return ActionResponse{OK: false, Message: "La cartella non esiste.", State: a.snapshotLocked()}
 	}
-	// Apertura tramite la shell già in esecuzione (ShellExecuteW): quasi
-	// istantanea, niente cold-start di un nuovo processo explorer.exe.
-	if err := openFolderInShell(filepath.Clean(path)); err != nil {
+	// Su Windows l'Host apre la cartella tramite la shell già in esecuzione
+	// (ShellExecuteW): quasi istantanea, niente cold-start di explorer.exe.
+	if err := a.h().OpenFolder(filepath.Clean(path)); err != nil {
 		return ActionResponse{OK: false, Message: "Impossibile aprire la cartella: " + err.Error(), State: a.snapshotLocked()}
 	}
 	return ActionResponse{OK: true, State: a.snapshotLocked()}
@@ -514,9 +572,7 @@ func (a *App) SetFolder(path string) ActionResponse {
 }
 
 func (a *App) SelectFolder() ActionResponse {
-	path, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title: "Seleziona cartella Rename Music",
-	})
+	path, err := a.h().ChooseDirectory("Seleziona cartella Rename Music")
 	if err != nil {
 		return ActionResponse{OK: false, Message: "Impossibile aprire il selettore cartella.", State: a.snapshotLocked()}
 	}
@@ -741,12 +797,9 @@ func (a *App) SetYtDlpConfig(managed bool, path string) ActionResponse {
 // personalizzato. Restituisce il percorso scelto (vuoto se annullato). Non
 // persiste nulla: la UI applica poi la scelta con SetYtDlpConfig.
 func (a *App) ChooseYtDlpFile() string {
-	path, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title: "Seleziona l'eseguibile yt-dlp",
-		Filters: []wailsruntime.FileFilter{
-			{DisplayName: "Eseguibili (*.exe)", Pattern: "*.exe"},
-			{DisplayName: "Tutti i file (*.*)", Pattern: "*.*"},
-		},
+	path, err := a.h().ChooseFile("Seleziona l'eseguibile yt-dlp", []FileFilter{
+		{DisplayName: "Eseguibili (*.exe)", Pattern: "*.exe"},
+		{DisplayName: "Tutti i file (*.*)", Pattern: "*.*"},
 	})
 	if err != nil {
 		return ""
@@ -772,7 +825,7 @@ func (a *App) InstallYtDlp() ActionResponse {
 	a.addLogLocked(LogInfo, "Download di yt-dlp in corso...")
 	a.mu.Unlock()
 
-	err := playlist.Install(dest)
+	err := a.yt().Install(dest)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -801,14 +854,14 @@ func (a *App) UninstallYtDlp() ActionResponse {
 		return ActionResponse{OK: false, Message: msg, State: a.snapshot()}
 	}
 
-	path, err := settings.YtDlpManagedPath()
+	path, err := a.yt().ManagedPath()
 	if err != nil {
 		msg := "Percorso di yt-dlp non determinabile: " + err.Error()
 		a.addLogLocked(LogError, msg)
 		return ActionResponse{OK: false, Message: msg, State: a.snapshot()}
 	}
 
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := a.yt().Uninstall(path); err != nil {
 		msg := "Rimozione di yt-dlp fallita: " + err.Error()
 		a.addLogLocked(LogError, msg)
 		return ActionResponse{OK: false, Message: msg, State: a.snapshot()}
@@ -822,7 +875,7 @@ func (a *App) UninstallYtDlp() ActionResponse {
 // DownloadPlaylist scarica in mp3 (in una cartella già selezionata come
 // cartella di partenza) tutti i video della playlist YouTube associata al
 // nome `name`, poi esegue una scansione così l'anteprima si aggiorna con i
-// nuovi file. Richiede yt-dlp.exe accanto all'eseguibile dell'app.
+// nuovi file. Richiede yt-dlp disponibile (vedi YtDlp).
 func (a *App) DownloadPlaylist(name string) ActionResponse {
 	a.mu.Lock()
 	folder := a.config.StartFolder
@@ -845,7 +898,7 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 		return ActionResponse{OK: false, Message: "Seleziona prima una cartella di partenza.", State: a.snapshotLocked()}
 	}
 
-	if !playlist.IsAvailable(ytdlp) {
+	if !a.yt().Available(ytdlp) {
 		return ActionResponse{OK: false, Message: "yt-dlp non disponibile: scaricalo o imposta un percorso valido nelle impostazioni.", State: a.snapshotLocked()}
 	}
 
@@ -861,15 +914,13 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 	opCtx, endOp := a.beginCancelable()
 	defer endOp()
 
-	emitCtx := a.ctx
 	result, err := playlist.Download(playlist.Options{
-		YtDlpPath: ytdlp,
-		URL:       url,
-		Folder:    folder,
+		Runner:  a.yt().Runner(ytdlp),
+		URL:     url,
+		Folder:  folder,
+		Workers: a.yt().Workers(),
 		OnProgress: func(done, total int) {
-			if emitCtx != nil {
-				wailsruntime.EventsEmit(emitCtx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
-			}
+			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total})
 		},
 		Cancelled: func() bool { return opCtx.Err() != nil },
 	})
@@ -922,9 +973,7 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 // ChooseDirectory apre il selettore cartella e restituisce il percorso scelto
 // (stringa vuota se annullato). Usato per selezionare la cartella di destinazione.
 func (a *App) ChooseDirectory() string {
-	path, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title: "Seleziona cartella di destinazione",
-	})
+	path, err := a.h().ChooseDirectory("Seleziona cartella di destinazione")
 	if err != nil {
 		return ""
 	}
@@ -1014,8 +1063,6 @@ func (a *App) ProcessAll() ActionResponse {
 	opCtx, endOp := a.beginCancelable()
 	defer endOp()
 
-	emitCtx := a.ctx
-
 	// Separa le tracce che, una volta normalizzate, avrebbero tag sconosciuti
 	// (titolo o artista) da quelle già a posto. Le seconde le convertiamo subito
 	// qui; per le prime NON blocchiamo nulla: le restituiamo alla UI come
@@ -1046,9 +1093,7 @@ func (a *App) ProcessAll() ActionResponse {
 		DeleteOriginals:   deleteOriginals,
 		OnProgress: func(_, _ int) {
 			done++
-			if emitCtx != nil {
-				wailsruntime.EventsEmit(emitCtx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
-			}
+			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total})
 		},
 		Cancelled: func() bool { return opCtx.Err() != nil },
 	})
@@ -1236,12 +1281,9 @@ func (a *App) ClearTags() ActionResponse {
 	opCtx, endOp := a.beginCancelable()
 	defer endOp()
 
-	emitCtx := a.ctx
 	cleared, failed := rename.NewService(cfg).ClearTags(files,
 		func(done, total int) {
-			if emitCtx != nil {
-				wailsruntime.EventsEmit(emitCtx, EventProcessProgress, ProgressEvent{Done: done, Total: total})
-			}
+			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total})
 		},
 		func() bool { return opCtx.Err() != nil },
 	)
@@ -1418,12 +1460,9 @@ func (a *App) runWatchRescan() {
 	a.currentTags = currentTags
 	a.addLogLocked(LogAuto, fmt.Sprintf("Scansione automatica: %d file audio.", len(files)))
 	state := a.snapshot()
-	ctx := a.ctx
 	a.mu.Unlock()
 
-	if ctx != nil {
-		wailsruntime.EventsEmit(ctx, EventWatchChanged, state)
-	}
+	a.emit(EventWatchChanged, state)
 }
 
 func (a *App) onWatchError(err error) {

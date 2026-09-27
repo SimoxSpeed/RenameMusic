@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sfondo dietro status bar e barra di navigazione quando la WebView non
+         è edge-to-edge (Capacitor la ritaglia fra le barre): stesso colore
+         dell'header dell'app (header-bg nel CSS), con icone di sistema chiare. -->
+    <color name="rm_system_bars">#1F2937</color>
+</resources>

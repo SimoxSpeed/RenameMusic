@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"os"
@@ -8,14 +9,19 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"renamemusic/internal/core"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
-	// Istanza dell'app (definita in app.go)
-	app := NewApp()
+	// Istanza del core applicativo (internal/core), condiviso con l'app Android:
+	// qui gli si forniscono i servizi di piattaforma desktop (Wails + yt-dlp.exe).
+	host := &desktopHost{}
+	app := core.New(core.Options{Host: host, YtDlp: core.ExecYtDlp{}})
 
 	// Configurazione Wails
 	err := wails.Run(&options.App{
@@ -27,9 +33,18 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 246, G: 247, B: 249, A: 1},
-		OnStartup:        app.startup,
+		OnStartup: func(ctx context.Context) {
+			host.ctx = ctx
+			core.Start(app)
+			// Trascinamento di una cartella (o file) sulla finestra: imposta la
+			// cartella di partenza. Avviene fuori dal ciclo richiesta/risposta
+			// della UI: il core notifica il frontend con un evento dedicato.
+			wailsruntime.OnFileDrop(ctx, func(_, _ int, paths []string) {
+				core.HandleFileDrop(app, paths)
+			})
+		},
 		// Abilita il trascinamento di file/cartelle sulla finestra: il percorso
-		// rilasciato viene gestito in app.startup via runtime.OnFileDrop.
+		// rilasciato viene gestito in OnStartup via runtime.OnFileDrop.
 		DragAndDrop: &options.DragAndDrop{
 			EnableFileDrop: true,
 		},

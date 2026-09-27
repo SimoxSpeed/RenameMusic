@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,9 +20,9 @@ const ytDlpDownloadURL = "https://github.com/yt-dlp/yt-dlp/releases/latest/downl
 
 // Options controlla un'esecuzione di Download.
 type Options struct {
-	YtDlpPath string // percorso dell'eseguibile yt-dlp da usare
-	URL       string // link della playlist YouTube
-	Folder    string // cartella di destinazione degli mp3
+	Runner Runner // esecutore di yt-dlp (processo esterno su desktop, libreria su Android)
+	URL    string // link della playlist YouTube
+	Folder string // cartella di destinazione degli mp3
 
 	// Workers limita quanti download avvengono in parallelo. <= 0 usa il
 	// default (8): a differenza dello script bat originale (che li lanciava
@@ -74,9 +73,13 @@ func Version(path string) string {
 	if !IsAvailable(path) {
 		return ""
 	}
-	cmd := exec.Command(path, "--version")
-	hideWindow(cmd)
-	out, err := cmd.Output()
+	return VersionWith(ExecRunner{Path: path})
+}
+
+// VersionWith esegue `--version` con il Runner indicato e restituisce la
+// versione riportata da yt-dlp (stringa vuota se il comando fallisce).
+func VersionWith(r Runner) string {
+	out, _, err := r.Run([]string{"--version"})
 	if err != nil {
 		return ""
 	}
@@ -141,10 +144,14 @@ func Install(destPath string) error {
 // ID dei video (yt-dlp --flat-playlist --print id) e poi scarica ogni video
 // con concorrenza limitata a Options.Workers. A differenza dello script bat
 // originale (che lanciava i processi in background e attendeva con un polling
-// su tasklist), ogni processo yt-dlp viene atteso esplicitamente con
-// cmd.Run(): Download ritorna solo quando TUTTI i download sono conclusi.
+// su tasklist), ogni esecuzione di yt-dlp viene attesa esplicitamente
+// (Runner.Run è bloccante): Download ritorna solo quando TUTTI i download sono
+// conclusi.
 func Download(opts Options) (Result, error) {
-	videos, err := listVideos(opts.YtDlpPath, opts.URL)
+	if opts.Runner == nil {
+		return Result{}, fmt.Errorf("yt-dlp non configurato")
+	}
+	videos, err := listVideos(opts.Runner, opts.URL)
 	if err != nil {
 		return Result{}, err
 	}
@@ -185,7 +192,7 @@ func Download(opts Options) (Result, error) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			if err := downloadOne(opts.YtDlpPath, opts.Folder, info.id); err != nil {
+			if err := downloadOne(opts.Runner, opts.Folder, info.id); err != nil {
 				atomic.AddInt32(&failed, 1)
 				mu.Lock()
 				failures = append(failures, Failure{
@@ -218,11 +225,12 @@ type videoInfo struct {
 // listVideos enumera i video di una playlist senza scaricare nulla
 // (--flat-playlist), stampando ID e titolo separati da un tab: una riga per
 // video. Il titolo serve solo a rendere leggibile l'eventuale elenco di errori.
-func listVideos(ytdlp, url string) ([]videoInfo, error) {
-	cmd := exec.Command(ytdlp, "--flat-playlist", "--print", "%(id)s\t%(title)s", url)
-	hideWindow(cmd)
-	out, err := cmd.Output()
+func listVideos(r Runner, url string) ([]videoInfo, error) {
+	out, stderr, err := r.Run([]string{"--flat-playlist", "--print", "%(id)s\t%(title)s", url})
 	if err != nil {
+		if msg := extractYtDlpError(string(stderr)); msg != "" {
+			return nil, fmt.Errorf("estrazione playlist fallita: %s", msg)
+		}
 		return nil, fmt.Errorf("estrazione playlist fallita: %w", err)
 	}
 
@@ -246,19 +254,16 @@ func listVideos(ytdlp, url string) ([]videoInfo, error) {
 // downloadOne scarica ed estrae in mp3 un singolo video, con nome file basato
 // sul titolo (stesse opzioni dello script bat originale). In caso di errore
 // cattura lo stderr di yt-dlp e ne restituisce il messaggio più significativo.
-func downloadOne(ytdlp, folder, videoID string) error {
+func downloadOne(r Runner, folder, videoID string) error {
 	out := filepath.Join(folder, "%(title)s.%(ext)s")
-	cmd := exec.Command(ytdlp,
+	_, stderr, err := r.Run([]string{
 		"-x", "--audio-format", "mp3",
 		"--no-mtime", "--windows-filenames", "--trim-filenames", "200",
 		"-o", out,
-		"https://www.youtube.com/watch?v="+videoID,
-	)
-	hideWindow(cmd)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if msg := extractYtDlpError(stderr.String()); msg != "" {
+		"https://www.youtube.com/watch?v=" + videoID,
+	})
+	if err != nil {
+		if msg := extractYtDlpError(string(stderr)); msg != "" {
 			return fmt.Errorf("%s", msg)
 		}
 		return err

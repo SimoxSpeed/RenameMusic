@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { App as CapApp } from '@capacitor/app'
 import './App.css'
+import './mobile.css'
 import {
     GetState,
     SelectFolder,
+    SetFolder,
     Scan,
     ProcessAll,
     SetConfig,
@@ -22,9 +25,17 @@ import {
     SetYtDlpConfig,
     ChooseYtDlpFile,
     ResolveTagPrompt,
-} from '../wailsjs/go/main/App'
-import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime'
-import { main, rules, playlist } from '../wailsjs/go/models'
+    isAndroid,
+    onEvent,
+    onResume,
+    requestNotifications,
+    requestStorage,
+    storageStatus,
+    type core,
+    type rules,
+    type playlist,
+} from './api'
+import FolderPicker from './FolderPicker'
 
 type Status = { message: string; ok: boolean }
 
@@ -331,7 +342,7 @@ function tagChanged(current: string | undefined, expected: string | undefined): 
 // fileWillChange indica se un file subirà una qualsiasi modifica: il nome
 // cambia, oppure (per gli MP3) cambia il titolo o l'artista scritto nei tag.
 // Usata sia dal filtro "Solo da modificare" sia dai badge di stato.
-function fileWillChange(f: main.FileView): boolean {
+function fileWillChange(f: core.FileView): boolean {
     const nameChanged = splitName(f.name).base !== splitName(f.preview).base
     const tagsChanged = !!f.mp3 && (tagChanged(f.title, f.titlePreview) || tagChanged(f.artist, f.artistPreview))
     return nameChanged || tagsChanged
@@ -494,7 +505,7 @@ function cloneConfig(cfg: rules.Config): rules.Config {
 }
 
 function App() {
-    const [state, setState] = useState<main.StateResponse | null>(null)
+    const [state, setState] = useState<core.StateResponse | null>(null)
     const [status, setStatus] = useState<Status>({ message: '', ok: true })
     const [toasts, setToasts] = useState<Toast[]>([])
     const toastIdRef = useRef(0)
@@ -506,7 +517,7 @@ function App() {
     const [playlistDraft, setPlaylistDraft] = useState<playlist.Playlist[]>([])
     // selectedPlaylist: nome scelto nel select accanto al bottone "Scarica".
     const [selectedPlaylist, setSelectedPlaylist] = useState('')
-    const [results, setResults] = useState<main.ResultView[] | null>(null)
+    const [results, setResults] = useState<core.ResultView[] | null>(null)
     const [confirmDefault, setConfirmDefault] = useState(false)
     const [destSameAsSource, setDestSameAsSource] = useState(true)
     const [destFolder, setDestFolder] = useState('')
@@ -557,10 +568,17 @@ function App() {
     // downloadErrors: video di playlist non scaricati nell'ultimo download (con
     // dettaglio dell'errore). Popolato dalla risposta di DownloadPlaylist; un
     // badge nell'area download apre il modale che li elenca (showDownloadErrors).
-    const [downloadErrors, setDownloadErrors] = useState<main.DownloadErrorView[]>([])
+    const [downloadErrors, setDownloadErrors] = useState<core.DownloadErrorView[]>([])
     const [showDownloadErrors, setShowDownloadErrors] = useState(false)
+    // Solo Android. storageGranted: accesso a tutti i file concesso (sempre true
+    // su desktop); senza, il core non può leggere né rinominare i file e la UI
+    // mostra la richiesta di permesso. folderPicker: selettore cartelle interno
+    // (su Android sostituisce il dialog di sistema) aperto per la cartella di
+    // partenza ('source') o di destinazione ('dest').
+    const [storageGranted, setStorageGranted] = useState(true)
+    const [folderPicker, setFolderPicker] = useState<'source' | 'dest' | null>(null)
 
-    function absorb(resp: main.ActionResponse) {
+    function absorb(resp: core.ActionResponse) {
         setState(resp.state)
         if (resp.state.config) {
             setDraft(cloneConfig(resp.state.config))
@@ -608,7 +626,7 @@ function App() {
         setToasts((prev) => prev.filter((t) => t.id !== id))
     }
 
-    function syncOptions(s: main.StateResponse) {
+    function syncOptions(s: core.StateResponse) {
         setDestSameAsSource(s.destinationSameAsSource)
         setDestFolder(s.destinationFolder ?? '')
         setDeleteOriginals(s.deleteOriginals)
@@ -626,6 +644,14 @@ function App() {
         if (bootedRef.current) return
         bootedRef.current = true
         guard(async () => {
+            // Android: senza accesso ai file la scansione vedrebbe una cartella
+            // vuota; controlliamo prima il permesso (la UI lo chiede se manca).
+            if (isAndroid) {
+                const granted = await storageStatus()
+                storageRef.current = granted
+                setStorageGranted(granted)
+                if (granted) requestNotifications()
+            }
             const resp = await GetState()
             absorb(resp)
             syncOptions(resp.state)
@@ -633,6 +659,40 @@ function App() {
         }).finally(() => setBooted(true))
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // Android: al ritorno in primo piano ricontrolliamo il permesso sui file
+    // (l'utente lo concede nelle impostazioni di sistema, fuori dall'app). Se è
+    // appena stato concesso e c'è già una cartella ricordata la riscansioniamo,
+    // così l'anteprima si popola subito. I ref servono perché il gestore è
+    // registrato una sola volta e non vedrebbe lo stato aggiornato.
+    const storageRef = useRef(true)
+    const folderRef = useRef('')
+    useEffect(() => {
+        return onResume((granted) => {
+            const wasGranted = storageRef.current
+            storageRef.current = granted
+            setStorageGranted(granted)
+            if (granted && !wasGranted) {
+                requestNotifications()
+                if (folderRef.current) refresh()
+            }
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Chiede l'accesso a tutti i file (Android 11+: apre le impostazioni di
+    // sistema; lo stato si aggiorna al ritorno nell'app, vedi onResume).
+    function askStorage() {
+        requestStorage()
+            .then((granted) => {
+                if (granted && !storageRef.current) {
+                    storageRef.current = true
+                    setStorageGranted(true)
+                    if (folderRef.current) refresh()
+                }
+            })
+            .catch((e) => notify(false, 'Impossibile richiedere il permesso: ' + String(e)))
+    }
 
     // Aggiorna e persiste le opzioni di elaborazione (destinazione + eliminazione originali).
     function applyOptions(same: boolean, dest: string, del: boolean) {
@@ -650,22 +710,40 @@ function App() {
     // conversione, ignoriamo l'evento: il backend è già in pausa in quel caso,
     // ma è una difesa extra lato UI.
     useEffect(() => {
-        EventsOn('watch:changed', (payload: unknown) => {
-            const next = payload as main.StateResponse
+        return onEvent('watch:changed', (payload: unknown) => {
+            const next = payload as core.StateResponse
             if (!next) return
-            setState((prev) => (prev ? ({ ...prev, files: next.files, logs: next.logs } as main.StateResponse) : next))
+            setState((prev) => (prev ? ({ ...prev, files: next.files, logs: next.logs } as core.StateResponse) : next))
         })
-        return () => {
-            EventsOff('watch:changed')
-        }
+    }, [])
+
+    // Stato di yt-dlp cambiato fuori da una richiesta della UI (Android: fine
+    // dell'inizializzazione di youtubedl-android all'avvio): aggiorniamo solo
+    // presenza/versione, senza toccare il resto dello stato.
+    useEffect(() => {
+        return onEvent('ytdlp:changed', (payload: unknown) => {
+            const next = payload as core.StateResponse
+            if (!next) return
+            setState((prev) =>
+                prev
+                    ? ({
+                          ...prev,
+                          ytDlpAvailable: next.ytDlpAvailable,
+                          ytDlpVersion: next.ytDlpVersion,
+                          ytDlpEffectivePath: next.ytDlpEffectivePath,
+                          logs: next.logs,
+                      } as core.StateResponse)
+                    : next,
+            )
+        })
     }, [])
 
     // Trascinamento di una cartella sulla finestra: il backend imposta la
     // cartella di partenza e ci manda lo stato aggiornato (con l'anteprima).
     // Assorbiamo tutto come farebbe una scansione manuale.
     useEffect(() => {
-        EventsOn('folder:dropped', (payload: unknown) => {
-            const next = payload as main.StateResponse
+        return onEvent('folder:dropped', (payload: unknown) => {
+            const next = payload as core.StateResponse
             if (!next) return
             setState(next)
             if (next.config) setDraft(cloneConfig(next.config))
@@ -676,22 +754,16 @@ function App() {
             setStatus({ message: msg, ok })
             notify(ok, msg)
         })
-        return () => {
-            EventsOff('folder:dropped')
-        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     // Avanzamento di ProcessAll: il backend emette un evento per ogni file
     // completato; aggiorniamo il contatore mostrato accanto a "Operazione in corso".
     useEffect(() => {
-        EventsOn('process:progress', (payload: unknown) => {
+        return onEvent('process:progress', (payload: unknown) => {
             const p = payload as { done: number; total: number } | null
             if (p) setProgress(p)
         })
-        return () => {
-            EventsOff('process:progress')
-        }
     }, [])
 
     // Quando cambia la traccia in testa alla coda, reimpostiamo l'input del popup
@@ -733,7 +805,12 @@ function App() {
     }
 
     // Scegli cartella: imposta il percorso e mostra subito l'anteprima (scan automatico).
+    // Su Android apre il selettore interno (vedi pickFolder).
     function chooseFolder() {
+        if (isAndroid) {
+            setFolderPicker('source')
+            return
+        }
         guard(async () => {
             const selected = await SelectFolder()
             if (!selected.ok) {
@@ -749,7 +826,36 @@ function App() {
         })
     }
 
+    // Esito del selettore cartelle interno (Android): stessa sequenza del dialog
+    // desktop, ma con il percorso già scelto dall'utente nella UI.
+    function pickFolder(path: string) {
+        const target = folderPicker
+        setFolderPicker(null)
+        if (target === 'dest') {
+            applyOptions(destSameAsSource, path, deleteOriginals)
+            setStatus({ message: 'Cartella di destinazione impostata.', ok: true })
+            return
+        }
+        guard(async () => {
+            const selected = await SetFolder(path)
+            if (!selected.ok) {
+                absorb(selected)
+                setResults(null)
+                setStatus({ message: selected.message ?? '', ok: selected.ok })
+                return
+            }
+            const scanned = await Scan()
+            absorb(scanned)
+            setResults(null)
+            setStatus({ message: scanned.message ?? '', ok: scanned.ok })
+        })
+    }
+
     function chooseDestination() {
+        if (isAndroid) {
+            setFolderPicker('dest')
+            return
+        }
         guard(async () => {
             const path = await ChooseDirectory()
             if (path) {
@@ -828,7 +934,7 @@ function App() {
         setTagPrompts((prev) => prev.slice(1))
         ResolveTagPrompt(head.path, useEdited, edited)
             .then((resp) => {
-                setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as main.StateResponse) : resp.state))
+                setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as core.StateResponse) : resp.state))
                 const added = resp.results ?? []
                 if (added.length > 0) {
                     setResults((prev) => [...(prev ?? []), ...added])
@@ -883,7 +989,7 @@ function App() {
     async function clearLogs() {
         try {
             const resp = await ClearLogs()
-            setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as main.StateResponse) : prev))
+            setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as core.StateResponse) : prev))
         } catch {
             /* niente da fare: la pulizia log non deve disturbare lo stato */
         }
@@ -906,13 +1012,14 @@ function App() {
         setConfirmDefault(false)
         guard(async () => {
             const resp = await SetAsDefault(draft, playlistDraft)
-            setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as main.StateResponse) : resp.state))
+            setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as core.StateResponse) : resp.state))
             setStatus({ message: resp.message ?? '', ok: resp.ok })
             notify(resp.ok, resp.message ?? '')
         })
     }
 
     const folder = state?.folder ?? ''
+    folderRef.current = folder
     const files = state?.files ?? []
     const logs = state?.logs ?? []
     const playlists = state?.playlists ?? []
@@ -1219,6 +1326,42 @@ function App() {
         })
     }
 
+    // closeTopmost chiude, in ordine, la modale aperta o il pannello
+    // impostazioni (Esc su desktop, tasto Indietro su Android). Restituisce
+    // false se non c'era nulla da chiudere.
+    function closeTopmost(): boolean {
+        if (showDownloadErrors) setShowDownloadErrors(false)
+        else if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
+        else if (confirmClearTags) setConfirmClearTags(false)
+        else if (confirmInstallYtDlp) setConfirmInstallYtDlp(false)
+        else if (confirmUninstallYtDlp) setConfirmUninstallYtDlp(false)
+        else if (confirmDownloadYtDlp) setConfirmDownloadYtDlp(false)
+        else if (confirmLeaveSettings) setConfirmLeaveSettings(false)
+        else if (confirmDefault) setConfirmDefault(false)
+        else if (showSettings) backFromSettings()
+        else return false
+        return true
+    }
+
+    // Tasto Indietro di Android: chiude modali/impostazioni come Esc; se non
+    // c'è nulla da chiudere manda l'app in background (non la chiude, così
+    // un'operazione in corso prosegue). Con il selettore cartelle aperto è lui a
+    // gestire Indietro (risale di cartella), e il popup delle tracce da
+    // correggere richiede una scelta esplicita. Il gestore vive in un ref, come
+    // le scorciatoie, per vedere sempre lo stato corrente.
+    const backRef = useRef<() => void>(() => {})
+    backRef.current = () => {
+        if (folderPicker || tagPrompts.length > 0) return
+        if (!closeTopmost()) CapApp.minimizeApp().catch(() => {})
+    }
+    useEffect(() => {
+        if (!isAndroid) return
+        const handle = CapApp.addListener('backButton', () => backRef.current())
+        return () => {
+            handle.then((h) => h.remove())
+        }
+    }, [])
+
     // Scorciatoie da tastiera. Il gestore è tenuto in un ref aggiornato ad ogni
     // render, così il listener (registrato una sola volta) vede sempre lo stato
     // corrente senza doversi ri-registrare ad ogni cambiamento.
@@ -1232,15 +1375,7 @@ function App() {
 
         // Esc chiude, in ordine: modali aperte, poi il pannello impostazioni.
         if (e.key === 'Escape') {
-            if (showDownloadErrors) setShowDownloadErrors(false)
-            else if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
-            else if (confirmClearTags) setConfirmClearTags(false)
-            else if (confirmInstallYtDlp) setConfirmInstallYtDlp(false)
-            else if (confirmUninstallYtDlp) setConfirmUninstallYtDlp(false)
-            else if (confirmDownloadYtDlp) setConfirmDownloadYtDlp(false)
-            else if (confirmLeaveSettings) setConfirmLeaveSettings(false)
-            else if (confirmDefault) setConfirmDefault(false)
-            else if (showSettings) backFromSettings()
+            closeTopmost()
             return
         }
 
@@ -1278,13 +1413,13 @@ function App() {
     }, [])
 
     return (
-        <div className="app">
+        <div className={'app' + (isAndroid ? ' is-android' : '')}>
             {!showSettings && (
             <header>
                 <div className="header-inner">
                 <h1>RenameMusic</h1>
                 <div className="header-right">
-                    <ShortcutsLegend />
+                    {!isAndroid && <ShortcutsLegend />}
                     {!showSettings && (
                         <>
                             <Tooltip
@@ -1331,9 +1466,10 @@ function App() {
                                 className="header-btn with-icon"
                                 onClick={() => setShowSettings(true)}
                                 disabled={busy}
+                                aria-label="Impostazioni"
                             >
                                 <span className="btn-icon"><SettingsIcon /></span>
-                                Impostazioni
+                                <span className="btn-label">Impostazioni</span>
                             </button>
                         </>
                     )}
@@ -1350,6 +1486,22 @@ function App() {
                     aria-label="Operazione in corso"
                 />
 
+                {!showSettings && !storageGranted && (
+                    <div className="storage-banner" role="alert">
+                        <div className="storage-banner-text">
+                            <strong>Serve l'accesso ai file</strong>
+                            <span>
+                                Per leggere, rinominare e scaricare i brani l'app deve poter accedere
+                                alle cartelle della memoria. Attiva "Consenti l'accesso per gestire
+                                tutti i file" nella schermata che si apre, poi torna qui.
+                            </span>
+                        </div>
+                        <button className="accent" onClick={askStorage}>
+                            Concedi accesso
+                        </button>
+                    </div>
+                )}
+
                 {!showSettings && (
                 <div className="top-row">
                     <div className="top-left-head">
@@ -1361,17 +1513,19 @@ function App() {
                                         {folder || 'Nessuna cartella selezionata'}
                                     </div>
                                 </Tooltip>
-                                <Tooltip label="Apri la cartella in Esplora risorse">
-                                    <button
-                                        className="ghost with-icon"
-                                        onClick={() => openFolder(folder)}
-                                        disabled={busy || !folder}
-                                    >
-                                        <span className="btn-icon"><FolderOpenIcon /></span>
-                                        Apri
-                                    </button>
-                                </Tooltip>
-                                <button className="primary" onClick={chooseFolder} disabled={busy}>
+                                {!isAndroid && (
+                                    <Tooltip label="Apri la cartella in Esplora risorse">
+                                        <button
+                                            className="ghost with-icon"
+                                            onClick={() => openFolder(folder)}
+                                            disabled={busy || !folder}
+                                        >
+                                            <span className="btn-icon"><FolderOpenIcon /></span>
+                                            Apri
+                                        </button>
+                                    </Tooltip>
+                                )}
+                                <button className="primary" onClick={chooseFolder} disabled={busy || !storageGranted}>
                                     Scegli cartella
                                 </button>
                             </div>
@@ -1386,17 +1540,19 @@ function App() {
                                             {destFolder || 'Nessuna destinazione selezionata'}
                                         </div>
                                     </Tooltip>
-                                    <Tooltip label="Apri la cartella in Esplora risorse">
-                                        <button
-                                            className="ghost with-icon"
-                                            onClick={() => openFolder(destFolder)}
-                                            disabled={busy || !destFolder}
-                                        >
-                                            <span className="btn-icon"><FolderOpenIcon /></span>
-                                            Apri
-                                        </button>
-                                    </Tooltip>
-                                    <button className="primary" onClick={chooseDestination} disabled={busy}>
+                                    {!isAndroid && (
+                                        <Tooltip label="Apri la cartella in Esplora risorse">
+                                            <button
+                                                className="ghost with-icon"
+                                                onClick={() => openFolder(destFolder)}
+                                                disabled={busy || !destFolder}
+                                            >
+                                                <span className="btn-icon"><FolderOpenIcon /></span>
+                                                Apri
+                                            </button>
+                                        </Tooltip>
+                                    )}
+                                    <button className="primary" onClick={chooseDestination} disabled={busy || !storageGranted}>
                                         Scegli cartella
                                     </button>
                                 </div>
@@ -1560,6 +1716,9 @@ function App() {
                         <section className="settings">
                         <h2>Download da YouTube</h2>
 
+                        {/* Su Android yt-dlp è integrato nell'app: niente scelta
+                            tra copia gestita e percorso personalizzato. */}
+                        {!isAndroid && (
                         <div className="check ytdlp-toggle">
                             <label className="check-label">
                                 <input
@@ -1572,6 +1731,7 @@ function App() {
                             </label>
                             <InfoIcon text="Quando attivo, l'app scarica e aggiorna da sé yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore): al primo 'Scarica' di una playlist, se manca, lo scarica dopo una conferma. Quando disattivo, indichi a mano il percorso di una tua versione di yt-dlp." />
                         </div>
+                        )}
 
                         <div className="ytdlp-panel">
                             <div className="ytdlp-head">
@@ -1581,9 +1741,22 @@ function App() {
                                         Presente{state?.ytDlpVersion ? ` · versione ${state.ytDlpVersion}` : ''}
                                     </span>
                                 ) : (
-                                    <span className="ytdlp-badge ytdlp-missing">Non presente</span>
+                                    <span className="ytdlp-badge ytdlp-missing">
+                                        {isAndroid ? 'Non ancora pronto' : 'Non presente'}
+                                    </span>
                                 )}
-                                {!state?.ytDlpAvailable ? (
+                                {isAndroid ? (
+                                    <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
+                                        <button
+                                            className="ghost small with-icon ytdlp-install"
+                                            onClick={() => setConfirmDownloadYtDlp(true)}
+                                            disabled={busy}
+                                        >
+                                            <span className="btn-icon"><RefreshIcon /></span>
+                                            Aggiorna
+                                        </button>
+                                    </Tooltip>
+                                ) : !state?.ytDlpAvailable ? (
                                     <Tooltip label="Scarica yt-dlp">
                                         <button
                                             className="ghost small ytdlp-install"
@@ -1851,17 +2024,17 @@ function App() {
                                                       : ''
                                             return (
                                                 <tr key={i} className={rowClass}>
-                                                    <td>
+                                                    <td data-label="Nome originale">
                                                         {renamed ? <s className="old-name">{src.base}</s> : src.base}
                                                     </td>
-                                                    <td>{r.skipped || r.canceled ? '—' : dst.base}</td>
-                                                    <td>
+                                                    <td data-label="Nuovo nome">{r.skipped || r.canceled ? '—' : dst.base}</td>
+                                                    <td data-label="Titolo">
                                                         {showTags ? r.title : <span className="muted-dash">—</span>}
                                                     </td>
-                                                    <td>
+                                                    <td data-label="Artista">
                                                         {showTags ? r.artist : <span className="muted-dash">—</span>}
                                                     </td>
-                                                    <td>
+                                                    <td data-label="Esito">
                                                         {r.failed ? (
                                                             <ErrorLabel message={r.reason} />
                                                         ) : r.canceled ? (
@@ -1915,7 +2088,7 @@ function App() {
                                         const rowChanged = nameChanged || titleChanged || artistChanged
                                         return (
                                             <tr key={i} className={rowChanged ? 'changed' : ''}>
-                                                <td>
+                                                <td data-label="File attuale">
                                                     <CurrentField label="nome" value={src.base} changed={nameChanged} />
                                                     {file.mp3 && (
                                                         <CurrentField label="titolo" value={file.title ?? ''} changed={titleChanged} />
@@ -1924,14 +2097,14 @@ function App() {
                                                         <CurrentField label="artista" value={file.artist ?? ''} changed={artistChanged} />
                                                     )}
                                                 </td>
-                                                <td className={nameChanged ? 'value-changed' : ''}>{dst.base}</td>
-                                                <td className={titleChanged ? 'value-changed' : ''}>
+                                                <td data-label="Nuovo nome" className={nameChanged ? 'value-changed' : ''}>{dst.base}</td>
+                                                <td data-label="Nuovo titolo" className={titleChanged ? 'value-changed' : ''}>
                                                     {file.mp3 ? file.titlePreview : <span className="muted-dash">—</span>}
                                                 </td>
-                                                <td className={artistChanged ? 'value-changed' : ''}>
+                                                <td data-label="Nuovo artista" className={artistChanged ? 'value-changed' : ''}>
                                                     {file.mp3 ? file.artistPreview : <span className="muted-dash">—</span>}
                                                 </td>
-                                                <td>
+                                                <td data-label="Stato">
                                                     <div className="badges">
                                                         {nameChanged ? (
                                                             <span className="badge badge-changed">Da rinominare</span>
@@ -1982,6 +2155,15 @@ function App() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {folderPicker && (
+                <FolderPicker
+                    title={folderPicker === 'dest' ? 'Cartella di destinazione' : 'Cartella di partenza'}
+                    initialPath={folderPicker === 'dest' ? destFolder || folder : folder}
+                    onCancel={() => setFolderPicker(null)}
+                    onSelect={pickFolder}
+                />
             )}
 
             {tagPrompts.length > 0 && (() => {
@@ -2107,7 +2289,16 @@ function App() {
             {confirmInstallYtDlp && (
                 <div className="modal-overlay" onClick={() => setConfirmInstallYtDlp(false)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        {ytDlpManaged ? (
+                        {isAndroid ? (
+                            <>
+                                <h3>yt-dlp non è ancora pronto</h3>
+                                <p>
+                                    L'app lo sta ancora preparando (al primo avvio richiede qualche
+                                    secondo) oppure la preparazione non è riuscita. Vuoi scaricarne
+                                    l'ultima versione e avviare subito il download della playlist?
+                                </p>
+                            </>
+                        ) : ytDlpManaged ? (
                             <>
                                 <h3>Scaricare yt-dlp?</h3>
                                 <p>
@@ -2132,7 +2323,7 @@ function App() {
                                 Annulla
                             </button>
                             <button className="accent" onClick={confirmInstallThenDownload} disabled={busy}>
-                                {ytDlpManaged ? 'Scarica e continua' : 'Attiva e continua'}
+                                {ytDlpManaged || isAndroid ? 'Scarica e continua' : 'Attiva e continua'}
                             </button>
                         </div>
                     </div>
@@ -2163,10 +2354,12 @@ function App() {
             {confirmDownloadYtDlp && (
                 <div className="modal-overlay" onClick={() => setConfirmDownloadYtDlp(false)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Scaricare yt-dlp?</h3>
+                        <h3>{isAndroid ? 'Aggiornare yt-dlp?' : 'Scaricare yt-dlp?'}</h3>
                         <p>
                             Verrà scaricata l'ultima versione ufficiale di <strong>yt-dlp</strong> da
-                            Internet (GitHub){ytDlpManaged ? (
+                            Internet (GitHub){isAndroid ? (
+                                <>, al posto di quella integrata nell'app</>
+                            ) : ytDlpManaged ? (
                                 <> in <code>%AppData%\RenameMusic</code></>
                             ) : (
                                 <> nel percorso indicato</>
@@ -2177,7 +2370,7 @@ function App() {
                                 Annulla
                             </button>
                             <button className="accent" onClick={installYtDlp} disabled={busy}>
-                                Scarica
+                                {isAndroid ? 'Aggiorna' : 'Scarica'}
                             </button>
                         </div>
                     </div>

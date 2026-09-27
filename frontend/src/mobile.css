@@ -1,0 +1,634 @@
+/* Stili dell'app Android (Capacitor). Tutte le regole sono sotto .is-android
+   (classe messa sulla radice .app solo quando la UI gira nella WebView di
+   Android), così l'app desktop resta identica. La WebView è edge-to-edge
+   (viewport-fit=cover): l'header scuro si estende sotto la status bar e i
+   margini inferiori rispettano la barra di navigazione (env(safe-area-inset-*),
+   che su desktop vale 0). */
+
+/* ---- Touch: niente effetti legati all'hover -------------------------------- */
+
+/* Le icone dei bottoni su desktop compaiono all'hover: su touch l'hover "resta
+   attaccato" dopo il tap e farebbe saltare la larghezza dei bottoni. Le
+   mostriamo sempre. */
+.is-android .btn-icon {
+    width: 16px;
+    margin-right: 7px;
+    opacity: 1;
+    transform: none;
+    transition: none;
+}
+
+/* I fumetti dei wrapper Tooltip (spiegazioni al passaggio del mouse) su touch
+   resterebbero aperti dopo ogni tap: li disattiviamo. Restano quelli delle
+   icone "i", che sono richiesti esplicitamente toccando l'icona. */
+.is-android .tip > .info-tooltip {
+    display: none;
+}
+
+/* Fumetto delle icone "i": a tutta larghezza sotto la riga dell'opzione, così
+   non esce mai dallo schermo qualunque sia la posizione dell'icona. */
+.is-android .check {
+    position: relative;
+}
+
+.is-android .check .info-icon {
+    position: static;
+    width: 28px;
+    height: 28px;
+}
+
+.is-android .check .info-tooltip {
+    left: 0;
+    right: 0;
+    top: calc(100% + 8px);
+    width: auto;
+    max-width: none;
+    transform: none;
+    font-size: 13px;
+}
+
+.is-android .check .info-icon:hover .info-tooltip,
+.is-android .check .info-icon:focus .info-tooltip {
+    opacity: 1;
+    transform: none;
+}
+
+.is-android .check .info-tooltip::before {
+    display: none;
+}
+
+/* Bersagli di tocco più comodi (esclusi i bottoni-icona che hanno dimensioni
+   proprie: icone "i", chiusura dei toast, chip dei volumi). */
+.is-android button {
+    min-height: 42px;
+}
+
+.is-android button.small {
+    min-height: 36px;
+}
+
+.is-android .info-icon,
+.is-android .toast-close {
+    min-height: 0;
+}
+
+/* Su touch l'hover "resta attaccato" al bottone toccato: annulliamo gli
+   effetti hover che cambiano colore/ombra, altrimenti il bottone sembra
+   rimanere premuto. */
+.is-android button:hover:not(:disabled) {
+    border-color: var(--line);
+}
+
+.is-android button.primary:hover:not(:disabled),
+.is-android button.accent:hover:not(:disabled) {
+    box-shadow: none;
+}
+
+.is-android button.primary:hover:not(:disabled) {
+    border-color: var(--primary);
+    background: var(--primary);
+}
+
+.is-android button.accent:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+
+.is-android button.danger:hover:not(:disabled) {
+    background: transparent;
+    border-color: #e3c2c2;
+    color: var(--danger);
+}
+
+.is-android button.add-replacement:hover:not(:disabled) {
+    background: var(--panel);
+    border-color: var(--line);
+    color: var(--text);
+}
+
+.is-android button.danger-solid:hover:not(:disabled) {
+    border-color: var(--danger);
+    filter: none;
+}
+
+.is-android button.warn-solid:hover:not(:disabled) {
+    background: #eab308;
+    border-color: #eab308;
+}
+
+.is-android input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+}
+
+/* ---- Safe area (status bar / barra di navigazione) ------------------------- */
+
+.is-android header {
+    padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Strisce scure fisse dietro status bar e barra di navigazione (solo se la
+   WebView è edge-to-edge: altrimenti l'altezza è 0 e le barre mostrano lo
+   sfondo scuro della finestra). Così le icone di sistema, chiare, restano
+   leggibili anche mentre il contenuto chiaro scorre sotto le barre. */
+.is-android::before,
+.is-android::after {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    background: var(--header-bg);
+    pointer-events: none;
+}
+
+.is-android::before {
+    top: 0;
+    height: env(safe-area-inset-top, 0px);
+}
+
+.is-android::after {
+    bottom: 0;
+    height: env(safe-area-inset-bottom, 0px);
+}
+
+/* In Impostazioni l'header è nascosto: il contenuto parte sotto la status bar. */
+.is-android main.settings-view {
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+}
+
+.is-android main {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.is-android .settings-bottombar {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.is-android .toast-container {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    right: 12px;
+    max-width: none;
+}
+
+.is-android .modal-overlay {
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- Richiesta di accesso ai file ------------------------------------------ */
+
+.storage-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+}
+
+.storage-banner-text {
+    display: flex;
+    flex: 1 1 240px;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.storage-banner-text span {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+/* ---- Selettore cartelle ---------------------------------------------------- */
+
+/* Altezza fissa: il riquadro non "salta" quando si passa da una cartella con
+   molte sottocartelle a una vuota (la lista scorre al suo interno). */
+.folder-picker {
+    display: flex;
+    flex-direction: column;
+    max-width: 520px;
+    height: min(100%, 680px);
+}
+
+.fp-roots {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    overflow-x: auto;
+}
+
+.is-android .fp-root {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    background: transparent;
+}
+
+.fp-root.is-active {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--primary-strong);
+}
+
+.fp-path {
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-alt);
+    font-size: 13px;
+    color: var(--muted);
+    word-break: break-word;
+}
+
+.fp-list {
+    flex: 1 1 auto;
+    min-height: 120px;
+    margin: 0 0 10px;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    border: 1px solid var(--line-soft);
+    border-radius: 6px;
+    transition: opacity 0.12s ease;
+}
+
+.fp-list.is-loading {
+    opacity: 0.55;
+}
+
+.fp-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 46px;
+    padding: 8px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--line-soft);
+    border-radius: 0;
+    background: transparent;
+    font-weight: 500;
+    text-align: left;
+    white-space: normal;
+}
+
+.fp-item svg {
+    flex: 0 0 auto;
+    color: var(--primary);
+}
+
+.fp-item:active:not(:disabled) {
+    transform: none;
+    background: var(--line-soft);
+}
+
+.fp-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    word-break: break-word;
+}
+
+.fp-up {
+    color: var(--muted);
+}
+
+.fp-empty {
+    padding: 14px 12px;
+    color: var(--muted);
+}
+
+.fp-error {
+    margin: 0 0 10px !important;
+    color: var(--danger) !important;
+    font-size: 13px;
+}
+
+.fp-new-btn {
+    align-self: flex-start;
+    margin-bottom: 14px;
+}
+
+.fp-new {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.fp-new input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* ---- Layout a colonna singola (telefono) ----------------------------------- */
+
+@media (max-width: 760px) {
+    /* Header: titolo e ingranaggio sulla prima riga, aggiornamento automatico
+       e contatori sulla seconda. Non resta fisso in cima: su un telefono
+       occuperebbe troppo spazio verticale durante lo scorrimento. */
+    .is-android header {
+        position: static;
+    }
+
+    .is-android .header-inner {
+        flex-wrap: wrap;
+        gap: 8px 10px;
+        padding: 10px 14px;
+    }
+
+    .is-android .header-right {
+        display: contents;
+    }
+
+    .is-android header h1 {
+        flex: 1 1 calc(100% - 64px);
+        font-size: 18px;
+    }
+
+    .is-android .header-btn {
+        order: 1;
+        padding: 8px 10px;
+    }
+
+    .is-android .header-btn .btn-icon {
+        margin-right: 0;
+    }
+
+    .is-android .header-btn .btn-label {
+        display: none;
+    }
+
+    .is-android .header-right > .tip {
+        order: 2;
+    }
+
+    .is-android .counters {
+        order: 3;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-left: auto;
+        font-size: 12px;
+    }
+
+    .is-android main {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 14px;
+    }
+
+    /* Testata, stato e Attività impilati: prima i comandi, poi lo stato
+       dell'ultima operazione, poi il registro attività (con altezza propria). */
+    .is-android .top-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .is-android .top-left-head {
+        order: 0;
+    }
+
+    .is-android .top-row > .status {
+        order: 1;
+    }
+
+    .is-android .activity-cell {
+        order: 2;
+    }
+
+    .is-android .activity-panel {
+        position: relative;
+        inset: auto;
+        max-height: 260px;
+    }
+
+    .is-android .log-item {
+        grid-template-columns: 8px 58px 1fr;
+        gap: 8px;
+        padding: 8px 12px;
+    }
+
+    /* Percorso cartella: su più righe (la parte finale è la più utile) e
+       bottone "Scegli cartella" sotto, a tutta larghezza. */
+    .is-android .toolbar {
+        flex-wrap: wrap;
+    }
+
+    /* Il percorso è avvolto dal Tooltip solo quando non è vuoto. */
+    .is-android .toolbar > .tip-grow,
+    .is-android .toolbar > .folder-path {
+        flex-basis: 100%;
+    }
+
+    .is-android .folder-path {
+        white-space: normal;
+        word-break: break-all;
+    }
+
+    .is-android .toolbar > button {
+        flex: 1 1 auto;
+    }
+
+    /* Azioni: bottoni a tutta larghezza, il select playlist occupa lo spazio
+       accanto a "Scarica". */
+    .is-android .actions > button,
+    .is-android .actions > .tip {
+        flex: 1 1 100%;
+    }
+
+    .is-android .actions > .tip > button {
+        flex: 1 1 auto;
+    }
+
+    .is-android .actions > button,
+    .is-android .actions > .tip > button {
+        justify-content: center;
+    }
+
+    .is-android .download-controls {
+        flex-wrap: wrap;
+    }
+
+    .is-android .download-controls > .tip:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .is-android .download-controls .select-wrap,
+    .is-android .download-controls .select-playlist .select-trigger {
+        width: 100%;
+    }
+
+    /* Intestazione Anteprima: strumenti sotto al titolo se non c'è spazio. */
+    .is-android .panel-head {
+        flex-wrap: wrap;
+        padding-bottom: 6px;
+    }
+
+    .is-android .preview-tools {
+        padding-left: 12px;
+    }
+
+    /* Tabelle → schede: una scheda per file, ogni cella con la propria
+       etichetta (data-label) al posto dell'intestazione di colonna. */
+    .is-android .panel table,
+    .is-android .panel tbody,
+    .is-android .panel tr,
+    .is-android .panel td {
+        display: block;
+        width: 100% !important;
+    }
+
+    .is-android .panel thead {
+        display: none;
+    }
+
+    /* Scheda su due colonne: nome attuale/originale, nuovo nome ed esito a
+       tutta larghezza; titolo e artista affiancati. */
+    .is-android .panel tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        column-gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .is-android .panel td:nth-child(1),
+    .is-android .panel td:nth-child(2),
+    .is-android .panel td:nth-child(5) {
+        grid-column: 1 / -1;
+    }
+
+    .is-android .panel tr.changed td,
+    .is-android .panel tr.skipped td,
+    .is-android .panel tr.failed td {
+        background: transparent;
+    }
+
+    .is-android .panel tr.changed {
+        background: var(--row-changed);
+    }
+
+    .is-android .panel tr.skipped {
+        background: var(--row-skipped);
+    }
+
+    .is-android .panel tr.failed {
+        background: var(--row-error);
+    }
+
+    .is-android .panel td {
+        padding: 3px 0;
+        border-bottom: 0;
+    }
+
+    .is-android .panel td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 1px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    /* La colonna "File attuale" ha già le sue etichette (nome/titolo/artista). */
+    .is-android .preview-table td:first-child::before {
+        display: none;
+    }
+
+    .is-android .preview-table td:first-child {
+        padding-bottom: 6px;
+        margin-bottom: 4px;
+        border-bottom: 1px dashed var(--line);
+    }
+
+    /* Il fumetto d'errore di un file fallito: sotto il chip, a tutta larghezza. */
+    .is-android .result-error {
+        position: static;
+    }
+
+    /* ---- Impostazioni ---- */
+
+    .is-android .settings {
+        padding: 14px 12px;
+    }
+
+    /* Righe Da → A (e playlist nome → link): i due campi sulla prima riga,
+       ambito e rimozione sulla seconda. */
+    .is-android .replacement-row {
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        row-gap: 6px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--line-soft);
+    }
+
+    .is-android .replacement-row > .tip {
+        grid-column: 1 / 3;
+    }
+
+    .is-android .replacement-row > button:last-child {
+        grid-column: 3;
+        justify-self: end;
+    }
+
+    .is-android .ytdlp-head {
+        flex-wrap: wrap;
+    }
+
+    .is-android .ytdlp-install {
+        margin-left: auto;
+    }
+
+    .is-android .ytdlp-path {
+        white-space: normal;
+    }
+
+    /* Barra inferiore: due righe da tre bottoni (navigazione/annulla sopra,
+       salvataggi sotto), invece di una fila che andrebbe a capo a caso. */
+    .is-android .settings-bottombar-inner {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding: 10px 12px;
+    }
+
+    .is-android .settings-bottombar-actions {
+        display: contents;
+    }
+
+    .is-android .settings-actions-sep {
+        display: none;
+    }
+
+    .is-android .settings-bottombar button {
+        min-height: 44px;
+        padding: 6px 8px;
+        font-size: 13px;
+        line-height: 1.2;
+        white-space: normal;
+        justify-content: center;
+    }
+
+    /* ---- Modali ---- */
+
+    .is-android .modal {
+        padding: 18px 16px;
+        max-height: 100%;
+        overflow-y: auto;
+    }
+
+    .is-android .modal-actions {
+        flex-wrap: wrap;
+    }
+
+    .is-android .modal-actions > button {
+        flex: 1 1 auto;
+    }
+}

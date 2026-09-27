@@ -57,8 +57,20 @@ func YtDlpManagedPath() (string, error) {
 	return pathFor("yt-dlp.exe")
 }
 
+// baseDir, se valorizzata con SetDir, sostituisce la cartella di configurazione
+// di sistema. Serve su Android, dove os.UserConfigDir non è disponibile (manca
+// $HOME) e la cartella giusta è quella privata dell'app (Context.getFilesDir).
+var baseDir string
+
+// SetDir imposta la cartella in cui salvare la configurazione, al posto di
+// quella di sistema. Va chiamata prima di qualsiasi Load/Save.
+func SetDir(dir string) { baseDir = dir }
+
 // Dir restituisce la cartella di configurazione (es. %AppData%\RenameMusic su Windows).
 func Dir() (string, error) {
+	if baseDir != "" {
+		return baseDir, nil
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
