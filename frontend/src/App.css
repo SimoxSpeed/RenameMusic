@@ -1877,6 +1877,11 @@ th {
     color: var(--muted);
 }
 
+/* Il nome originale fa da etichetta al campo: può essere lungo, va a capo. */
+.tag-prompt-field > .tag-prompt-label {
+    word-break: break-word;
+}
+
 /* Input + chip estensione affiancati: l'input occupa lo spazio residuo, il chip
    resta a destra (l'estensione non è mostrata nel nome, come nel resto della UI). */
 .tag-prompt-input {
@@ -1888,17 +1893,6 @@ th {
 .tag-prompt-input input {
     flex: 1;
     min-width: 0;
-}
-
-.tag-prompt-original {
-    margin: -6px 0 14px;
-    font-size: 12px;
-    color: var(--muted);
-    word-break: break-word;
-}
-
-.tag-prompt-original span {
-    color: var(--text);
 }
 
 .tag-prompt-queue {

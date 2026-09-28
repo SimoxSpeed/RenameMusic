@@ -2789,9 +2789,6 @@ function App() {
                                         <strong>correggerlo</strong> (i tag verranno riestratti da esso) oppure
                                         convertire la traccia come in anteprima.
                                     </p>
-                                    <p className="tag-prompt-original">
-                                        Nome originale: <span>{head.originalBase}</span>
-                                    </p>
                                 </>
                             ) : (
                                 <>
@@ -2805,7 +2802,9 @@ function App() {
                                 </>
                             )}
                             <label className="tag-prompt-field">
-                                <span>Nome traccia</span>
+                                {/* Etichetta = nome originale della traccia: resta visibile
+                                    mentre lo si modifica nel campo. */}
+                                <span className="tag-prompt-label" title="Nome originale">{head.originalBase}</span>
                                 <div className="tag-prompt-input">
                                     <input
                                         type="text"
