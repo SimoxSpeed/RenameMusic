@@ -45,6 +45,7 @@ type Action = Promise<core.ActionResponse>
 // ---- Metodi del core (stessi nomi e firme dei binding Wails) ----------------
 
 export const GetState = (): Action => call('GetState')
+export const GetConfig = (): Action => call('GetConfig')
 export const SelectFolder = (): Action => call('SelectFolder')
 export const SetFolder = (path: string): Action => call('SetFolder', path)
 export const Scan = (): Action => call('Scan')

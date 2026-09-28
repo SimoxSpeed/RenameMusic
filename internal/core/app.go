@@ -533,9 +533,12 @@ func (a *App) GetState() ActionResponse {
 // ancora stato prodotto alcun risultato (a.scanned == nil). Restituisce il
 // messaggio di stato da mostrare (vuoto se non ha scansionato). È idempotente:
 // una volta che a.scanned è valorizzato (anche a lista vuota) non riscansiona.
+// In modalità semplificata non scansiona: non c'è un'anteprima da popolare, e
+// "Scarica e converti" riscansiona comunque dopo il download (tornando alla
+// modalità normale ci pensa la riscansione di SetConfig).
 func (a *App) ensureScanned() string {
 	a.mu.Lock()
-	needScan := a.scanned == nil && appfs.IsDir(a.config.StartFolder)
+	needScan := a.scanned == nil && !a.config.SimpleMode && appfs.IsDir(a.config.StartFolder)
 	cfg := a.config
 	a.mu.Unlock()
 	if !needScan {

@@ -4,6 +4,7 @@ import './App.css'
 import './mobile.css'
 import {
     GetState,
+    GetConfig,
     SelectFolder,
     SetFolder,
     Scan,
@@ -824,6 +825,13 @@ function App() {
         if (bootedRef.current) return
         bootedRef.current = true
         guard(async () => {
+            // Prima lo stato senza scansione (GetConfig, immediato): serve a
+            // sapere subito se la modalità semplificata è attiva e disegnare
+            // da subito la schermata giusta, invece di mostrare quella normale
+            // finché la scansione di GetState non è finita.
+            const quick = await GetConfig()
+            absorb(quick)
+            syncOptions(quick.state)
             // Android: senza accesso ai file la scansione vedrebbe una cartella
             // vuota; controlliamo prima il permesso (la UI lo chiede se manca).
             if (isAndroid) {
@@ -1827,6 +1835,11 @@ function App() {
             </div>
         </>
     )
+
+    // Finché non arriva il primo stato (GetConfig, pochi ms) non sappiamo quale
+    // schermata disegnare (normale o semplificata): meglio un istante vuoto che
+    // la schermata sbagliata che poi cambia.
+    if (!state) return <div className={'app' + (isAndroid ? ' is-android' : '')} />
 
     return (
         <div className={'app' + (isAndroid ? ' is-android' : '')}>
