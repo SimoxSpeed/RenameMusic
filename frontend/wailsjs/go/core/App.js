@@ -62,8 +62,8 @@ export function OpenFolder(arg1) {
   return window['go']['core']['App']['OpenFolder'](arg1);
 }
 
-export function ProcessAll() {
-  return window['go']['core']['App']['ProcessAll']();
+export function ProcessAll(arg1) {
+  return window['go']['core']['App']['ProcessAll'](arg1);
 }
 
 export function ResetConfig() {

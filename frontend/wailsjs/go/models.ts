@@ -24,6 +24,8 @@ export namespace core {
 	    ext: string;
 	    title: string;
 	    artist: string;
+	    review?: boolean;
+	    previewBase?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TagPromptView(source);
@@ -36,6 +38,8 @@ export namespace core {
 	        this.ext = source["ext"];
 	        this.title = source["title"];
 	        this.artist = source["artist"];
+	        this.review = source["review"];
+	        this.previewBase = source["previewBase"];
 	    }
 	}
 	export class ResultView {

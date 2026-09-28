@@ -49,7 +49,7 @@ export const GetConfig = (): Action => call('GetConfig')
 export const SelectFolder = (): Action => call('SelectFolder')
 export const SetFolder = (path: string): Action => call('SetFolder', path)
 export const Scan = (): Action => call('Scan')
-export const ProcessAll = (): Action => call('ProcessAll')
+export const ProcessAll = (review: string[]): Action => call('ProcessAll', review)
 export const SetConfig = (cfg: rules.Config): Action => call('SetConfig', cfg)
 export const ResetConfig = (): Action => call('ResetConfig')
 export const SetAsDefault = (cfg: rules.Config, playlists: playlist.Playlist[]): Action =>

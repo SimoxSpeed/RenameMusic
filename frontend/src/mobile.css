@@ -558,14 +558,47 @@
     }
 
     /* La colonna "File attuale" ha già le sue etichette (nome/titolo/artista). */
-    .is-android .preview-table td:first-child::before {
+    .is-android .preview-table td.cell-current::before {
         display: none;
     }
 
-    .is-android .preview-table td:first-child {
+    .is-android .preview-table td.cell-current {
         padding-bottom: 6px;
+        padding-right: 32px;
         margin-bottom: 4px;
         border-bottom: 1px dashed var(--line);
+    }
+
+    /* Anteprima: la casella "da rivedere" è la prima colonna, quindi le
+       posizioni delle altre slittano di uno (nuovo nome e stato a tutta
+       larghezza, titolo e artista affiancati). La casella sta nell'angolo in
+       alto a destra della scheda. */
+    .is-android .preview-table tr {
+        position: relative;
+    }
+
+    .is-android .preview-table td.cell-select {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        width: auto !important;
+        padding: 0;
+    }
+
+    /* Sul touch un po' più grande (le altre caselle sono a 20px). */
+    .is-android .preview-table .cell-select input {
+        width: 20px;
+        height: 20px;
+        background-size: 14px 14px;
+    }
+
+    .is-android .preview-table td:nth-child(3),
+    .is-android .preview-table td:nth-child(6) {
+        grid-column: 1 / -1;
+    }
+
+    .is-android .preview-table td:nth-child(5) {
+        grid-column: auto;
     }
 
     /* Il fumetto d'errore di un file fallito: sotto il chip, a tutta larghezza. */

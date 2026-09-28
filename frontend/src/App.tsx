@@ -63,10 +63,15 @@ type TagPrompt = {
     ext: string
     title: string
     artist: string
+    // review: traccia selezionata nell'anteprima per essere rivista (non ha tag
+    // sconosciuti); previewBase è il nome proposto, da cui parte il popup.
+    review: boolean
+    previewBase: string
 }
 
-// promptsOf estrae dalla risposta di una conversione le tracce con tag
-// sconosciuti, che la UI risolve una alla volta col popup.
+// promptsOf estrae dalla risposta di una conversione le tracce da confermare
+// (tag sconosciuti o selezionate da rivedere), che la UI risolve una alla
+// volta col popup.
 function promptsOf(resp: core.ActionResponse): TagPrompt[] {
     return (resp.prompts ?? []).map((p) => ({
         path: p.path,
@@ -74,6 +79,8 @@ function promptsOf(resp: core.ActionResponse): TagPrompt[] {
         ext: p.ext,
         title: p.title,
         artist: p.artist,
+        review: !!p.review,
+        previewBase: p.previewBase ?? '',
     }))
 }
 
@@ -694,6 +701,10 @@ function App() {
     // showOnlyChanged: vista dell'anteprima limitata ai soli file che cambieranno
     // nome. È SOLO una vista: l'elaborazione tratta comunque tutti i file.
     const [showOnlyChanged, setShowOnlyChanged] = useState(false)
+    // reviewPaths: file spuntati nell'anteprima da rivedere. Alla conversione
+    // non vengono convertiti subito ma passano dal popup, come le tracce non
+    // rinominabili.
+    const [reviewPaths, setReviewPaths] = useState<Set<string>>(() => new Set())
     // cancellable: true mentre è in corso un'operazione interrompibile (ProcessAll
     // o ClearTags), così mostriamo il tasto "Annulla".
     const [cancellable, setCancellable] = useState(false)
@@ -1026,10 +1037,12 @@ function App() {
     }, [bottombarVisible])
 
     // Quando cambia la traccia in testa alla coda, reimpostiamo l'input del popup
-    // al suo nome originale (l'utente riparte dal nome da correggere).
+    // al suo nome originale (l'utente riparte dal nome da correggere) o, per una
+    // traccia selezionata da rivedere, al nome proposto dall'anteprima.
     const headPromptPath = tagPrompts[0]?.path
     useEffect(() => {
-        setPromptDraft(tagPrompts[0]?.originalBase ?? '')
+        const head = tagPrompts[0]
+        setPromptDraft(head ? (head.review ? head.previewBase : head.originalBase) : '')
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [headPromptPath])
 
@@ -1153,14 +1166,15 @@ function App() {
         setTagPrompts([])
         setCancellable(true)
         guard(async () => {
-            const resp = await ProcessAll()
+            const resp = await ProcessAll([...reviewPaths])
+            setReviewPaths(new Set())
             // Operazione conclusa: non è più annullabile (evita che un click sul
             // tasto Annulla durante la coda "busy" lasci un annullamento appeso).
             setCancellable(false)
             absorb(resp)
             setResults(resp.results ?? [])
             notify(resp.ok, resp.message ?? '')
-            // Tracce con tag sconosciuti: il backend NON le ha convertite, le
+            // Tracce con tag sconosciuti o selezionate da rivedere: il backend NON le ha convertite, le
             // rimette qui perché l'utente decida (una alla volta) col popup. Le
             // tracce a posto sono già state convertite: niente blocca.
             setTagPrompts(promptsOf(resp))
@@ -1306,6 +1320,41 @@ function App() {
     // (titolo/artista) — non solo quelli da rinominare. Resta comunque solo una
     // vista: l'elaborazione tratta sempre tutti i file.
     const previewFiles = showOnlyChanged ? files.filter(fileWillChange) : files
+
+    // A ogni nuova anteprima (scansione, aggiornamento automatico, conversione)
+    // la selezione tiene solo i file ancora presenti.
+    useEffect(() => {
+        setReviewPaths((prev) => {
+            if (prev.size === 0) return prev
+            const present = new Set(files.map((f) => f.path))
+            const next = new Set([...prev].filter((p) => present.has(p)))
+            return next.size === prev.size ? prev : next
+        })
+    }, [files])
+
+    function toggleReview(path: string, checked: boolean) {
+        setReviewPaths((prev) => {
+            const next = new Set(prev)
+            if (checked) next.add(path)
+            else next.delete(path)
+            return next
+        })
+    }
+
+    // Casella nell'intestazione: seleziona/deseleziona tutti i file visibili
+    // (con "Solo da modificare" solo quelli mostrati).
+    const allVisibleSelected = previewFiles.length > 0 && previewFiles.every((f) => reviewPaths.has(f.path))
+    const someVisibleSelected = previewFiles.some((f) => reviewPaths.has(f.path))
+    function toggleReviewAll(checked: boolean) {
+        setReviewPaths((prev) => {
+            const next = new Set(prev)
+            for (const f of previewFiles) {
+                if (checked) next.add(f.path)
+                else next.delete(f.path)
+            }
+            return next
+        })
+    }
     // Etichetta della barra di avanzamento: in modalità semplificata download e
     // conversione si susseguono nella stessa operazione, quindi diciamo quale
     // delle due fasi è in corso.
@@ -1883,6 +1932,12 @@ function App() {
                                 <span>{fileCount} file{showingResults ? ' elaborati' : ''}</span>
                                 <span className="dot">·</span>
                                 <span>{mp3Count} MP3</span>
+                                {!showingResults && reviewPaths.size > 0 && (
+                                    <>
+                                        <span className="dot">·</span>
+                                        <span className="counter-review">{reviewPaths.size} da rivedere</span>
+                                    </>
+                                )}
                                 {toRenameCount > 0 && (
                                     <>
                                         <span className="dot">·</span>
@@ -2593,7 +2648,20 @@ function App() {
                             <table className="preview-table">
                                 <thead>
                                     <tr>
-                                        <th>File attuale</th>
+                                        <th className="cell-select">
+                                            <input
+                                                type="checkbox"
+                                                aria-label="Seleziona tutti da rivedere"
+                                                title="Seleziona tutti da rivedere"
+                                                checked={allVisibleSelected}
+                                                ref={(el) => {
+                                                    if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected
+                                                }}
+                                                onChange={(e) => toggleReviewAll(e.target.checked)}
+                                                disabled={busy}
+                                            />
+                                        </th>
+                                        <th className="cell-current">File attuale</th>
                                         <th>Anteprima nuovo nome</th>
                                         <th>Anteprima nuovo titolo</th>
                                         <th>Anteprima nuovo artista</th>
@@ -2608,9 +2676,19 @@ function App() {
                                         const titleChanged = file.mp3 && tagChanged(file.title, file.titlePreview)
                                         const artistChanged = file.mp3 && tagChanged(file.artist, file.artistPreview)
                                         const rowChanged = nameChanged || titleChanged || artistChanged
+                                        const toReview = reviewPaths.has(file.path)
                                         return (
-                                            <tr key={i} className={rowChanged ? 'changed' : ''}>
-                                                <td data-label="File attuale">
+                                            <tr key={i} className={(rowChanged ? 'changed' : '') + (toReview ? ' to-review' : '')}>
+                                                <td className="cell-select">
+                                                    <input
+                                                        type="checkbox"
+                                                        aria-label={'Rivedi ' + src.base}
+                                                        checked={toReview}
+                                                        onChange={(e) => toggleReview(file.path, e.target.checked)}
+                                                        disabled={busy}
+                                                    />
+                                                </td>
+                                                <td data-label="File attuale" className="cell-current">
                                                     <CurrentField label="nome" value={src.base} changed={nameChanged} />
                                                     {file.mp3 && (
                                                         <CurrentField label="titolo" value={file.title ?? ''} changed={titleChanged} />
@@ -2636,6 +2714,7 @@ function App() {
                                                         {(titleChanged || artistChanged) && (
                                                             <span className="badge badge-tag">Da taggare</span>
                                                         )}
+                                                        {toReview && <span className="badge badge-review">Da rivedere</span>}
                                                         <ExtChip ext={src.ext} />
                                                     </div>
                                                 </td>
@@ -2700,13 +2779,31 @@ function App() {
                 return (
                     <div className="modal-overlay">
                         <div className="modal" onClick={(e) => e.stopPropagation()}>
-                            <h3>Traccia non rinominabile</h3>
-                            <p>
-                                Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>:
-                                così com'è non può essere rinominata né taggata correttamente. Puoi{' '}
-                                <strong>correggere il nome</strong> qui sotto (i tag verranno riestratti da esso)
-                                oppure procedere lasciandolo invariato.
-                            </p>
+                            {head.review ? (
+                                <>
+                                    <h3>Traccia da rivedere</h3>
+                                    <p>
+                                        Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
+                                        sotto è quello proposto dall'anteprima (titolo <strong>{head.title}</strong>,
+                                        artista <strong>{head.artist}</strong>): puoi{' '}
+                                        <strong>correggerlo</strong> (i tag verranno riestratti da esso) oppure
+                                        convertire la traccia come in anteprima.
+                                    </p>
+                                    <p className="tag-prompt-original">
+                                        Nome originale: <span>{head.originalBase}</span>
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <h3>Traccia non rinominabile</h3>
+                                    <p>
+                                        Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>:
+                                        così com'è non può essere rinominata né taggata correttamente. Puoi{' '}
+                                        <strong>correggere il nome</strong> qui sotto (i tag verranno riestratti da esso)
+                                        oppure procedere lasciandolo invariato.
+                                    </p>
+                                </>
+                            )}
                             <label className="tag-prompt-field">
                                 <span>Nome traccia</span>
                                 <div className="tag-prompt-input">
@@ -2729,7 +2826,9 @@ function App() {
                                 </p>
                             )}
                             <div className="modal-actions">
-                                <button onClick={() => resolvePrompt(false)}>Salta</button>
+                                <button onClick={() => resolvePrompt(false)}>
+                                    {head.review ? 'Usa anteprima' : 'Salta'}
+                                </button>
                                 <button className="accent" onClick={() => resolvePrompt(true)}>
                                     Continua
                                 </button>

@@ -59,6 +59,13 @@ header h1 {
     font-weight: 600;
 }
 
+/* Brani selezionati da rivedere: viola chiaro come il badge "Da rivedere",
+   schiarito per lo sfondo scuro dell'header. */
+.counters .counter-review {
+    color: #c4b5fd;
+    font-weight: 600;
+}
+
 .counters .counter-err {
     color: #f0a9a9;
     font-weight: 600;
@@ -1613,9 +1620,59 @@ table {
 
 /* Colonna "File attuale": leggermente più larga delle tre colonne di
    anteprima (nome/titolo/artista), che si dividono lo spazio restante. */
-.preview-table th:first-child,
-.preview-table td:first-child {
+.preview-table .cell-current {
     width: 30%;
+}
+
+/* Colonna delle caselle "da rivedere", a sinistra dell'anteprima: stretta e
+   centrata sulla riga. La casella è disegnata con i colori del tema (bordo
+   tenue come i campi, riempita col primario quando spuntata) e resta discreta
+   finché non si passa sulla riga o la si spunta. */
+.preview-table .cell-select {
+    width: 40px;
+    padding-left: 0;
+    padding-right: 0;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.preview-table .cell-select input {
+    appearance: none;
+    display: block;
+    width: 15px;
+    height: 15px;
+    min-height: 0;
+    margin: 0 auto;
+    padding: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 4px;
+    background: var(--input-bg) center / 11px 11px no-repeat;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.preview-table tr:hover .cell-select input:not(:disabled),
+.preview-table .cell-select input:hover:not(:disabled) {
+    border-color: var(--muted);
+}
+
+.preview-table .cell-select input:checked,
+.preview-table .cell-select input:indeterminate {
+    border-color: var(--primary);
+    background-color: var(--primary);
+}
+
+.preview-table .cell-select input:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 6.2 5 8.5l4.5-5'/%3E%3C/svg%3E");
+}
+
+.preview-table .cell-select input:indeterminate {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 6h6'/%3E%3C/svg%3E");
+}
+
+.preview-table .cell-select input:disabled {
+    opacity: 0.5;
+    cursor: default;
 }
 
 th,
@@ -1679,6 +1736,13 @@ th {
     border-color: color-mix(in srgb, var(--warn) 55%, transparent);
     background: color-mix(in srgb, var(--warn) 14%, transparent);
     color: var(--warn);
+}
+
+/* Brano selezionato nell'anteprima per essere rivisto prima della conversione. */
+.badge-review {
+    border-color: color-mix(in srgb, #8b5cf6 55%, transparent);
+    background: color-mix(in srgb, #8b5cf6 14%, transparent);
+    color: #8b5cf6;
 }
 
 .badge-mp3 {
@@ -1824,6 +1888,17 @@ th {
 .tag-prompt-input input {
     flex: 1;
     min-width: 0;
+}
+
+.tag-prompt-original {
+    margin: -6px 0 14px;
+    font-size: 12px;
+    color: var(--muted);
+    word-break: break-word;
+}
+
+.tag-prompt-original span {
+    color: var(--text);
 }
 
 .tag-prompt-queue {

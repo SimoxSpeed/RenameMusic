@@ -99,6 +99,11 @@ type TagPromptView struct {
 	Ext          string `json:"ext"`
 	Title        string `json:"title"`
 	Artist       string `json:"artist"`
+	// Review: traccia rinominabile che l'utente ha scelto di rivedere
+	// dall'anteprima (non ha tag sconosciuti). PreviewBase è il nome proposto
+	// dall'anteprima, da cui il popup parte al posto del nome originale.
+	Review      bool   `json:"review,omitempty"`
+	PreviewBase string `json:"previewBase,omitempty"`
 }
 
 type App struct {
@@ -1024,7 +1029,7 @@ func (a *App) DownloadAndProcess(name string) ActionResponse {
 		return dl
 	}
 
-	resp := a.processAll(opCtx)
+	resp := a.processAll(opCtx, nil)
 	resp.DownloadErrors = dl.DownloadErrors
 	if n := len(dl.DownloadErrors); n > 0 {
 		resp.OK = false
@@ -1190,10 +1195,13 @@ func (a *App) Cancel() ActionResponse {
 // ProcessAll esegue in un colpo solo normalizzazione dei nomi + scrittura tag.
 // destination vuota => stessa cartella di partenza. deleteOriginals=false scrive
 // una copia lasciando intatti gli originali (e gli altri file presenti).
-func (a *App) ProcessAll() ActionResponse {
+// review sono i percorsi che l'utente ha selezionato nell'anteprima per
+// rivederli: non vengono convertiti subito ma tornano alla UI come tracce da
+// confermare, come quelle con tag sconosciuti.
+func (a *App) ProcessAll(review []string) ActionResponse {
 	opCtx, endOp := a.beginCancelable()
 	defer endOp()
-	return a.processAll(opCtx)
+	return a.processAll(opCtx, review)
 }
 
 // conversionDestination restituisce la cartella di destinazione della
@@ -1215,8 +1223,8 @@ func conversionDestination(sameAsSource bool, folder string) (destination, errMs
 
 // processAll esegue la conversione di ProcessAll (vedi) sotto il context
 // dell'operazione in corso, così DownloadAndProcess la esegue nella stessa
-// operazione annullabile del download.
-func (a *App) processAll(opCtx context.Context) ActionResponse {
+// operazione annullabile del download. review: vedi ProcessAll.
+func (a *App) processAll(opCtx context.Context, review []string) ActionResponse {
 	a.mu.Lock()
 	cfg := a.config
 	destSame := a.destSameAsSource
@@ -1255,23 +1263,38 @@ func (a *App) processAll(opCtx context.Context) ActionResponse {
 	// (titolo o artista) da quelle già a posto. Le seconde le convertiamo subito
 	// qui; per le prime NON blocchiamo nulla: le restituiamo alla UI come
 	// `prompts`, che chiederà all'utente come procedere (una alla volta) e
-	// risolverà ognuna con una chiamata a sé (ResolveTagPrompt).
+	// risolverà ognuna con una chiamata a sé (ResolveTagPrompt). Allo stesso
+	// modo le tracce selezionate dall'utente per essere riviste; una traccia
+	// selezionata ma con tag sconosciuti resta segnalata come tale.
+	toReview := make(map[string]bool, len(review))
+	for _, p := range review {
+		toReview[p] = true
+	}
 	var goodFiles []string
 	var prompts []TagPromptView
+	unknownCount, reviewCount := 0, 0
 	for _, p := range files {
 		title, artist, unknown := unknownTagFor(p, cfg)
-		if unknown {
-			name := filepath.Base(p)
-			prompts = append(prompts, TagPromptView{
-				Path:         p,
-				OriginalBase: parser.RemoveExtension(name),
-				Ext:          parser.Extension(name),
-				Title:        title,
-				Artist:       artist,
-			})
+		if !unknown && !toReview[p] {
+			goodFiles = append(goodFiles, p)
 			continue
 		}
-		goodFiles = append(goodFiles, p)
+		name := filepath.Base(p)
+		prompt := TagPromptView{
+			Path:         p,
+			OriginalBase: parser.RemoveExtension(name),
+			Ext:          parser.Extension(name),
+			Title:        title,
+			Artist:       artist,
+		}
+		if unknown {
+			unknownCount++
+		} else {
+			reviewCount++
+			prompt.Review = true
+			prompt.PreviewBase = cfg.NormalizeFileBase(prompt.OriginalBase)
+		}
+		prompts = append(prompts, prompt)
 	}
 
 	total := len(goodFiles)
@@ -1337,8 +1360,11 @@ func (a *App) processAll(opCtx context.Context) ActionResponse {
 	if failed > 0 {
 		a.addLogLocked(LogError, fmt.Sprintf("%d file non elaborati per errori (dettagli nella tabella).", failed))
 	}
-	if len(prompts) > 0 && !canceled {
-		a.addLogLocked(LogInfo, fmt.Sprintf("%d tracce senza titolo/artista: in attesa di conferma.", len(prompts)))
+	if unknownCount > 0 && !canceled {
+		a.addLogLocked(LogInfo, fmt.Sprintf("%d tracce senza titolo/artista: in attesa di conferma.", unknownCount))
+	}
+	if reviewCount > 0 && !canceled {
+		a.addLogLocked(LogInfo, fmt.Sprintf("%d tracce selezionate da rivedere: in attesa di conferma.", reviewCount))
 	}
 	state := a.snapshot()
 	a.mu.Unlock()

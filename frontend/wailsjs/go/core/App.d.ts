@@ -34,7 +34,7 @@ export function MarkUpdateSeen(arg1:string):Promise<core.ActionResponse>;
 
 export function OpenFolder(arg1:string):Promise<core.ActionResponse>;
 
-export function ProcessAll():Promise<core.ActionResponse>;
+export function ProcessAll(arg1:Array<string>):Promise<core.ActionResponse>;
 
 export function ResetConfig():Promise<core.ActionResponse>;
 
