@@ -6,6 +6,10 @@ export function Cancel() {
   return window['go']['core']['App']['Cancel']();
 }
 
+export function CheckUpdate() {
+  return window['go']['core']['App']['CheckUpdate']();
+}
+
 export function ChooseDirectory() {
   return window['go']['core']['App']['ChooseDirectory']();
 }
@@ -38,8 +42,16 @@ export function InstallFFmpeg() {
   return window['go']['core']['App']['InstallFFmpeg']();
 }
 
+export function InstallUpdate() {
+  return window['go']['core']['App']['InstallUpdate']();
+}
+
 export function InstallYtDlp() {
   return window['go']['core']['App']['InstallYtDlp']();
+}
+
+export function MarkUpdateSeen(arg1) {
+  return window['go']['core']['App']['MarkUpdateSeen'](arg1);
 }
 
 export function OpenFolder(arg1) {

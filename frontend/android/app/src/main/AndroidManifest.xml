@@ -65,6 +65,10 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
 
+    <!-- Aggiornamento dell'app: apertura dell'installer sull'APK scaricato
+         (Android chiede all'utente di consentirlo la prima volta). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Servizio in primo piano + CPU sveglia durante le operazioni lunghe. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />

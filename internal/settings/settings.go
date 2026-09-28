@@ -41,6 +41,11 @@ type State struct {
 	// percorso all'eseguibile yt-dlp scelto a mano dall'utente.
 	YtDlpManaged bool   `json:"ytDlpManaged"`
 	YtDlpPath    string `json:"ytDlpPath"`
+
+	// UpdateSeenVersion è l'ultima versione dell'app per cui è già stato
+	// mostrato il popup "nuova versione disponibile": così compare una sola
+	// volta per versione.
+	UpdateSeenVersion string `json:"updateSeenVersion,omitempty"`
 }
 
 // DefaultState è lo stato al primo avvio: nessuna cartella, destinazione =

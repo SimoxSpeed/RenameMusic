@@ -61,6 +61,24 @@ type YtDlp interface {
 	Workers() int
 }
 
+// Updater astrae l'installazione di un aggiornamento dell'app, che dipende
+// dalla piattaforma: il controllo della nuova versione e il download sono
+// comuni (package update), mentre su desktop si sostituisce l'eseguibile e si
+// riavvia, su Android si apre l'installer di sistema sull'APK scaricato.
+type Updater interface {
+	// Asset è il nome del file, tra gli allegati della release GitHub, adatto
+	// a questa piattaforma (es. "RenameMusic.exe").
+	Asset() string
+	// DownloadPath è dove salvare il file scaricato.
+	DownloadPath() (string, error)
+	// Apply installa il file scaricato in path e restituisce il messaggio da
+	// mostrare all'utente (es. riavvio in corso).
+	Apply(path string) (string, error)
+	// Cleanup rimuove i residui di un aggiornamento precedente. È chiamata una
+	// volta all'avvio, prima del primo controllo.
+	Cleanup()
+}
+
 // ExecYtDlp è la gestione desktop di yt-dlp: un eseguibile esterno lanciato
 // come processo, con la copia gestita dentro la cartella di configurazione.
 // Anche ffmpeg (che yt-dlp usa per l'mp3) ha una copia gestita, in

@@ -6,6 +6,8 @@ import {playlist} from '../models';
 
 export function Cancel():Promise<core.ActionResponse>;
 
+export function CheckUpdate():Promise<core.ActionResponse>;
+
 export function ChooseDirectory():Promise<string>;
 
 export function ChooseYtDlpFile():Promise<string>;
@@ -22,7 +24,11 @@ export function GetState():Promise<core.ActionResponse>;
 
 export function InstallFFmpeg():Promise<core.ActionResponse>;
 
+export function InstallUpdate():Promise<core.ActionResponse>;
+
 export function InstallYtDlp():Promise<core.ActionResponse>;
+
+export function MarkUpdateSeen(arg1:string):Promise<core.ActionResponse>;
 
 export function OpenFolder(arg1:string):Promise<core.ActionResponse>;
 

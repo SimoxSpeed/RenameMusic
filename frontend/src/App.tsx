@@ -26,6 +26,9 @@ import {
     SetYtDlpConfig,
     ChooseYtDlpFile,
     ResolveTagPrompt,
+    CheckUpdate,
+    MarkUpdateSeen,
+    InstallUpdate,
     isAndroid,
     onEvent,
     onResume,
@@ -694,6 +697,12 @@ function App() {
     // partenza ('source') o di destinazione ('dest').
     const [storageGranted, setStorageGranted] = useState(true)
     const [folderPicker, setFolderPicker] = useState<'source' | 'dest' | null>(null)
+    // updatePopup: nuova versione dell'app mostrata nel popup di aggiornamento.
+    // Si apre da solo una volta per versione (poi resta il tasto "Aggiorna"
+    // nelle Impostazioni); updateShownRef ricorda la versione già mostrata in
+    // questa sessione, per non riaprirlo prima che il core la segni come vista.
+    const [updatePopup, setUpdatePopup] = useState<core.UpdateView | null>(null)
+    const updateShownRef = useRef('')
 
     function absorb(resp: core.ActionResponse) {
         setState(resp.state)
@@ -900,6 +909,53 @@ function App() {
             if (p) setInstallProgress(p)
         })
     }, [])
+
+    // absorbUpdate riporta nello stato solo l'aggiornamento disponibile e il
+    // registro attività: le risposte dei metodi di aggiornamento non devono
+    // passare da absorb, che reimposterebbe le bozze delle Impostazioni.
+    function absorbUpdate(next: core.StateResponse) {
+        setState((prev) => (prev ? ({ ...prev, update: next.update, logs: next.logs } as core.StateResponse) : prev))
+    }
+
+    // Nuova versione trovata dal controllo periodico del core.
+    useEffect(() => {
+        return onEvent('update:available', (payload: unknown) => {
+            const next = payload as core.UpdateView | null
+            if (!next) return
+            setState((prev) => (prev ? ({ ...prev, update: next } as core.StateResponse) : prev))
+        })
+    }, [])
+
+    // Al ritorno della connessione controlliamo subito gli aggiornamenti, senza
+    // aspettare il prossimo tentativo periodico del core. Silenzioso: l'esito
+    // arriva solo come popup, se c'è una nuova versione.
+    useEffect(() => {
+        const onOnline = () => {
+            CheckUpdate()
+                .then((resp) => absorbUpdate(resp.state))
+                .catch(() => {})
+        }
+        window.addEventListener('online', onOnline)
+        return () => window.removeEventListener('online', onOnline)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Popup "nuova versione" mostrato da solo una volta per versione: appena il
+    // core ne segnala una non ancora vista la segniamo come vista (persistito),
+    // così non ricompare ai prossimi avvii. Aspetta che non ci siano operazioni
+    // in corso né altre scelte in sospeso, per non coprirle.
+    const availableUpdate = state?.update
+    const updateBlocked = busy || tagPrompts.length > 0 || folderPicker !== null
+    useEffect(() => {
+        if (!availableUpdate || availableUpdate.seen || updateBlocked) return
+        if (updateShownRef.current === availableUpdate.version) return
+        updateShownRef.current = availableUpdate.version
+        setUpdatePopup(availableUpdate)
+        MarkUpdateSeen(availableUpdate.version)
+            .then((resp) => absorbUpdate(resp.state))
+            .catch(() => {})
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [availableUpdate, updateBlocked])
 
     // Tiene i toast sopra la barra inferiore delle Impostazioni: ne misuriamo
     // l'altezza (che cambia quando i bottoni vanno a capo su schermi stretti) e
@@ -1520,11 +1576,36 @@ function App() {
         })
     }
 
+    // Controllo manuale degli aggiornamenti (Impostazioni): l'esito va sempre
+    // in un toast, anche quando l'app è già aggiornata.
+    function checkUpdate() {
+        guard(async () => {
+            const resp = await CheckUpdate()
+            absorbUpdate(resp.state)
+            notify(resp.ok, resp.message ?? '')
+        })
+    }
+
+    // Scarica e installa la nuova versione: su desktop l'app si riavvia da sola,
+    // su Android si apre l'installer di sistema. In caso di errore il popup
+    // resta aperto per poter riprovare.
+    function installUpdate() {
+        guard(async () => {
+            const resp = await InstallUpdate()
+            setInstallProgress(null)
+            absorbUpdate(resp.state)
+            notify(resp.ok, resp.message ?? '')
+            if (resp.ok) setUpdatePopup(null)
+        })
+    }
+
     // closeTopmost chiude, in ordine, la modale aperta o il pannello
     // impostazioni (Esc su desktop, tasto Indietro su Android). Restituisce
     // false se non c'era nulla da chiudere.
     function closeTopmost(): boolean {
-        if (showDownloadErrors) setShowDownloadErrors(false)
+        if (updatePopup) {
+            if (!busy) setUpdatePopup(null)
+        } else if (showDownloadErrors) setShowDownloadErrors(false)
         else if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
         else if (confirmClearTags) setConfirmClearTags(false)
         else if (confirmInstallYtDlp) setConfirmInstallYtDlp(false)
@@ -1661,10 +1742,11 @@ function App() {
                                 className="header-btn with-icon"
                                 onClick={() => setShowSettings(true)}
                                 disabled={busy}
-                                aria-label="Impostazioni"
+                                aria-label={state?.update ? 'Impostazioni (aggiornamento disponibile)' : 'Impostazioni'}
                             >
                                 <span className="btn-icon"><SettingsIcon /></span>
                                 <span className="btn-label">Impostazioni</span>
+                                {state?.update && <span className="update-dot" aria-hidden="true" />}
                             </button>
                         </>
                     )}
@@ -2167,6 +2249,41 @@ function App() {
                             ))}
                         </div>
                     </section>
+
+                        <section className="settings">
+                        <h2>Aggiornamenti</h2>
+                        <div className="ytdlp-panel">
+                            <div className="ytdlp-head">
+                                <span className="ytdlp-title">RenameMusic {state?.appVersion}</span>
+                                {state?.update ? (
+                                    <>
+                                        <span className="ytdlp-badge update-badge">
+                                            Disponibile la versione {state.update.version}
+                                        </span>
+                                        <button
+                                            className="ghost small with-icon ytdlp-install"
+                                            onClick={() => state.update && setUpdatePopup(state.update)}
+                                            disabled={busy}
+                                        >
+                                            <span className="btn-icon"><DownloadIcon /></span>
+                                            Aggiorna
+                                        </button>
+                                    </>
+                                ) : (
+                                    <Tooltip label="Controlla subito su GitHub se è uscita una nuova versione (l'app lo fa comunque da sola quando è connessa a Internet)">
+                                        <button
+                                            className="ghost small with-icon ytdlp-install"
+                                            onClick={checkUpdate}
+                                            disabled={busy}
+                                        >
+                                            <span className="btn-icon"><RefreshIcon /></span>
+                                            Verifica aggiornamenti
+                                        </button>
+                                    </Tooltip>
+                                )}
+                            </div>
+                        </div>
+                        </section>
                     </>
                 )}
 
@@ -2657,6 +2774,39 @@ function App() {
                             </button>
                             <button className="accent" onClick={confirmMakeDefault} disabled={busy}>
                                 Conferma
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {updatePopup && (
+                <div className="modal-overlay" onClick={() => !busy && setUpdatePopup(null)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Nuova versione disponibile</h3>
+                        <p>
+                            È disponibile <strong>RenameMusic {updatePopup.version}</strong> (stai usando la{' '}
+                            {state?.appVersion}).{' '}
+                            {isAndroid
+                                ? "L'app scaricherà l'aggiornamento e aprirà l'installazione di Android."
+                                : "L'app scaricherà la nuova versione e si riavvierà da sola."}
+                            {updatePopup.size > 0 && <> Download: {formatMB(updatePopup.size)} MB.</>}
+                        </p>
+                        {updatePopup.notes && <div className="update-notes">{updatePopup.notes}</div>}
+                        {busy && installProgress?.tool === 'RenameMusic' && (
+                            <OpProgress
+                                className="update-progress"
+                                percent={installPercent(installProgress)}
+                                label={installLabel(installProgress)}
+                            />
+                        )}
+                        <p className="update-later">Puoi aggiornare anche più tardi dalle Impostazioni.</p>
+                        <div className="modal-actions">
+                            <button onClick={() => setUpdatePopup(null)} disabled={busy}>
+                                Più tardi
+                            </button>
+                            <button className="accent" onClick={installUpdate} disabled={busy}>
+                                Aggiorna ora
                             </button>
                         </div>
                     </div>

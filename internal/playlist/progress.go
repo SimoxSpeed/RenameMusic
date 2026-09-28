@@ -1,5 +1,7 @@
 package playlist
 
+import "io"
+
 // Fasi riportate da Progress durante l'installazione di yt-dlp/ffmpeg.
 const (
 	PhaseDownload = "download" // download dal web (byte ricevuti)
@@ -31,6 +33,13 @@ func newProgressWriter(fn Progress, phase string, total int64) *progressWriter {
 	w := &progressWriter{fn: fn, phase: phase, total: total, lastPct: -1}
 	w.report()
 	return w
+}
+
+// NewProgressWriter espone il contatore agli altri package che scaricano file
+// con lo stesso avanzamento verso la UI (es. l'aggiornamento dell'app): va
+// usato come destinazione di un io.TeeReader.
+func NewProgressWriter(fn Progress, phase string, total int64) io.Writer {
+	return newProgressWriter(fn, phase, total)
 }
 
 func (w *progressWriter) Write(p []byte) (int, error) {

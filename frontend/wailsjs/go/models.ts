@@ -68,6 +68,24 @@ export namespace core {
 	        this.artist = source["artist"];
 	    }
 	}
+	export class UpdateView {
+	    version: string;
+	    notes: string;
+	    size: number;
+	    seen: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.notes = source["notes"];
+	        this.size = source["size"];
+	        this.seen = source["seen"];
+	    }
+	}
 	export class LogEntry {
 	    time: string;
 	    kind: string;
@@ -127,6 +145,8 @@ export namespace core {
 	    ytDlpAvailable: boolean;
 	    ytDlpVersion: string;
 	    ffmpegAvailable: boolean;
+	    appVersion: string;
+	    update?: UpdateView;
 	
 	    static createFrom(source: any = {}) {
 	        return new StateResponse(source);
@@ -150,6 +170,8 @@ export namespace core {
 	        this.ytDlpAvailable = source["ytDlpAvailable"];
 	        this.ytDlpVersion = source["ytDlpVersion"];
 	        this.ffmpegAvailable = source["ffmpegAvailable"];
+	        this.appVersion = source["appVersion"];
+	        this.update = this.convertValues(source["update"], UpdateView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -210,6 +232,7 @@ export namespace core {
 		    return a;
 		}
 	}
+	
 	
 	
 	

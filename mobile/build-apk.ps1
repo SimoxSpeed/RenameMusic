@@ -100,6 +100,17 @@ if (-not $JavaHome -or (Get-JdkMajor $JavaHome) -lt 21) {
 $env:JAVA_HOME = $JavaHome
 $env:PATH = "$JavaHome\bin;$env:USERPROFILE\go\bin;$env:PATH"
 
+# Versione dell'app: unica fonte è update.Version in internal/update/update.go.
+# versionCode = major*10000 + minor*100 + patch, così cresce a ogni release
+# (Android rifiuta un aggiornamento con versionCode minore di quello installato).
+$versionFile = Join-Path $root 'internal\update\update.go'
+$vm = Select-String -Path $versionFile -Pattern '^const Version = "(\d+)\.(\d+)\.(\d+)"' | Select-Object -First 1
+if ($null -eq $vm) { throw "Versione non trovata in $versionFile (const Version = `"X.Y.Z`")." }
+$g = $vm.Matches[0].Groups
+$appVersionName = "$($g[1].Value).$($g[2].Value).$($g[3].Value)"
+$appVersionCode = [int]$g[1].Value * 10000 + [int]$g[2].Value * 100 + [int]$g[3].Value
+
+Write-Host "Versione:    $appVersionName (versionCode $appVersionCode)"
 Write-Host "Android SDK: $env:ANDROID_HOME"
 Write-Host "Android NDK: $env:ANDROID_NDK_HOME"
 Write-Host "JDK:         $JavaHome"
@@ -140,7 +151,10 @@ try {
 Step 'APK (Gradle assembleDebug)'
 Push-Location $android
 try {
-    Invoke-Checked 'Gradle' { .\gradlew.bat assembleDebug --console=plain }
+    Invoke-Checked 'Gradle' {
+        .\gradlew.bat assembleDebug --console=plain `
+            "-PappVersionName=$appVersionName" "-PappVersionCode=$appVersionCode"
+    }
 } finally {
     Pop-Location
 }

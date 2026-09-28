@@ -7,8 +7,11 @@ android {
         applicationId "com.renamemusic.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Versione dell'app: la passa build-apk.ps1 leggendola da
+        // internal/update/update.go (update.Version). versionCode deve crescere
+        // a ogni release, altrimenti Android rifiuta l'aggiornamento.
+        versionCode Integer.parseInt((project.findProperty('appVersionCode') ?: '1').toString())
+        versionName((project.findProperty('appVersionName') ?: '1.0').toString())
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

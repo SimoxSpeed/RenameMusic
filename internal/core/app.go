@@ -20,6 +20,7 @@ import (
 	"renamemusic/internal/rename"
 	"renamemusic/internal/rules"
 	"renamemusic/internal/settings"
+	"renamemusic/internal/update"
 	"renamemusic/internal/watcher"
 )
 
@@ -94,8 +95,9 @@ type TagPromptView struct {
 type App struct {
 	// host e ytdlp sono i servizi di piattaforma (vedi platform.go), fissati
 	// da New e mai modificati dopo: si leggono senza lock tramite h() e yt().
-	host  Host
-	ytdlp YtDlp
+	host    Host
+	ytdlp   YtDlp
+	updater Updater
 
 	mu       sync.Mutex
 	config   rules.Config
@@ -153,6 +155,17 @@ type App struct {
 	// opCancel è la funzione di cancellazione dell'operazione lunga in corso
 	// (ProcessAll o ClearTags), o nil se nessuna è attiva. La invoca Cancel().
 	opCancel context.CancelFunc
+
+	// Aggiornamenti dell'app (vedi update.go). latestRelease/latestAsset: la
+	// release più recente di quella in uso, se trovata dall'ultimo controllo
+	// (nil altrimenti). updateSeen: versione per cui il popup è già stato
+	// mostrato (state.json). updateInstalling impedisce due installazioni
+	// insieme; checkMu serializza i controlli (loop periodico e manuali).
+	latestRelease    *update.Release
+	latestAsset      update.Asset
+	updateSeen       string
+	updateInstalling bool
+	checkMu          sync.Mutex
 }
 
 type FileView struct {
@@ -224,6 +237,10 @@ type StateResponse struct {
 	YtDlpAvailable          bool                `json:"ytDlpAvailable"`
 	YtDlpVersion            string              `json:"ytDlpVersion"`
 	FFmpegAvailable         bool                `json:"ffmpegAvailable"`
+	AppVersion              string              `json:"appVersion"`
+	// Update è la nuova versione disponibile (assente se l'app è aggiornata o
+	// il controllo non è ancora riuscito).
+	Update *UpdateView `json:"update,omitempty"`
 }
 
 // DownloadErrorView descrive un singolo video di playlist il cui download è
@@ -251,10 +268,12 @@ type ActionResponse struct {
 }
 
 // Options configura i servizi di piattaforma di un App. Campi nil => Host che
-// scarta gli eventi e gestione di yt-dlp desktop (ExecYtDlp).
+// scarta gli eventi, gestione di yt-dlp desktop (ExecYtDlp) e nessun controllo
+// degli aggiornamenti.
 type Options struct {
-	Host  Host
-	YtDlp YtDlp
+	Host    Host
+	YtDlp   YtDlp
+	Updater Updater
 }
 
 // New crea l'App caricando regole, predefiniti, stato e playlist persistiti.
@@ -307,6 +326,8 @@ func New(opts Options) *App {
 	return &App{
 		host:             opts.Host,
 		ytdlp:            opts.YtDlp,
+		updater:          opts.Updater,
+		updateSeen:       st.UpdateSeenVersion,
 		config:           current,
 		defaults:         defaults,
 		logs:             logs,
@@ -353,6 +374,7 @@ func (a *App) persistStateLocked() {
 		WatchEnabled:            a.watchEnabled,
 		YtDlpManaged:            a.ytDlpManaged,
 		YtDlpPath:               a.ytDlpPath,
+		UpdateSeenVersion:       a.updateSeen,
 	})
 }
 
@@ -417,6 +439,12 @@ func Start(a *App) {
 			a.addLogLocked(LogError, "Impossibile avviare l'aggiornamento automatico: "+err.Error())
 			a.mu.Unlock()
 		}
+	}
+
+	// Controllo periodico delle nuove versioni dell'app, in background: se non
+	// c'è connessione riprova finché non torna (vedi updateLoop).
+	if a.updater != nil {
+		go a.updateLoop()
 	}
 }
 
@@ -1598,6 +1626,8 @@ func (a *App) snapshot() StateResponse {
 		YtDlpAvailable:          a.ytDlpAvailable,
 		YtDlpVersion:            a.ytDlpVersion,
 		FFmpegAvailable:         a.ffmpegAvailable,
+		AppVersion:              update.Version,
+		Update:                  a.updateViewLocked(),
 	}
 }
 

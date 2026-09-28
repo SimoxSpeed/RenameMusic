@@ -54,7 +54,7 @@ public class RenameMusicPlugin extends Plugin {
      * l'utente la mette in background (es. durante il download di una playlist).
      */
     private static final Set<String> LONG_METHODS = new HashSet<>(
-        Arrays.asList("ProcessAll", "ClearTags", "DownloadPlaylist", "InstallYtDlp")
+        Arrays.asList("ProcessAll", "ClearTags", "DownloadPlaylist", "InstallYtDlp", "InstallUpdate")
     );
 
     /**
@@ -128,6 +128,8 @@ public class RenameMusicPlugin extends Plugin {
                 return "Cancellazione dei tag in corso";
             case "InstallYtDlp":
                 return "Aggiornamento di yt-dlp in corso";
+            case "InstallUpdate":
+                return "Download dell'aggiornamento in corso";
             default:
                 return "Conversione in corso";
         }
@@ -213,6 +215,9 @@ public class RenameMusicPlugin extends Plugin {
         // potrebbe averlo appena concesso dalle impostazioni di sistema).
         executor.execute(Mobile::resume);
         emitResume();
+        // Aggiornamento dell'app in attesa del permesso "installa app
+        // sconosciute", appena concesso dalle impostazioni di sistema.
+        host.resumePendingInstall();
     }
 
     private void emitResume() {

@@ -35,6 +35,11 @@ type Host interface {
 	// YtDlpUpdate aggiorna yt-dlp all'ultima versione stabile: restituisce ""
 	// se va a buon fine, altrimenti il messaggio d'errore.
 	YtDlpUpdate() string
+	// InstallApk apre l'installer di sistema sull'APK indicato (aggiornamento
+	// dell'app). Restituisce "" se l'installer è stato aperto, InstallPermission
+	// se prima serve il permesso "installa app sconosciute" (l'installazione
+	// riparte da sola al ritorno nell'app), altrimenti il messaggio d'errore.
+	InstallApk(path string) string
 }
 
 var (
@@ -59,7 +64,11 @@ func Start(dataDir string, host Host) error {
 	}
 	settings.SetDir(dataDir)
 	ytdlp = &androidYtDlp{host: host}
-	app = core.New(core.Options{Host: mobileHost{host: host}, YtDlp: ytdlp})
+	opts := core.Options{Host: mobileHost{host: host}, YtDlp: ytdlp}
+	if checkUpdates {
+		opts.Updater = androidUpdater{host: host}
+	}
+	app = core.New(opts)
 	core.Start(app)
 	return nil
 }

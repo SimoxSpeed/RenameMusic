@@ -1646,6 +1646,53 @@ th {
     color: var(--muted);
 }
 
+/* Aggiornamento dell'app. Pallino sul bottone "Impostazioni" quando c'è una
+   nuova versione (il popup compare da solo una volta sola: il pallino ricorda
+   che l'aggiornamento resta disponibile). */
+.header-btn {
+    position: relative;
+}
+
+.update-dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--header-bg);
+}
+
+.update-badge {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent-strong);
+}
+
+/* Note di rilascio della versione (testo della release GitHub), scrollabili. */
+.update-notes {
+    margin: -6px 0 16px;
+    padding: 9px 11px;
+    max-height: 32vh;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--input-bg);
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.update-progress {
+    margin: -6px 0 16px;
+}
+
+.modal p.update-later {
+    margin-top: -6px;
+    font-size: 12px;
+}
+
 /* Modale più largo per elenchi (es. errori di download). */
 .modal-wide {
     max-width: 640px;

@@ -19,9 +19,10 @@ var assets embed.FS
 
 func main() {
 	// Istanza del core applicativo (internal/core), condiviso con l'app Android:
-	// qui gli si forniscono i servizi di piattaforma desktop (Wails + yt-dlp.exe).
+	// qui gli si forniscono i servizi di piattaforma desktop (Wails + yt-dlp.exe
+	// + aggiornamento dell'eseguibile).
 	host := &desktopHost{}
-	app := core.New(core.Options{Host: host, YtDlp: core.ExecYtDlp{}})
+	app := core.New(core.Options{Host: host, YtDlp: core.ExecYtDlp{}, Updater: desktopUpdater{host: host}})
 
 	// Configurazione Wails
 	err := wails.Run(&options.App{

@@ -33,11 +33,13 @@ func (h *fakeHost) YtDlpRun(argsJSON string) string {
 
 func (h *fakeHost) YtDlpReady() bool    { return true }
 func (h *fakeHost) YtDlpUpdate() string { return "" }
+func (h *fakeHost) InstallApk(string) string { return "" }
 
 // TestCallDispatch avvia il core con un Host finto e verifica che Call invochi
 // i metodi per nome con argomenti/risultati JSON, come fa il plugin Kotlin.
 func TestCallDispatch(t *testing.T) {
 	host := &fakeHost{}
+	checkUpdates = false
 	if err := Start(t.TempDir(), host); err != nil {
 		t.Fatal(err)
 	}
