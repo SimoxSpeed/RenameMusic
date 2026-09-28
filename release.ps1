@@ -1,0 +1,433 @@
+﻿<#
+.SYNOPSIS
+    Pubblica una nuova versione di RenameMusic: versione, build, commit, tag e push.
+
+.DESCRIPTION
+    1. controlli: branch, tag libero (in locale e su origin), modifiche pendenti
+    2. incrementa la versione in internal/update/update.go (update.Version,
+       unica fonte della versione: la usano il controllo aggiornamenti e l'APK)
+    3. compila l'exe desktop (wails build)
+    4. compila gli APK (mobile\build-apk.ps1)
+    5. commit di tutte le modifiche (dopo conferma) con il messaggio fisso
+       "chore(release): 🚀 release <versione>", tag annotato v<versione> e push
+       di branch e tag insieme (--atomic: o tutti e due o nessuno)
+    6. apre su GitHub la pagina della nuova release, a cui allegare i file
+
+    Se qualcosa fallisce, o alla conferma rispondi no, non viene committato
+    nulla e lo script annulla da solo le sue modifiche (versione, staging).
+    Se fallisce il push spiega come riprovare o tornare indietro.
+
+.PARAMETER Bump
+    Obbligatorio. Parte della versione da incrementare (semver):
+    patch (1.2.3 -> 1.2.4), minor (1.2.3 -> 1.3.0), major (1.2.3 -> 2.0.0).
+    Accettato anche nella forma -patch / --patch.
+
+.PARAMETER NoBuild
+    Salta le build (solo se exe e APK in build\bin sono già stati compilati
+    con la nuova versione).
+
+.PARAMETER JavaHome
+    JDK 21 da passare a build-apk.ps1.
+
+.PARAMETER Yes
+    Non chiede conferma prima di commit e push.
+
+.EXAMPLE
+    npm run release -- minor
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File release.ps1 patch -NoBuild
+#>
+param(
+    [Parameter(Position = 0)]
+    [string]$Bump = '',
+    # Forme alternative (-patch, --patch): PowerShell le lega a questi switch.
+    [switch]$Patch,
+    [switch]$Minor,
+    [switch]$Major,
+    [switch]$NoBuild,
+    [string]$JavaHome = '',
+    [switch]$Yes,
+    # Argomenti in più (es. due tipi di release, o un'opzione sconosciuta):
+    # raccolti qui per segnalarli con un messaggio chiaro.
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest
+)
+
+# 'Continue' come in build-apk.ps1: git, wails e Gradle scrivono su stderr anche
+# messaggi normali. Gli errori veri si intercettano con l'exit code.
+$ErrorActionPreference = 'Continue'
+
+$root = $PSScriptRoot
+$versionFile = Join-Path $root 'internal\update\update.go'
+$versionFileRel = 'internal\update\update.go'
+$repoUrl = 'https://github.com/SimoxSpeed/RenameMusic'
+$desktopAsset = 'build\bin\RenameMusic.exe'
+$apkAssets = @('build\bin\RenameMusic-arm64-v8a.apk', 'build\bin\RenameMusic-x86_64.apk')
+$utf8 = New-Object System.Text.UTF8Encoding $false
+$steps = 6
+$width = 68
+$clock = [System.Diagnostics.Stopwatch]::StartNew()
+
+# ---- Output ---------------------------------------------------------------------
+
+function Badge([string]$text, [ConsoleColor]$fg, [ConsoleColor]$bg) {
+    Write-Host " $text " -ForegroundColor $fg -BackgroundColor $bg -NoNewline
+}
+
+function Line([string]$char, [ConsoleColor]$color) { Write-Host ($char * $width) -ForegroundColor $color }
+
+function Step([int]$n, [string]$title) {
+    Write-Host ''
+    Badge "$n/$steps" Black Cyan
+    Write-Host " $title" -ForegroundColor Cyan
+    Line '─' DarkGray
+}
+
+function Ok([string]$msg) { Write-Host '  ' -NoNewline; Badge 'OK' Black Green; Write-Host " $msg" }
+function Warn([string]$msg) { Write-Host '  ' -NoNewline; Badge '!!' Black Yellow; Write-Host " $msg" -ForegroundColor Yellow }
+function Skip([string]$msg) { Write-Host '  ' -NoNewline; Badge '--' Black DarkGray; Write-Host " $msg" -ForegroundColor DarkGray }
+function Detail([string]$msg) { Write-Host "       $msg" -ForegroundColor DarkGray }
+
+function Banner([string]$badge, [ConsoleColor]$fg, [ConsoleColor]$bg, [ConsoleColor]$color, [string]$title) {
+    Write-Host ''
+    Line '═' $color
+    Write-Host '  ' -NoNewline
+    Badge $badge $fg $bg
+    Write-Host " $title" -ForegroundColor $color
+    Line '═' $color
+}
+
+function Elapsed {
+    $t = $clock.Elapsed
+    if ($t.TotalMinutes -ge 1) { return '{0}m {1:00}s' -f [int][math]::Floor($t.TotalMinutes), $t.Seconds }
+    return '{0}s' -f [int]$t.TotalSeconds
+}
+
+# Mostra come si usa lo script, con le versioni che otterresti a partire da
+# quella attuale.
+function Show-Usage([string]$current) {
+    Write-Host ''
+    Write-Host '  Uso' -ForegroundColor White
+    Write-Host '    npm run release -- ' -NoNewline -ForegroundColor Gray
+    Write-Host '<patch|minor|major>' -NoNewline -ForegroundColor Yellow
+    Write-Host ' [-NoBuild] [-Yes] [-JavaHome <jdk>]' -ForegroundColor DarkGray
+    Write-Host '    powershell -ExecutionPolicy Bypass -File release.ps1 ' -NoNewline -ForegroundColor Gray
+    Write-Host '<patch|minor|major>' -ForegroundColor Yellow
+    if ($current) {
+        Write-Host ''
+        Write-Host '  Versione attuale: ' -NoNewline -ForegroundColor White
+        Write-Host $current -ForegroundColor Cyan
+        $choices = @(
+            @('patch', 'correzioni di bug'),
+            @('minor', 'nuove funzionalità'),
+            @('major', 'cambiamenti importanti')
+        )
+        foreach ($c in $choices) {
+            Write-Host ('    {0,-7}' -f $c[0]) -NoNewline -ForegroundColor Yellow
+            Write-Host ' -> ' -NoNewline -ForegroundColor DarkGray
+            Write-Host ('{0,-9}' -f (Get-NextVersion $current $c[0])) -NoNewline -ForegroundColor Green
+            Write-Host $c[1] -ForegroundColor DarkGray
+        }
+    }
+    Write-Host ''
+}
+
+function Fail-Usage([string]$msg, [string]$current) {
+    Banner 'ERRORE' White DarkRed Red $msg
+    Show-Usage $current
+    exit 1
+}
+
+# ---- Comandi ----------------------------------------------------------------------
+
+function Get-NextVersion([string]$current, [string]$kind) {
+    $v = [version]$current
+    switch ($kind) {
+        'major' { return "$($v.Major + 1).0.0" }
+        'minor' { return "$($v.Major).$($v.Minor + 1).0" }
+        'patch' { return "$($v.Major).$($v.Minor).$($v.Build + 1)" }
+    }
+}
+
+# Esegue un comando lungo lasciando scorrere il suo output (build).
+function Invoke-Checked([string]$what, [scriptblock]$block) {
+    & $block
+    if ($LASTEXITCODE -ne 0) { throw "$what fallito (exit code $LASTEXITCODE)" }
+}
+
+# Esegue un comando breve (git) mostrandone l'output attenuato e rientrato.
+function Invoke-Quiet([string]$what, [scriptblock]$block) {
+    $out = & $block 2>&1
+    $code = $LASTEXITCODE
+    foreach ($l in $out) { if ("$l".Trim()) { Detail "$l" } }
+    if ($code -ne 0) { throw "$what fallito (exit code $code)" }
+}
+
+function Show-Asset([string]$rel) {
+    $path = Join-Path $root $rel
+    if (Test-Path -LiteralPath $path) {
+        $item = Get-Item -LiteralPath $path
+        Ok ('{0}  ({1:N1} MB)' -f $rel, ($item.Length / 1MB))
+    } else {
+        Warn "$rel  MANCANTE"
+    }
+}
+
+# ---- Stato, per spiegare come tornare indietro se qualcosa va storto ---------------
+
+$versionWritten = $false
+$indexWasClean = $true
+$built = $false
+$staged = $false
+$committed = $false
+$tagged = $false
+$tag = ''
+
+# Annulla da solo quello che lo script ha fatto prima del commit (versione in
+# update.go, staging), così un annullamento o un errore riportano il
+# repository com'era. Dopo il commit non tocca nulla: ci pensa Show-Recovery.
+function Undo-Local {
+    if ($committed) { return }
+    if ($staged -and $indexWasClean) {
+        git reset -q
+        $script:staged = $false
+        Ok 'Staging annullato'
+    }
+    if ($versionWritten) {
+        [System.IO.File]::WriteAllText($versionFile, $source, $utf8)
+        $script:versionWritten = $false
+        Ok "Versione in $versionFileRel ripristinata a $current"
+    }
+}
+
+# Spiega cosa resta da sistemare a mano (tipicamente: push fallito).
+function Show-Recovery {
+    $hints = @()
+    if ($tagged) {
+        $hints += "Il tag $tag esiste solo in locale. Riprova il push:  git push --atomic origin HEAD $tag"
+        $hints += "oppure eliminalo:  git tag -d $tag"
+    }
+    if ($committed) {
+        $hints += 'Il commit di release esiste solo in locale. Per annullarlo:  git reset --soft HEAD~1'
+    } elseif ($staged) {
+        $hints += 'Le modifiche sono in staging insieme a quelle che c''erano già. Per toglierle:  git reset'
+    }
+    Write-Host ''
+    if ($hints.Count -eq 0) {
+        $note = if ($built) { ' (a parte i file rigenerati dalle build)' } else { '' }
+        Write-Host "  Il repository è com'era prima della release$note." -ForegroundColor Gray
+        return
+    }
+    Write-Host '  Da sistemare a mano' -ForegroundColor White
+    foreach ($h in $hints) { Write-Host "    - $h" -ForegroundColor Yellow }
+}
+
+# ---- Argomento obbligatorio -----------------------------------------------------
+
+$current = ''
+try {
+    $source = [System.IO.File]::ReadAllText($versionFile, $utf8)
+    $m = [regex]::Match($source, '(?m)^const Version = "(\d+\.\d+\.\d+)"')
+    if ($m.Success) { $current = $m.Groups[1].Value }
+} catch {
+    $source = ''
+}
+if (-not $current) {
+    Banner 'ERRORE' White DarkRed Red "Versione non trovata in $versionFileRel (const Version = `"X.Y.Z`")."
+    exit 1
+}
+
+$requested = @()
+if ($Bump) { $requested += $Bump }
+if ($Patch) { $requested += 'patch' }
+if ($Minor) { $requested += 'minor' }
+if ($Major) { $requested += 'major' }
+if ($Rest) { $requested += $Rest }
+$requested = @($requested | Where-Object { "$_".Trim() } | ForEach-Object { "$_".Trim() })
+$validKinds = @('patch', 'minor', 'major')
+$unknownOptions = @($requested | Where-Object { $_.StartsWith('-') -and $_.TrimStart('-').ToLower() -notin $validKinds })
+if ($unknownOptions.Count -gt 0) {
+    Fail-Usage ("Opzione sconosciuta: {0}" -f ($unknownOptions -join ', ')) $current
+}
+$kinds = @($requested | ForEach-Object { $_.TrimStart('-').ToLower() } | Select-Object -Unique)
+
+if ($kinds.Count -eq 0) {
+    Fail-Usage 'Manca il tipo di release: indica patch, minor o major.' $current
+}
+if ($kinds.Count -gt 1) {
+    Fail-Usage ("Indica un solo tipo di release (ricevuti: {0})." -f ($requested -join ', ')) $current
+}
+$kind = $kinds[0]
+if ($kind -notin $validKinds) {
+    Fail-Usage "Tipo di release non valido: '$($requested[0])'. Usa patch, minor o major." $current
+}
+
+$Version = Get-NextVersion $current $kind
+$tag = "v$Version"
+$message = "chore(release): 🚀 release $Version"
+
+# ---- Release --------------------------------------------------------------------
+
+Push-Location $root
+try {
+    $branch = (git symbolic-ref --short -q HEAD)
+    if ($LASTEXITCODE -ne 0 -or -not $branch) { $branch = '' }
+
+    Write-Host ''
+    Line '═' Cyan
+    Write-Host '  RenameMusic' -NoNewline -ForegroundColor White
+    Write-Host '  release ' -NoNewline -ForegroundColor DarkGray
+    Write-Host $kind -ForegroundColor Yellow
+    Write-Host '  ' -NoNewline
+    Write-Host $current -NoNewline -ForegroundColor Gray
+    Write-Host '  ->  ' -NoNewline -ForegroundColor DarkGray
+    Write-Host $Version -NoNewline -ForegroundColor Green
+    Write-Host "     tag $tag" -NoNewline -ForegroundColor DarkGray
+    if ($branch) { Write-Host " · branch $branch" -ForegroundColor DarkGray } else { Write-Host '' }
+    Line '═' Cyan
+
+    # ---- 1. Controlli -------------------------------------------------------------
+
+    Step 1 'Controlli'
+    if (-not $branch) { throw 'HEAD non è su un branch (detached): passa prima a un branch.' }
+    Ok "Branch $branch"
+
+    git rev-parse -q --verify "refs/tags/$tag" | Out-Null
+    if ($LASTEXITCODE -eq 0) { throw "Il tag $tag esiste già in locale." }
+    Detail 'Controllo dei tag su origin...'
+    $remoteTag = git ls-remote --tags origin "refs/tags/$tag"
+    if ($LASTEXITCODE -ne 0) { throw 'Impossibile contattare origin: sei connesso a Internet?' }
+    if ($remoteTag) { throw "Il tag $tag esiste già su origin." }
+    Ok "Tag $tag libero (in locale e su origin)"
+
+    git diff --cached --quiet
+    $indexWasClean = $LASTEXITCODE -eq 0
+    $dirty = @(git status --porcelain)
+    if ($dirty.Count -gt 0) {
+        Warn "$($dirty.Count) modifiche non committate: finiranno nel commit di release"
+        foreach ($d in $dirty) { Detail $d }
+    } else {
+        Ok 'Working tree pulito'
+    }
+
+    # ---- 2. Versione --------------------------------------------------------------
+
+    Step 2 'Versione'
+    $updated = $source.Substring(0, $m.Groups[1].Index) + $Version +
+        $source.Substring($m.Groups[1].Index + $m.Groups[1].Length)
+    [System.IO.File]::WriteAllText($versionFile, $updated, $utf8)
+    $versionWritten = $true
+    Ok "$versionFileRel  $current -> $Version"
+
+    # ---- 3-4. Build ---------------------------------------------------------------
+
+    if ($NoBuild) {
+        Step 3 'Build desktop'
+        Warn 'Saltata (-NoBuild): l''exe in build\bin deve essere già compilato con la versione nuova'
+        Show-Asset $desktopAsset
+        Step 4 'Build Android'
+        Warn 'Saltata (-NoBuild): gli APK in build\bin devono essere già compilati con la versione nuova'
+        foreach ($a in $apkAssets) { Show-Asset $a }
+    } else {
+        $env:PATH = "$env:USERPROFILE\go\bin;$env:PATH"
+        $built = $true
+
+        Step 3 'Build desktop (wails build)'
+        Invoke-Checked 'wails build' { wails build }
+        Show-Asset $desktopAsset
+
+        Step 4 'Build Android (mobile\build-apk.ps1)'
+        $apkArgs = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $root 'mobile\build-apk.ps1'))
+        if ($JavaHome) { $apkArgs += @('-JavaHome', $JavaHome) }
+        Invoke-Checked 'build-apk.ps1' { powershell @apkArgs }
+        foreach ($a in $apkAssets) { Show-Asset $a }
+    }
+
+    # ---- 5. Commit, tag, push -----------------------------------------------------
+
+    Step 5 'Commit, tag e push'
+    # core.safecrlf=false: niente avvisi "LF will be replaced by CRLF".
+    Invoke-Quiet 'git add' { git -c core.safecrlf=false add -A }
+    $staged = $true
+    git diff --cached --quiet
+    $hasChanges = $LASTEXITCODE -ne 0
+    if ($hasChanges) {
+        Write-Host '  File nel commit' -ForegroundColor White
+        foreach ($f in @(git status --short)) { Detail $f }
+        Write-Host '  Messaggio      ' -NoNewline -ForegroundColor White
+        Write-Host $message -ForegroundColor Green
+    } else {
+        Warn "Nessuna modifica da committare: il tag $tag andrà sul commit corrente"
+        Detail (git log --oneline -1)
+    }
+    Write-Host '  Tag            ' -NoNewline -ForegroundColor White
+    Write-Host $tag -ForegroundColor Green
+    Write-Host '  Push su        ' -NoNewline -ForegroundColor White
+    Write-Host "origin/$branch" -ForegroundColor Green
+
+    if (-not $Yes) {
+        Write-Host ''
+        Write-Host '  ' -NoNewline
+        Badge '?' Black Magenta
+        Write-Host ' Procedere con commit, tag e push? ' -NoNewline -ForegroundColor White
+        Write-Host '[s/N] ' -NoNewline -ForegroundColor Yellow
+        $answer = Read-Host
+        if ($answer -notmatch '^(s|si|sì|y|yes)$') {
+            Banner 'ANNULLATO' Black Yellow Yellow 'Nessun commit, tag o push è stato fatto.'
+            Undo-Local
+            Show-Recovery
+            Write-Host ''
+            exit 1
+        }
+        Write-Host ''
+    }
+
+    if ($hasChanges) {
+        # Il messaggio passa da un file UTF-8: così l'emoji arriva intatta a git
+        # anche da Windows PowerShell 5.1.
+        $msgFile = [System.IO.Path]::GetTempFileName()
+        try {
+            [System.IO.File]::WriteAllText($msgFile, $message, $utf8)
+            Invoke-Quiet 'git commit' { git commit -q -F $msgFile }
+        } finally {
+            Remove-Item $msgFile -ErrorAction SilentlyContinue
+        }
+        $committed = $true
+        Ok ("Commit {0}" -f (git log --oneline -1))
+    }
+
+    Invoke-Quiet 'git tag' { git tag -a $tag -m "RenameMusic $Version" }
+    $tagged = $true
+    Ok "Tag $tag"
+
+    Detail "Push su origin ($branch + $tag)..."
+    Invoke-Quiet 'git push' { git push --atomic origin HEAD $tag }
+    $tagged = $false
+    $committed = $false
+    Ok "Push di $branch e $tag su origin"
+
+    # ---- 6. Release su GitHub -----------------------------------------------------
+
+    Step 6 'Release su GitHub'
+    $releaseUrl = "$repoUrl/releases/new?tag=$tag&title=RenameMusic%20$Version"
+    Write-Host '  Nella pagina aperta nel browser:' -ForegroundColor White
+    Write-Host '    1. allega questi file, con questi nomi esatti:' -ForegroundColor Gray
+    foreach ($a in @($desktopAsset) + $apkAssets) { Write-Host "         $(Join-Path $root $a)" -ForegroundColor Cyan }
+    Write-Host '    2. scrivi le novità nella descrizione (compaiono nel popup di aggiornamento)' -ForegroundColor Gray
+    Write-Host '    3. lascia spento "Set as a pre-release" e premi "Publish release"' -ForegroundColor Gray
+    Detail $releaseUrl
+    Start-Process $releaseUrl
+
+    Banner 'FATTO' Black Green Green "RenameMusic ${Version}: tag $tag su origin/$branch  ($(Elapsed))"
+    Write-Host '  Manca solo pubblicare la release su GitHub con i 3 file allegati.' -ForegroundColor Gray
+    Write-Host ''
+} catch {
+    Banner 'ERRORE' White DarkRed Red "Release interrotta: $($_.Exception.Message)"
+    Undo-Local
+    Show-Recovery
+    Write-Host ''
+    exit 1
+} finally {
+    Pop-Location
+}
