@@ -16,6 +16,8 @@ export function ClearLogs():Promise<core.ActionResponse>;
 
 export function ClearTags():Promise<core.ActionResponse>;
 
+export function DownloadAndProcess(arg1:string):Promise<core.ActionResponse>;
+
 export function DownloadPlaylist(arg1:string):Promise<core.ActionResponse>;
 
 export function GetConfig():Promise<core.ActionResponse>;

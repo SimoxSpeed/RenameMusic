@@ -54,7 +54,7 @@ public class RenameMusicPlugin extends Plugin {
      * l'utente la mette in background (es. durante il download di una playlist).
      */
     private static final Set<String> LONG_METHODS = new HashSet<>(
-        Arrays.asList("ProcessAll", "ClearTags", "DownloadPlaylist", "InstallYtDlp", "InstallUpdate")
+        Arrays.asList("ProcessAll", "ClearTags", "DownloadPlaylist", "DownloadAndProcess", "InstallYtDlp", "InstallUpdate")
     );
 
     /**
@@ -124,6 +124,8 @@ public class RenameMusicPlugin extends Plugin {
         switch (method) {
             case "DownloadPlaylist":
                 return "Download della playlist in corso";
+            case "DownloadAndProcess":
+                return "Download e conversione della playlist in corso";
             case "ClearTags":
                 return "Cancellazione dei tag in corso";
             case "InstallYtDlp":

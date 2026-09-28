@@ -28,6 +28,7 @@ final class MediaRescan {
             case "ResolveTagPrompt":
             case "ClearTags":
             case "DownloadPlaylist":
+            case "DownloadAndProcess":
                 return true;
             default:
                 return false;
@@ -58,8 +59,9 @@ final class MediaRescan {
                     if (!newName.isEmpty() && !dest.isEmpty()) paths.add(new File(dest, newName).getPath());
                 }
             }
-            if ("ClearTags".equals(method) || "DownloadPlaylist".equals(method)) {
-                // Tag cancellati / nuovi file scaricati: tutti i file della cartella.
+            if ("ClearTags".equals(method) || "DownloadPlaylist".equals(method) || "DownloadAndProcess".equals(method)) {
+                // Tag cancellati / nuovi file scaricati: tutti i file della cartella
+                // (dopo una conversione l'elenco è vuoto e bastano i risultati).
                 JSONArray files = state.optJSONArray("files");
                 if (files != null) {
                     for (int i = 0; i < files.length(); i++) {

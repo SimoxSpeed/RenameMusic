@@ -20,6 +20,7 @@ import {
     Cancel,
     SetPlaylists,
     DownloadPlaylist,
+    DownloadAndProcess,
     InstallYtDlp,
     InstallFFmpeg,
     UninstallYtDlp,
@@ -61,6 +62,18 @@ type TagPrompt = {
     ext: string
     title: string
     artist: string
+}
+
+// promptsOf estrae dalla risposta di una conversione le tracce con tag
+// sconosciuti, che la UI risolve una alla volta col popup.
+function promptsOf(resp: core.ActionResponse): TagPrompt[] {
+    return (resp.prompts ?? []).map((p) => ({
+        path: p.path,
+        originalBase: p.originalBase,
+        ext: p.ext,
+        title: p.title,
+        artist: p.artist,
+    }))
 }
 
 function listToText(list: string[] | undefined): string {
@@ -223,15 +236,23 @@ function KeyboardIcon() {
 
 // ShortcutsLegend: icona tastiera nell'header con tooltip che elenca le
 // scorciatoie disponibili. Riusa lo stile info-icon/info-tooltip (tooltip scuro
-// verso il basso) con un contenuto strutturato tasto → azione.
-function ShortcutsLegend() {
-    const shortcuts: [string, string][] = [
-        ['Ctrl + O', 'Scegli cartella'],
-        ['Ctrl + R', 'Aggiorna scansione'],
-        ['Ctrl + Invio', 'Converti / Nuova scansione'],
-        ['Ctrl + ,', 'Impostazioni'],
-        ['Esc', 'Chiudi finestre e pannelli'],
-    ]
+// verso il basso) con un contenuto strutturato tasto → azione. In modalità
+// semplificata cartelle e anteprima non sono nella schermata principale, quindi
+// restano solo le scorciatoie che hanno senso lì.
+function ShortcutsLegend({ simple }: { simple: boolean }) {
+    const shortcuts: [string, string][] = simple
+        ? [
+              ['Ctrl + Invio', 'Scarica e converti'],
+              ['Ctrl + ,', 'Impostazioni'],
+              ['Esc', 'Chiudi finestre e pannelli'],
+          ]
+        : [
+              ['Ctrl + O', 'Scegli cartella'],
+              ['Ctrl + R', 'Aggiorna scansione'],
+              ['Ctrl + Invio', 'Converti / Nuova scansione'],
+              ['Ctrl + ,', 'Impostazioni'],
+              ['Esc', 'Chiudi finestre e pannelli'],
+          ]
     return (
         <button
             type="button"
@@ -608,6 +629,7 @@ function cloneConfig(cfg: rules.Config): rules.Config {
         ftAlias: cfg.ftAlias,
         replacements: (cfg.replacements ?? []).map((r) => ({ from: r.from, to: r.to, scope: r.scope })),
         artistExceptions: [...(cfg.artistExceptions ?? [])],
+        simpleMode: !!cfg.simpleMode,
     } as rules.Config
 }
 
@@ -663,7 +685,8 @@ function App() {
     const [confirmLeaveSettings, setConfirmLeaveSettings] = useState(false)
     // progress: avanzamento dell'ultima elaborazione (x/totale), popolato dagli
     // eventi process:progress durante ProcessAll; null quando non pertinente.
-    const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+    // phase ('download' | 'convert') distingue le due fasi di "Scarica e converti".
+    const [progress, setProgress] = useState<{ done: number; total: number; phase?: string } | null>(null)
     // installProgress: avanzamento del download di yt-dlp/ffmpeg (evento
     // install:progress); azzerato quando l'installazione risponde.
     const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null)
@@ -704,14 +727,37 @@ function App() {
     const [updatePopup, setUpdatePopup] = useState<core.UpdateView | null>(null)
     const updateShownRef = useRef('')
 
-    function absorb(resp: core.ActionResponse) {
-        setState(resp.state)
-        if (resp.state.config) {
-            setDraft(cloneConfig(resp.state.config))
-        }
-        const playlists = resp.state.playlists ?? []
-        setPlaylistDraft(playlists.map((p) => ({ name: p.name, url: p.url })))
+    // showSettingsRef rispecchia showSettings per absorbState, che gira anche
+    // nei gestori di eventi registrati una sola volta (vedi folder:dropped) e al
+    // ritorno di chiamate partite prima di un cambio di schermata.
+    const showSettingsRef = useRef(false)
+    showSettingsRef.current = showSettings
+
+    function absorb(resp: core.ActionResponse, resetDrafts = false) {
+        absorbState(resp.state, resetDrafts)
+    }
+
+    // absorbState riporta nella UI lo stato del core. Fuori dalle Impostazioni
+    // riallinea anche le bozze (regole e playlist in editing) allo stato
+    // salvato. Nelle Impostazioni invece le lascia com'erano: nessuna azione
+    // eseguita da lì (cartelle in modalità semplificata, yt-dlp/ffmpeg,
+    // scorciatoie, trascinamento di una cartella) deve far perdere le modifiche
+    // non ancora salvate. Allinea solo la cartella della bozza, che il core
+    // gestisce a parte, altrimenti la bozza risulterebbe modificata. resetDrafts
+    // forza il riallineamento: serve al salvataggio e al ripristino dei
+    // predefiniti, che cambiano proprio lo stato salvato delle bozze.
+    function absorbState(next: core.StateResponse, resetDrafts = false) {
+        setState(next)
+        const playlists = next.playlists ?? []
         setSelectedPlaylist((prev) => (playlists.some((p) => p.name === prev) ? prev : (playlists[0]?.name ?? '')))
+        if (showSettingsRef.current && !resetDrafts) {
+            setDraft((prev) => (prev ? ({ ...prev, startFolder: next.folder } as rules.Config) : prev))
+            return
+        }
+        if (next.config) {
+            setDraft(cloneConfig(next.config))
+        }
+        setPlaylistDraft(playlists.map((p) => ({ name: p.name, url: p.url })))
     }
 
     // Durata minima (ms) per cui lo stato "busy" resta attivo una volta partito:
@@ -881,8 +927,7 @@ function App() {
         return onEvent('folder:dropped', (payload: unknown) => {
             const next = payload as core.StateResponse
             if (!next) return
-            setState(next)
-            if (next.config) setDraft(cloneConfig(next.config))
+            absorbState(next)
             setResults(null)
             syncOptions(next)
             const ok = next.folder !== ''
@@ -896,7 +941,7 @@ function App() {
     // completato; aggiorniamo il contatore della barra di avanzamento.
     useEffect(() => {
         return onEvent('process:progress', (payload: unknown) => {
-            const p = payload as { done: number; total: number } | null
+            const p = payload as { done: number; total: number; phase?: string } | null
             if (p) setProgress(p)
         })
     }, [])
@@ -1110,14 +1155,7 @@ function App() {
             // Tracce con tag sconosciuti: il backend NON le ha convertite, le
             // rimette qui perché l'utente decida (una alla volta) col popup. Le
             // tracce a posto sono già state convertite: niente blocca.
-            const pending = resp.prompts ?? []
-            setTagPrompts(pending.map((p) => ({
-                path: p.path,
-                originalBase: p.originalBase,
-                ext: p.ext,
-                title: p.title,
-                artist: p.artist,
-            })))
+            setTagPrompts(promptsOf(resp))
         }).finally(() => {
             setProgress(null)
             setCancellable(false)
@@ -1181,7 +1219,7 @@ function App() {
     function resetConfig() {
         guard(async () => {
             const resp = await ResetConfig()
-            absorb(resp)
+            absorb(resp, true)
             setResults(null)
             notify(resp.ok, resp.message ?? '')
         })
@@ -1221,6 +1259,11 @@ function App() {
 
     const folder = state?.folder ?? ''
     folderRef.current = folder
+    // simpleMode: modalità semplificata salvata, che decide la schermata
+    // principale (solo scelta della playlist, "Scarica e converti", niente
+    // anteprima). Nelle Impostazioni conta invece la bozza (draft.simpleMode),
+    // così le cartelle compaiono lì appena si spunta la casella.
+    const simpleMode = !!state?.config?.simpleMode
     const files = state?.files ?? []
     const logs = state?.logs ?? []
     const playlists = state?.playlists ?? []
@@ -1255,6 +1298,13 @@ function App() {
     // (titolo/artista) — non solo quelli da rinominare. Resta comunque solo una
     // vista: l'elaborazione tratta sempre tutti i file.
     const previewFiles = showOnlyChanged ? files.filter(fileWillChange) : files
+    // Etichetta della barra di avanzamento: in modalità semplificata download e
+    // conversione si susseguono nella stessa operazione, quindi diciamo quale
+    // delle due fasi è in corso.
+    const progressLabel = progress
+        ? (simpleMode ? (progress.phase === 'convert' ? 'Conversione · ' : 'Download · ') : '') +
+          `${progress.done} / ${progress.total} completati`
+        : ''
 
     // Attiva/disattiva "Elimina originali" con conferma esplicita quando si passa
     // da OFF a ON (è un'azione distruttiva). Spegnerlo non richiede conferma.
@@ -1326,9 +1376,8 @@ function App() {
     // saveSettingsCore persiste in un colpo solo TUTTE le impostazioni della
     // schermata: prima le regole di rinomina (SetConfig, che riscansiona con le
     // nuove regole) e poi le playlist (SetPlaylists). Cattura i due draft prima di
-    // qualsiasi absorb() intermedio: absorb reimposta draft/playlistDraft dallo
-    // stato del server, quindi assorbiamo solo alla fine per non azzerare l'uno
-    // mentre salviamo l'altro.
+    // qualsiasi absorb() intermedio e assorbe solo alla fine, riallineando le
+    // bozze (resetDrafts) allo stato appena salvato.
     async function saveSettingsCore() {
         const cfgDraft = draft
         const plDraft = playlistDraft
@@ -1336,7 +1385,7 @@ function App() {
             await SetConfig(cfgDraft)
         }
         const resp = await SetPlaylists(plDraft)
-        absorb(resp)
+        absorb(resp, true)
         setResults(null)
         notify(resp.ok, resp.ok ? 'Impostazioni salvate.' : (resp.message ?? ''))
     }
@@ -1381,9 +1430,16 @@ function App() {
     // propone solo di scaricarlo, altrimenti propone di attivarla e procedere
     // (in entrambi i casi lo scarica, insieme a ffmpeg se manca, e poi prosegue).
     // Se c'è yt-dlp ma manca ffmpeg, propone di scaricare solo ffmpeg. Se ci
-    // sono entrambi, scarica direttamente.
+    // sono entrambi, scarica direttamente nella cartella di partenza (la
+    // scansione riparte automaticamente lato backend).
     function downloadPlaylist() {
         if (!selectedPlaylist) return
+        // In modalità semplificata la conversione segue il download: la
+        // destinazione deve esserci già (il core la ricontrolla comunque).
+        if (simpleMode && !destReady) {
+            notify(false, 'Scegli una cartella di destinazione nelle Impostazioni o riattiva "uguale alla partenza".')
+            return
+        }
         if (!state?.ytDlpAvailable) {
             setConfirmInstallYtDlp(true)
             return
@@ -1392,30 +1448,44 @@ function App() {
             setConfirmFFmpeg('playlist')
             return
         }
-        runDownloadPlaylist()
+        runPlaylistOp(playlistStep)
     }
 
-    // Scarica i video della playlist nella cartella di partenza; la scansione
-    // riparte automaticamente lato backend. Presume yt-dlp disponibile (o gestito
-    // a mano): se manca, il backend risponde con un errore chiaro.
-    function runDownloadPlaylist() {
-        // Il download è annullabile (Cancel) e riporta l'avanzamento (canzoni
-        // scaricate / totale) via gli eventi process:progress: azzeriamo il
-        // contatore e mostriamo il tasto Annulla + la barra di avanzamento.
+    // runPlaylistOp esegue `fn` (il download della playlist, eventualmente
+    // preceduto dall'installazione di yt-dlp/ffmpeg) in un unico "busy". Il
+    // download è annullabile (Cancel) e riporta l'avanzamento (canzoni scaricate
+    // / totale) via gli eventi process:progress: azzeriamo il contatore e
+    // mostriamo il tasto Annulla + la barra di avanzamento.
+    function runPlaylistOp(fn: () => Promise<void>) {
         setProgress(null)
         setDownloadErrors([])
-        setCancellable(true)
-        guard(async () => {
-            const resp = await DownloadPlaylist(selectedPlaylist)
-            setCancellable(false)
-            absorb(resp)
+        if (simpleMode) {
             setResults(null)
-            setDownloadErrors(resp.downloadErrors ?? [])
-            notify(resp.ok, resp.message ?? '')
-        }).finally(() => {
+            setTagPrompts([])
+        }
+        setCancellable(true)
+        guard(fn).finally(() => {
             setProgress(null)
             setCancellable(false)
         })
+    }
+
+    // playlistStep scarica la playlist selezionata e ne assorbe l'esito. In
+    // modalità semplificata (DownloadAndProcess) il core converte anche subito i
+    // brani: mostriamo i risultati e le tracce da confermare come dopo
+    // "Converti nomi e scrivi tag".
+    async function playlistStep() {
+        const resp = simpleMode ? await DownloadAndProcess(selectedPlaylist) : await DownloadPlaylist(selectedPlaylist)
+        setCancellable(false)
+        absorb(resp)
+        setDownloadErrors(resp.downloadErrors ?? [])
+        notify(resp.ok, resp.message ?? '')
+        if (simpleMode) {
+            setResults(resp.results?.length ? resp.results : null)
+            setTagPrompts(promptsOf(resp))
+        } else {
+            setResults(null)
+        }
     }
 
     // Conferma dal popup: se la gestione automatica non è attiva la attiva prima
@@ -1424,10 +1494,7 @@ function App() {
     // un unico "busy".
     function confirmInstallThenDownload() {
         setConfirmInstallYtDlp(false)
-        setProgress(null)
-        setDownloadErrors([])
-        setCancellable(true)
-        guard(async () => {
+        runPlaylistOp(async () => {
             if (!ytDlpManaged) {
                 const cfg = await SetYtDlpConfig(true, ytDlpPathDraft)
                 absorb(cfg)
@@ -1443,15 +1510,7 @@ function App() {
             syncOptions(inst.state)
             notify(inst.ok, inst.message ?? '')
             if (!inst.ok) return
-            const resp = await DownloadPlaylist(selectedPlaylist)
-            setCancellable(false)
-            absorb(resp)
-            setResults(null)
-            setDownloadErrors(resp.downloadErrors ?? [])
-            notify(resp.ok, resp.message ?? '')
-        }).finally(() => {
-            setProgress(null)
-            setCancellable(false)
+            await playlistStep()
         })
     }
 
@@ -1541,25 +1600,14 @@ function App() {
             })
             return
         }
-        setProgress(null)
-        setDownloadErrors([])
-        setCancellable(true)
-        guard(async () => {
+        runPlaylistOp(async () => {
             const inst = await InstallFFmpeg()
             setInstallProgress(null)
             absorb(inst)
             syncOptions(inst.state)
             notify(inst.ok, inst.message ?? '')
             if (!inst.ok) return
-            const resp = await DownloadPlaylist(selectedPlaylist)
-            setCancellable(false)
-            absorb(resp)
-            setResults(null)
-            setDownloadErrors(resp.downloadErrors ?? [])
-            notify(resp.ok, resp.message ?? '')
-        }).finally(() => {
-            setProgress(null)
-            setCancellable(false)
+            await playlistStep()
         })
     }
 
@@ -1657,19 +1705,21 @@ function App() {
 
         if (!e.ctrlKey) return
         switch (e.key.toLowerCase()) {
-            case 'o': // Scegli cartella di partenza
-                if (busy) return
+            case 'o': // Scegli cartella di partenza (in modalità semplificata sta nelle Impostazioni)
+                if (busy || simpleMode) return
                 e.preventDefault()
                 chooseFolder()
                 break
-            case 'r': // Aggiorna scansione
-                if (busy || !folder) return
+            case 'r': // Aggiorna scansione (in modalità semplificata non c'è anteprima)
+                if (busy || !folder || simpleMode) return
                 e.preventDefault()
                 refresh()
                 break
-            case 'enter': // Converti (o, nella vista risultati, nuova scansione)
+            case 'enter': // Converti (o, nella vista risultati, nuova scansione); in modalità semplificata "Scarica e converti"
                 e.preventDefault()
-                if (results) {
+                if (simpleMode) {
+                    if (!busy && !showSettings && selectedPlaylist && folder) downloadPlaylist()
+                } else if (results) {
                     if (!busy && folder) refresh()
                 } else if (canProcess) {
                     process()
@@ -1688,6 +1738,96 @@ function App() {
         return () => window.removeEventListener('keydown', handler)
     }, [])
 
+    // Barra di avanzamento dell'operazione in corso, sotto i comandi (nella
+    // testata o nella card della modalità semplificata). Durante "Scarica" di una
+    // playlist può mostrare prima il download di yt-dlp/ffmpeg, se mancavano.
+    const opProgress =
+        busy && progress && progress.total > 0 ? (
+            <OpProgress percent={Math.round((progress.done / progress.total) * 100)} label={progressLabel} />
+        ) : busy && installProgress ? (
+            <OpProgress percent={installPercent(installProgress)} label={installLabel(installProgress)} />
+        ) : null
+
+    // Cartelle di partenza/destinazione e opzioni di conversione: in testa alla
+    // schermata principale oppure, in modalità semplificata (che lì lascia solo
+    // la scelta della playlist), nelle Impostazioni. Si applicano subito, come
+    // sempre: non passano dal "Salva" delle Impostazioni.
+    const folderSettings = (
+        <>
+            <div className="field-group">
+                <span className="field-label">Cartella di partenza</span>
+                <div className="toolbar">
+                    <Tooltip label={folder} grow>
+                        <div className="folder-path">
+                            {folder || 'Nessuna cartella selezionata'}
+                        </div>
+                    </Tooltip>
+                    {!isAndroid && (
+                        <Tooltip label="Apri la cartella in Esplora risorse">
+                            <button
+                                className="ghost with-icon"
+                                onClick={() => openFolder(folder)}
+                                disabled={busy || !folder}
+                            >
+                                <span className="btn-icon"><FolderOpenIcon /></span>
+                                Apri
+                            </button>
+                        </Tooltip>
+                    )}
+                    <button className="primary" onClick={chooseFolder} disabled={busy || !storageGranted}>
+                        Scegli cartella
+                    </button>
+                </div>
+            </div>
+
+            {!destSameAsSource && (
+                <div className="field-group">
+                    <span className="field-label">Cartella di destinazione</span>
+                    <div className="toolbar">
+                        <Tooltip label={destFolder} grow>
+                            <div className="folder-path">
+                                {destFolder || 'Nessuna destinazione selezionata'}
+                            </div>
+                        </Tooltip>
+                        {!isAndroid && (
+                            <Tooltip label="Apri la cartella in Esplora risorse">
+                                <button
+                                    className="ghost with-icon"
+                                    onClick={() => openFolder(destFolder)}
+                                    disabled={busy || !destFolder}
+                                >
+                                    <span className="btn-icon"><FolderOpenIcon /></span>
+                                    Apri
+                                </button>
+                            </Tooltip>
+                        )}
+                        <button className="primary" onClick={chooseDestination} disabled={busy || !storageGranted}>
+                            Scegli cartella
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className="options">
+                <CheckOption
+                    label="Destinazione uguale alla cartella di partenza"
+                    info="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata."
+                    checked={destSameAsSource}
+                    onChange={(checked) => applyOptions(checked, destFolder, deleteOriginals)}
+                    disabled={busy}
+                />
+
+                <CheckOption
+                    label="Eliminazione file originali"
+                    info="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali."
+                    checked={deleteOriginals}
+                    onChange={toggleDeleteOriginals}
+                    disabled={busy}
+                />
+            </div>
+        </>
+    )
+
     return (
         <div className={'app' + (isAndroid ? ' is-android' : '')}>
             {!showSettings && (
@@ -1695,9 +1835,13 @@ function App() {
                 <div className="header-inner">
                 <h1>RenameMusic</h1>
                 <div className="header-right">
-                    {!isAndroid && <ShortcutsLegend />}
+                    {!isAndroid && <ShortcutsLegend simple={simpleMode} />}
                     {!showSettings && (
                         <>
+                            {/* Senza anteprima l'aggiornamento automatico non ha
+                                nulla da aggiornare: in modalità semplificata il
+                                toggle sparisce (e il core ne ignora gli eventi). */}
+                            {!simpleMode && (
                             <Tooltip
                                 label={
                                     !folder
@@ -1718,6 +1862,10 @@ function App() {
                                     {watchEnabled ? 'Agg. automatico attivo' : 'Agg. automatico'}
                                 </button>
                             </Tooltip>
+                            )}
+                            {/* In modalità semplificata i contatori riassumono solo
+                                l'ultima conversione (non c'è un'anteprima da contare). */}
+                            {(!simpleMode || showingResults) && (
                             <div className="counters">
                                 <span>{fileCount} file{showingResults ? ' elaborati' : ''}</span>
                                 <span className="dot">·</span>
@@ -1737,6 +1885,7 @@ function App() {
                                     </>
                                 )}
                             </div>
+                            )}
                             <button
                                 type="button"
                                 className="header-btn with-icon"
@@ -1755,7 +1904,7 @@ function App() {
             </header>
             )}
 
-            <main className={showSettings ? 'settings-view' : ''}>
+            <main className={showSettings ? 'settings-view' : simpleMode ? 'is-simple' : ''}>
                 <div
                     className={'busy-bar' + (busy ? ' is-active' : '')}
                     role="progressbar"
@@ -1779,80 +1928,10 @@ function App() {
                     </div>
                 )}
 
-                {!showSettings && (
+                {!showSettings && !simpleMode && (
                 <div className="top-row">
                     <div className="top-left-head">
-                        <div className="field-group">
-                            <span className="field-label">Cartella di partenza</span>
-                            <div className="toolbar">
-                                <Tooltip label={folder} grow>
-                                    <div className="folder-path">
-                                        {folder || 'Nessuna cartella selezionata'}
-                                    </div>
-                                </Tooltip>
-                                {!isAndroid && (
-                                    <Tooltip label="Apri la cartella in Esplora risorse">
-                                        <button
-                                            className="ghost with-icon"
-                                            onClick={() => openFolder(folder)}
-                                            disabled={busy || !folder}
-                                        >
-                                            <span className="btn-icon"><FolderOpenIcon /></span>
-                                            Apri
-                                        </button>
-                                    </Tooltip>
-                                )}
-                                <button className="primary" onClick={chooseFolder} disabled={busy || !storageGranted}>
-                                    Scegli cartella
-                                </button>
-                            </div>
-                        </div>
-
-                        {!destSameAsSource && (
-                            <div className="field-group">
-                                <span className="field-label">Cartella di destinazione</span>
-                                <div className="toolbar">
-                                    <Tooltip label={destFolder} grow>
-                                        <div className="folder-path">
-                                            {destFolder || 'Nessuna destinazione selezionata'}
-                                        </div>
-                                    </Tooltip>
-                                    {!isAndroid && (
-                                        <Tooltip label="Apri la cartella in Esplora risorse">
-                                            <button
-                                                className="ghost with-icon"
-                                                onClick={() => openFolder(destFolder)}
-                                                disabled={busy || !destFolder}
-                                            >
-                                                <span className="btn-icon"><FolderOpenIcon /></span>
-                                                Apri
-                                            </button>
-                                        </Tooltip>
-                                    )}
-                                    <button className="primary" onClick={chooseDestination} disabled={busy || !storageGranted}>
-                                        Scegli cartella
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="options">
-                            <CheckOption
-                                label="Destinazione uguale alla cartella di partenza"
-                                info="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata."
-                                checked={destSameAsSource}
-                                onChange={(checked) => applyOptions(checked, destFolder, deleteOriginals)}
-                                disabled={busy}
-                            />
-
-                            <CheckOption
-                                label="Eliminazione file originali"
-                                info="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali."
-                                checked={deleteOriginals}
-                                onChange={toggleDeleteOriginals}
-                                disabled={busy}
-                            />
-                        </div>
+                        {folderSettings}
 
                         <div className="actions">
                             <div className="download-controls">
@@ -1917,16 +1996,7 @@ function App() {
                             </Tooltip>
                         </div>
 
-                        {busy && progress && progress.total > 0 ? (
-                            <OpProgress
-                                percent={Math.round((progress.done / progress.total) * 100)}
-                                label={`${progress.done} / ${progress.total} completati`}
-                            />
-                        ) : busy && installProgress ? (
-                            // yt-dlp/ffmpeg scaricati da "Scarica" di una playlist,
-                            // prima che parta il download dei brani.
-                            <OpProgress percent={installPercent(installProgress)} label={installLabel(installProgress)} />
-                        ) : null}
+                        {opProgress}
                     </div>
 
                     <div className="activity-cell">
@@ -1963,8 +2033,116 @@ function App() {
                 </div>
                 )}
 
+                {/* Modalità semplificata: una sola card al centro, con la scelta
+                    della playlist come protagonista. Niente cartelle (sono nelle
+                    Impostazioni), anteprima o registro Attività: gli esiti
+                    arrivano dai toast e dai risultati. Senza risultati la card è
+                    centrata anche in verticale; dopo una conversione sale in cima
+                    e lascia spazio alla tabella. */}
+                {!showSettings && simpleMode && (
+                    <div className={'simple-stage' + (results ? ' has-results' : '')}>
+                        <section className="simple-hero fade-in">
+                            <div className="simple-hero-badge" aria-hidden="true">
+                                <DownloadIcon />
+                            </div>
+                            <h2 className="simple-hero-title">Scarica una playlist</h2>
+                            <p className="simple-hero-sub">
+                                {playlists.length === 0
+                                    ? 'Non hai ancora playlist salvate: aggiungine una nelle Impostazioni.'
+                                    : 'I brani vengono scaricati e subito rinominati, con titolo e artista scritti nei tag.'}
+                            </p>
+
+                            <div className="simple-hero-controls">
+                                <PlaylistSelect
+                                    value={selectedPlaylist}
+                                    options={playlists}
+                                    onChange={setSelectedPlaylist}
+                                    disabled={busy}
+                                />
+                                {/* Durante l'operazione il pulsante principale
+                                    diventa "Annulla": una sola azione alla volta. */}
+                                {busy && cancellable ? (
+                                    <button className="danger-solid simple-hero-action" onClick={cancelOp}>
+                                        <CloseIcon />
+                                        Annulla
+                                    </button>
+                                ) : (
+                                    <Tooltip label={folder ? '' : 'Scegli prima la cartella di partenza nelle Impostazioni'}>
+                                        <button
+                                            className="accent simple-hero-action"
+                                            onClick={downloadPlaylist}
+                                            disabled={busy || !selectedPlaylist || !folder}
+                                        >
+                                            <DownloadIcon />
+                                            Scarica e converti
+                                        </button>
+                                    </Tooltip>
+                                )}
+                            </div>
+
+                            {opProgress}
+
+                            {downloadErrors.length > 0 && (
+                                <button
+                                    type="button"
+                                    className="ghost small danger simple-hero-errors"
+                                    onClick={() => setShowDownloadErrors(true)}
+                                >
+                                    <AlertIcon />
+                                    {downloadErrors.length === 1
+                                        ? '1 download non riuscito'
+                                        : `${downloadErrors.length} download non riusciti`}
+                                </button>
+                            )}
+
+                            {/* Dove finiscono i brani, con la scorciatoia per cambiarlo. */}
+                            <div className="simple-hero-foot">
+                                <span className="simple-hero-foot-icon" aria-hidden="true">
+                                    <FolderOpenIcon />
+                                </span>
+                                <span className="simple-hero-foot-text">
+                                    {!folder ? (
+                                        'Nessuna cartella di partenza impostata.'
+                                    ) : destSameAsSource ? (
+                                        <>Salvati in <strong>{folder}</strong></>
+                                    ) : (
+                                        <>
+                                            Scaricati in <strong>{folder}</strong>
+                                            {destFolder ? (
+                                                <>, convertiti in <strong>{destFolder}</strong></>
+                                            ) : (
+                                                ', manca la cartella di destinazione'
+                                            )}
+                                        </>
+                                    )}
+                                </span>
+                                <button className="ghost small" onClick={() => setShowSettings(true)} disabled={busy}>
+                                    {folder ? 'Cambia' : 'Imposta'}
+                                </button>
+                            </div>
+                        </section>
+                    </div>
+                )}
+
                 {showSettings && draft && (
                     <>
+                        <section className="settings">
+                        <h2>Generale</h2>
+                        <CheckOption
+                            label="Modalità semplificata"
+                            info="Quando attiva, la schermata principale mostra solo la scelta della playlist: «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima. Le cartelle e le opzioni di conversione si impostano qui, nelle Impostazioni."
+                            checked={!!draft.simpleMode}
+                            onChange={(checked) => setDraft({ ...draft, simpleMode: checked } as rules.Config)}
+                            disabled={busy}
+                        />
+                        {draft.simpleMode && (
+                            <>
+                                <hr className="settings-divider" />
+                                <div className="settings-folders">{folderSettings}</div>
+                            </>
+                        )}
+                        </section>
+
                         <section className="settings">
                         <h2>Download da YouTube</h2>
 
@@ -2287,8 +2465,10 @@ function App() {
                     </>
                 )}
 
-                {!showSettings && (
-                <section className="panel fade-in">
+                {/* In modalità semplificata niente anteprima: il pannello compare
+                    solo con i risultati dell'ultima conversione. */}
+                {!showSettings && (!simpleMode || results) && (
+                <section className={'panel fade-in' + (simpleMode ? ' simple-results' : '')}>
                     <div className="panel-head">
                         <h2>
                             <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>

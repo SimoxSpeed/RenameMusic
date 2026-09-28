@@ -26,6 +26,10 @@ export function ClearTags() {
   return window['go']['core']['App']['ClearTags']();
 }
 
+export function DownloadAndProcess(arg1) {
+  return window['go']['core']['App']['DownloadAndProcess'](arg1);
+}
+
 export function DownloadPlaylist(arg1) {
   return window['go']['core']['App']['DownloadPlaylist'](arg1);
 }

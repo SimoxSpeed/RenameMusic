@@ -473,7 +473,6 @@
     .is-android .download-controls {
         flex-wrap: wrap;
     }
-
     .is-android .download-controls > .tip:first-child {
         flex: 1 1 auto;
         min-width: 0;

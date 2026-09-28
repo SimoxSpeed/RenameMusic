@@ -53,6 +53,13 @@ type Config struct {
 	// vanno spezzati in più artisti quando si deducono i tag (es. "Jkyl & Hyde").
 	// Prima erano hardcoded nel parser; ora sono editabili come le altre regole.
 	ArtistExceptions []string `json:"artistExceptions"`
+
+	// SimpleMode attiva la modalità semplificata dell'interfaccia: si sceglie
+	// solo la playlist, che viene scaricata e subito convertita senza anteprima
+	// (le cartelle si impostano nelle Impostazioni). Non è una regola di rinomina,
+	// ma sta qui perché segue la stessa logica correnti/predefiniti
+	// (config.json/defaults.json). Assente nei file esistenti = false.
+	SimpleMode bool `json:"simpleMode"`
 }
 
 // FactoryConfig è il seed di fabbrica usato SOLO al primo avvio per inizializzare

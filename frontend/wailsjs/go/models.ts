@@ -286,6 +286,7 @@ export namespace rules {
 	    replacements: Replacement[];
 	    ftAlias: string;
 	    artistExceptions: string[];
+	    simpleMode: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -300,6 +301,7 @@ export namespace rules {
 	        this.replacements = this.convertValues(source["replacements"], Replacement);
 	        this.ftAlias = source["ftAlias"];
 	        this.artistExceptions = source["artistExceptions"];
+	        this.simpleMode = source["simpleMode"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

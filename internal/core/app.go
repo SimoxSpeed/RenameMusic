@@ -45,10 +45,19 @@ const EventProcessProgress = "process:progress"
 // StateResponse aggiornato.
 const EventYtDlpChanged = "ytdlp:changed"
 
-// ProgressEvent è il payload di EventProcessProgress.
+// Fasi di ProgressEvent: DownloadAndProcess emette l'avanzamento prima del
+// download e poi della conversione, e la UI le distingue da qui.
+const (
+	PhaseDownload = "download"
+	PhaseConvert  = "convert"
+)
+
+// ProgressEvent è il payload di EventProcessProgress. Phase è PhaseDownload o
+// PhaseConvert (vuota per le altre operazioni, es. ClearTags).
 type ProgressEvent struct {
-	Done  int `json:"done"`
-	Total int `json:"total"`
+	Done  int    `json:"done"`
+	Total int    `json:"total"`
+	Phase string `json:"phase,omitempty"`
 }
 
 // EventInstallProgress è emesso durante InstallYtDlp/InstallFFmpeg con
@@ -962,6 +971,52 @@ func (a *App) UninstallYtDlp() ActionResponse {
 // nome `name`, poi esegue una scansione così l'anteprima si aggiorna con i
 // nuovi file. Richiede yt-dlp disponibile (vedi YtDlp).
 func (a *App) DownloadPlaylist(name string) ActionResponse {
+	opCtx, endOp := a.beginCancelable()
+	defer endOp()
+	resp, _ := a.downloadPlaylist(opCtx, name)
+	return resp
+}
+
+// DownloadAndProcess è l'azione della modalità semplificata: scarica la
+// playlist `name` come DownloadPlaylist e poi converte subito tutti i file della
+// cartella come ProcessAll, senza passare dall'anteprima. È un'unica operazione
+// annullabile: se l'annullamento arriva durante il download, la conversione non
+// parte. La risposta è quella della conversione (risultati e tracce da
+// confermare) con in più i video non scaricati; se il download non va a buon
+// fine (o viene annullato) è quella del download.
+func (a *App) DownloadAndProcess(name string) ActionResponse {
+	// La destinazione si valida prima di scaricare: scoprire solo a download
+	// finito che la conversione non può partire sarebbe una perdita di tempo.
+	a.mu.Lock()
+	destSame, destFolder := a.destSameAsSource, a.destFolder
+	a.mu.Unlock()
+	if _, msg := conversionDestination(destSame, destFolder); msg != "" {
+		return ActionResponse{OK: false, Message: msg, State: a.snapshotLocked()}
+	}
+
+	opCtx, endOp := a.beginCancelable()
+	defer endOp()
+
+	dl, downloaded := a.downloadPlaylist(opCtx, name)
+	if !downloaded {
+		return dl
+	}
+
+	resp := a.processAll(opCtx)
+	resp.DownloadErrors = dl.DownloadErrors
+	if n := len(dl.DownloadErrors); n > 0 {
+		resp.OK = false
+		resp.Message = fmt.Sprintf("%s %d download non riusciti.", resp.Message, n)
+	}
+	return resp
+}
+
+// downloadPlaylist esegue il download di DownloadPlaylist (vedi) sotto il
+// context dell'operazione in corso. downloaded è true se il download si è
+// concluso (anche con errori su singoli video) senza essere annullato e la
+// scansione successiva è riuscita: è la condizione perché DownloadAndProcess
+// prosegua con la conversione.
+func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionResponse, downloaded bool) {
 	a.mu.Lock()
 	folder := a.config.StartFolder
 	ytdlp := a.ytDlpEffectivePath()
@@ -977,17 +1032,17 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 	a.mu.Unlock()
 
 	if !found {
-		return ActionResponse{OK: false, Message: "Playlist non trovata.", State: a.snapshotLocked()}
+		return ActionResponse{OK: false, Message: "Playlist non trovata.", State: a.snapshotLocked()}, false
 	}
 	if !appfs.IsDir(folder) {
-		return ActionResponse{OK: false, Message: "Seleziona prima una cartella di partenza.", State: a.snapshotLocked()}
+		return ActionResponse{OK: false, Message: "Seleziona prima una cartella di partenza.", State: a.snapshotLocked()}, false
 	}
 
 	if !a.yt().Available(ytdlp) {
-		return ActionResponse{OK: false, Message: "yt-dlp non disponibile: scaricalo o imposta un percorso valido nelle impostazioni.", State: a.snapshotLocked()}
+		return ActionResponse{OK: false, Message: "yt-dlp non disponibile: scaricalo o imposta un percorso valido nelle impostazioni.", State: a.snapshotLocked()}, false
 	}
 	if !a.yt().FFmpegAvailable() {
-		return ActionResponse{OK: false, Message: "ffmpeg non disponibile: scaricalo dalle impostazioni (serve a yt-dlp per creare gli mp3).", State: a.snapshotLocked()}
+		return ActionResponse{OK: false, Message: "ffmpeg non disponibile: scaricalo dalle impostazioni (serve a yt-dlp per creare gli mp3).", State: a.snapshotLocked()}, false
 	}
 
 	a.mu.Lock()
@@ -999,16 +1054,13 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 	a.addLogLocked(LogInfo, fmt.Sprintf("Avvio download playlist %q...", name))
 	a.mu.Unlock()
 
-	opCtx, endOp := a.beginCancelable()
-	defer endOp()
-
 	result, err := playlist.Download(playlist.Options{
 		Runner:  a.yt().Runner(ytdlp),
 		URL:     url,
 		Folder:  folder,
 		Workers: a.yt().Workers(),
 		OnProgress: func(done, total int) {
-			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total})
+			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total, Phase: PhaseDownload})
 		},
 		Cancelled: func() bool { return opCtx.Err() != nil },
 	})
@@ -1020,7 +1072,7 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 		a.addLogLocked(LogError, "Download playlist fallito: "+err.Error())
 		state := a.snapshot()
 		a.mu.Unlock()
-		return ActionResponse{OK: false, Message: "Download fallito: " + err.Error(), State: state}
+		return ActionResponse{OK: false, Message: "Download fallito: " + err.Error(), State: state}, false
 	}
 
 	a.mu.Lock()
@@ -1050,12 +1102,12 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 	}
 
 	if canceled {
-		return ActionResponse{OK: ok, Message: "Download annullato. " + message, State: finalState, DownloadErrors: dlErrors}
+		return ActionResponse{OK: ok, Message: "Download annullato. " + message, State: finalState, DownloadErrors: dlErrors}, false
 	}
 	if result.Failed > 0 {
-		return ActionResponse{OK: false, Message: fmt.Sprintf("Download completato con %d errori.", result.Failed), State: finalState, DownloadErrors: dlErrors}
+		return ActionResponse{OK: false, Message: fmt.Sprintf("Download completato con %d errori.", result.Failed), State: finalState, DownloadErrors: dlErrors}, ok
 	}
-	return ActionResponse{OK: ok, Message: message, State: finalState}
+	return ActionResponse{OK: ok, Message: message, State: finalState}, ok
 }
 
 // ChooseDirectory apre il selettore cartella e restituisce il percorso scelto
@@ -1108,6 +1160,32 @@ func (a *App) Cancel() ActionResponse {
 // destination vuota => stessa cartella di partenza. deleteOriginals=false scrive
 // una copia lasciando intatti gli originali (e gli altri file presenti).
 func (a *App) ProcessAll() ActionResponse {
+	opCtx, endOp := a.beginCancelable()
+	defer endOp()
+	return a.processAll(opCtx)
+}
+
+// conversionDestination restituisce la cartella di destinazione della
+// conversione ("" = la cartella di partenza) o, se quella scelta non è
+// utilizzabile, il messaggio d'errore da mostrare. Fa I/O su disco: va chiamata
+// SENZA lock.
+func conversionDestination(sameAsSource bool, folder string) (destination, errMsg string) {
+	if sameAsSource {
+		return "", ""
+	}
+	if folder == "" {
+		return "", "Scegli una cartella di destinazione."
+	}
+	if !appfs.IsDir(folder) {
+		return "", "La cartella di destinazione non esiste."
+	}
+	return folder, ""
+}
+
+// processAll esegue la conversione di ProcessAll (vedi) sotto il context
+// dell'operazione in corso, così DownloadAndProcess la esegue nella stessa
+// operazione annullabile del download.
+func (a *App) processAll(opCtx context.Context) ActionResponse {
 	a.mu.Lock()
 	cfg := a.config
 	destSame := a.destSameAsSource
@@ -1116,15 +1194,9 @@ func (a *App) ProcessAll() ActionResponse {
 	files := append([]string(nil), a.scanned...)
 	a.mu.Unlock()
 
-	destination := ""
-	if !destSame {
-		if destFolder == "" {
-			return ActionResponse{OK: false, Message: "Scegli una cartella di destinazione.", State: a.snapshotLocked()}
-		}
-		destination = destFolder
-	}
-	if destination != "" && !appfs.IsDir(destination) {
-		return ActionResponse{OK: false, Message: "La cartella di destinazione non esiste.", State: a.snapshotLocked()}
+	destination, destErr := conversionDestination(destSame, destFolder)
+	if destErr != "" {
+		return ActionResponse{OK: false, Message: destErr, State: a.snapshotLocked()}
 	}
 
 	// Rimuove i temporanei orfani da conversioni precedenti interrotte, in
@@ -1147,9 +1219,6 @@ func (a *App) ProcessAll() ActionResponse {
 			return ActionResponse{OK: false, Message: "Errore scansione: " + err.Error(), State: a.snapshotLocked()}
 		}
 	}
-
-	opCtx, endOp := a.beginCancelable()
-	defer endOp()
 
 	// Separa le tracce che, una volta normalizzate, avrebbero tag sconosciuti
 	// (titolo o artista) da quelle già a posto. Le seconde le convertiamo subito
@@ -1176,12 +1245,18 @@ func (a *App) ProcessAll() ActionResponse {
 
 	total := len(goodFiles)
 	done := 0
+	// Totale subito (0 completati), come per il download: dopo un
+	// DownloadAndProcess la barra passa così alla conversione senza restare
+	// ferma sull'ultimo avanzamento del download fino al primo file convertito.
+	if total > 0 {
+		a.emit(EventProcessProgress, ProgressEvent{Done: 0, Total: total, Phase: PhaseConvert})
+	}
 	results, _ := service.Process(goodFiles, rename.Options{
 		DestinationFolder: destination,
 		DeleteOriginals:   deleteOriginals,
 		OnProgress: func(_, _ int) {
 			done++
-			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total})
+			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total, Phase: PhaseConvert})
 		},
 		Cancelled: func() bool { return opCtx.Err() != nil },
 	})
@@ -1501,6 +1576,13 @@ func (a *App) stopWatcher() {
 // cascata e sono deliberatamente distinti, quindi cambiare uno non impatta l'altro.
 const watchRescanDebounce = 150 * time.Millisecond
 
+// watchLiveLocked indica se gli eventi del watcher vanno seguiti: aggiornamento
+// automatico attivo e non in pausa, e fuori dalla modalità semplificata (che non
+// ha un'anteprima da aggiornare). Va chiamata con il lock acquisito.
+func (a *App) watchLiveLocked() bool {
+	return a.watcher != nil && a.watchEnabled && !a.watchPaused && !a.config.SimpleMode
+}
+
 // onWatchFile viene invocato dal watcher quando cambia il contenuto della
 // cartella osservata (nuovo file, modifica o rimozione). NON esegue conversioni:
 // si limita a schedulare (con debounce) una scansione + notifica all'UI, che
@@ -1511,7 +1593,7 @@ const watchRescanDebounce = 150 * time.Millisecond
 func (a *App) onWatchFile(_ string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.watcher == nil || !a.watchEnabled || a.watchPaused {
+	if !a.watchLiveLocked() {
 		return
 	}
 	if a.watchDebounce != nil {
@@ -1527,7 +1609,7 @@ func (a *App) onWatchFile(_ string) {
 func (a *App) runWatchRescan() {
 	a.mu.Lock()
 	a.watchDebounce = nil
-	if a.watcher == nil || !a.watchEnabled || a.watchPaused {
+	if !a.watchLiveLocked() {
 		a.mu.Unlock()
 		return
 	}
