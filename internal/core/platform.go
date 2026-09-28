@@ -46,6 +46,10 @@ type YtDlp interface {
 	// essere nil, o non essere mai chiamata se la piattaforma non la supporta)
 	// riceve l'avanzamento.
 	Install(path string, progress playlist.Progress) error
+	// Update installa l'ultima versione di yt-dlp al percorso indicato solo se
+	// è più recente di quella presente; updated indica se l'ha fatto. Usata
+	// dall'aggiornamento automatico (vedi ytdlp_update.go), senza avanzamento.
+	Update(path string) (updated bool, err error)
 	// Uninstall rimuove la copia gestita (con l'eventuale ffmpeg gestito);
 	// nessun errore se era già assente.
 	Uninstall(path string) error
@@ -93,6 +97,20 @@ func (ExecYtDlp) Workers() int                 { return 0 }
 
 func (ExecYtDlp) Install(path string, progress playlist.Progress) error {
 	return playlist.Install(path, progress)
+}
+
+func (ExecYtDlp) Update(path string) (bool, error) {
+	latest, err := playlist.LatestVersion()
+	if err != nil {
+		return false, err
+	}
+	if !playlist.NewerVersion(latest, playlist.Version(path)) {
+		return false, nil
+	}
+	if err := playlist.Install(path, nil); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (ExecYtDlp) Uninstall(path string) error {

@@ -67,6 +67,16 @@ func (y *androidYtDlp) Install(string, playlist.Progress) error {
 	return nil
 }
 
+// Update: youtubedl-android confronta da sé la versione installata con l'ultima
+// e scarica solo se serve; se l'ha fatto la versione letta dopo è cambiata.
+func (y *androidYtDlp) Update(string) (bool, error) {
+	before := y.Version("")
+	if err := y.Install("", nil); err != nil {
+		return false, err
+	}
+	return y.Version("") != before, nil
+}
+
 func (y *androidYtDlp) Uninstall(string) error {
 	return errors.New("su Android yt-dlp è integrato nell'app e non può essere rimosso")
 }

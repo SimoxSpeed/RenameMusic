@@ -51,6 +51,7 @@ func (fakeYtDlp) ManagedPath() (string, error)            { return "yt-dlp", nil
 func (fakeYtDlp) Available(string) bool                   { return true }
 func (fakeYtDlp) Version(string) string                   { return "test" }
 func (fakeYtDlp) Install(string, playlist.Progress) error { return nil }
+func (fakeYtDlp) Update(string) (bool, error)             { return false, nil }
 func (fakeYtDlp) Uninstall(string) error                  { return nil }
 func (fakeYtDlp) FFmpegAvailable() bool                   { return true }
 func (fakeYtDlp) InstallFFmpeg(playlist.Progress) error   { return nil }

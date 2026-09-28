@@ -175,6 +175,13 @@ type App struct {
 	updateSeen       string
 	updateInstalling bool
 	checkMu          sync.Mutex
+
+	// ytDlpMu è tenuto mentre yt-dlp è in uso (download di una playlist) o viene
+	// sostituito (installazione, aggiornamento automatico): l'aggiornamento
+	// automatico non deve cambiarlo sotto a un download (vedi ytdlp_update.go).
+	// ytDlpCheck anticipa il prossimo controllo automatico.
+	ytDlpMu    sync.Mutex
+	ytDlpCheck chan struct{}
 }
 
 type FileView struct {
@@ -348,6 +355,7 @@ func New(opts Options) *App {
 		watchEnabled:     st.WatchEnabled,
 		ytDlpManaged:     st.YtDlpManaged,
 		ytDlpPath:        st.YtDlpPath,
+		ytDlpCheck:       make(chan struct{}, 1),
 		watcher:          w,
 	}
 }
@@ -455,6 +463,9 @@ func Start(a *App) {
 	if a.updater != nil {
 		go a.updateLoop()
 	}
+
+	// Aggiornamento automatico della copia di yt-dlp gestita dall'app.
+	go a.ytDlpUpdateLoop()
 }
 
 // RefreshYtDlp ricalcola lo stato di yt-dlp e notifica la UI con
@@ -466,6 +477,9 @@ func RefreshYtDlp(a *App) {
 	state := a.snapshot()
 	a.mu.Unlock()
 	a.emit(EventYtDlpChanged, state)
+	// Su Android yt-dlp diventa disponibile solo adesso: il controllo fatto
+	// all'avvio l'ha trovato non pronto.
+	a.requestYtDlpCheck()
 }
 
 // NotifyExternalChange segnala che il contenuto della cartella potrebbe essere
@@ -858,6 +872,9 @@ func (a *App) SetYtDlpConfig(managed bool, path string) ActionResponse {
 	a.ytDlpPath = strings.TrimSpace(path)
 	a.persistStateLocked()
 	a.refreshYtDlpStatus()
+	if managed {
+		a.requestYtDlpCheck()
+	}
 	return ActionResponse{OK: true, State: a.snapshot()}
 }
 
@@ -895,7 +912,9 @@ func (a *App) InstallYtDlp() ActionResponse {
 	a.addLogLocked(LogInfo, "Download di yt-dlp in corso...")
 	a.mu.Unlock()
 
+	a.ytDlpMu.Lock()
 	err := a.yt().Install(dest, a.installProgress("yt-dlp"))
+	a.ytDlpMu.Unlock()
 
 	a.mu.Lock()
 	a.refreshYtDlpStatus()
@@ -1057,6 +1076,14 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 	a.addLogLocked(LogInfo, fmt.Sprintf("Avvio download playlist %q...", name))
 	a.mu.Unlock()
 
+	// Se l'aggiornamento automatico sta sostituendo yt-dlp, si parte appena ha
+	// finito (pochi secondi), con la versione nuova.
+	if !a.ytDlpMu.TryLock() {
+		a.mu.Lock()
+		a.addLogLocked(LogInfo, "Aggiornamento di yt-dlp in corso: il download parte appena termina...")
+		a.mu.Unlock()
+		a.ytDlpMu.Lock()
+	}
 	result, err := playlist.Download(playlist.Options{
 		Runner:  a.yt().Runner(ytdlp),
 		URL:     url,
@@ -1067,6 +1094,7 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 		},
 		Cancelled: func() bool { return opCtx.Err() != nil },
 	})
+	a.ytDlpMu.Unlock()
 	canceled := opCtx.Err() != nil
 
 	if err != nil {
