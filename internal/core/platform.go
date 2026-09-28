@@ -42,10 +42,19 @@ type YtDlp interface {
 	// Version restituisce la versione di yt-dlp ("" se non disponibile).
 	// Può eseguire yt-dlp: va chiamata solo quando lo stato può essere cambiato.
 	Version(path string) string
-	// Install scarica/aggiorna yt-dlp al percorso indicato.
-	Install(path string) error
-	// Uninstall rimuove la copia gestita; nessun errore se era già assente.
+	// Install scarica/aggiorna yt-dlp al percorso indicato; `progress` (può
+	// essere nil, o non essere mai chiamata se la piattaforma non la supporta)
+	// riceve l'avanzamento.
+	Install(path string, progress playlist.Progress) error
+	// Uninstall rimuove la copia gestita (con l'eventuale ffmpeg gestito);
+	// nessun errore se era già assente.
 	Uninstall(path string) error
+	// FFmpegAvailable indica se yt-dlp ha a disposizione ffmpeg, necessario
+	// per estrarre l'audio in mp3 (copia gestita dall'app o ffmpeg di sistema).
+	FFmpegAvailable() bool
+	// InstallFFmpeg scarica/aggiorna la copia di ffmpeg gestita dall'app, con
+	// l'avanzamento su `progress` come Install.
+	InstallFFmpeg(progress playlist.Progress) error
 	// Runner restituisce l'esecutore di yt-dlp per il percorso indicato.
 	Runner(path string) playlist.Runner
 	// Workers è il numero di download paralleli (<= 0 => default di playlist).
@@ -54,22 +63,57 @@ type YtDlp interface {
 
 // ExecYtDlp è la gestione desktop di yt-dlp: un eseguibile esterno lanciato
 // come processo, con la copia gestita dentro la cartella di configurazione.
+// Anche ffmpeg (che yt-dlp usa per l'mp3) ha una copia gestita, in
+// %AppData%\RenameMusic\ffmpeg, usata sia con yt-dlp gestito sia con quello
+// scelto a mano; in sua assenza yt-dlp usa l'eventuale ffmpeg di sistema.
 type ExecYtDlp struct{}
 
 func (ExecYtDlp) ManagedPath() (string, error) { return settings.YtDlpManagedPath() }
 func (ExecYtDlp) Available(path string) bool   { return playlist.IsAvailable(path) }
 func (ExecYtDlp) Version(path string) string   { return playlist.Version(path) }
-func (ExecYtDlp) Install(path string) error    { return playlist.Install(path) }
 func (ExecYtDlp) Workers() int                 { return 0 }
+
+func (ExecYtDlp) Install(path string, progress playlist.Progress) error {
+	return playlist.Install(path, progress)
+}
 
 func (ExecYtDlp) Uninstall(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if dir, err := settings.FFmpegManagedDir(); err == nil {
+		if err := os.RemoveAll(dir); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func (ExecYtDlp) Runner(path string) playlist.Runner { return playlist.ExecRunner{Path: path} }
+func (ExecYtDlp) FFmpegAvailable() bool {
+	return managedFFmpegDir() != "" || playlist.FFmpegInPath()
+}
+
+func (ExecYtDlp) InstallFFmpeg(progress playlist.Progress) error {
+	dir, err := settings.FFmpegManagedDir()
+	if err != nil {
+		return err
+	}
+	return playlist.InstallFFmpeg(dir, progress)
+}
+
+func (ExecYtDlp) Runner(path string) playlist.Runner {
+	return playlist.ExecRunner{Path: path, FFmpegDir: managedFFmpegDir()}
+}
+
+// managedFFmpegDir restituisce la cartella della copia gestita di ffmpeg se è
+// installata, altrimenti "".
+func managedFFmpegDir() string {
+	dir, err := settings.FFmpegManagedDir()
+	if err != nil || !playlist.FFmpegInstalled(dir) {
+		return ""
+	}
+	return dir
+}
 
 // errNoHost è restituito dai selettori quando il core gira senza Host (test).
 var errNoHost = errors.New("funzione non disponibile su questa piattaforma")

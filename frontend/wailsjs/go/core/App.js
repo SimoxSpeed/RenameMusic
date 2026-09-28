@@ -34,6 +34,10 @@ export function GetState() {
   return window['go']['core']['App']['GetState']();
 }
 
+export function InstallFFmpeg() {
+  return window['go']['core']['App']['InstallFFmpeg']();
+}
+
 export function InstallYtDlp() {
   return window['go']['core']['App']['InstallYtDlp']();
 }

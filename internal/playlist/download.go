@@ -92,8 +92,8 @@ func VersionWith(r Runner) string {
 // atomica: scarica su un file temporaneo nella stessa cartella e poi lo rinomina
 // sul percorso finale, così un download interrotto non lascia un eseguibile
 // parziale al posto giusto (né cancella quello funzionante finché il nuovo non è
-// pronto).
-func Install(destPath string) error {
+// pronto). `progress` (può essere nil) riceve l'avanzamento del download.
+func Install(destPath string, progress Progress) error {
 	if destPath == "" {
 		return fmt.Errorf("percorso di destinazione non specificato")
 	}
@@ -117,7 +117,8 @@ func Install(destPath string) error {
 	}
 	tmpPath := tmp.Name()
 
-	_, copyErr := io.Copy(tmp, resp.Body)
+	pw := newProgressWriter(progress, PhaseDownload, resp.ContentLength)
+	_, copyErr := io.Copy(tmp, io.TeeReader(resp.Body, pw))
 	closeErr := tmp.Close()
 	if copyErr != nil {
 		os.Remove(tmpPath)

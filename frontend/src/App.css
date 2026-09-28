@@ -1277,6 +1277,36 @@ tr.changed td {
     color: var(--danger);
 }
 
+/* Loader mostrato al posto del badge mentre, riattivata la gestione autonoma,
+   si cerca la copia locale di yt-dlp. */
+.ytdlp-checking {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.spinner {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--line);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation-duration: 2s;
+    }
+}
+
 /* Percorso effettivo: monospace, tagliato con ellissi se troppo lungo (il
    percorso completo resta nel title). */
 .ytdlp-path {
@@ -1302,6 +1332,12 @@ tr.changed td {
 .ytdlp-path-edit input {
     flex: 1;
     min-width: 0;
+}
+
+/* Avanzamento del download di yt-dlp/ffmpeg dentro la card: la spaziatura la
+   dà già il gap del pannello. */
+.ytdlp-progress {
+    margin-top: 0;
 }
 
 .panel {

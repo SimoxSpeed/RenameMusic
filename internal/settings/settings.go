@@ -57,6 +57,12 @@ func YtDlpManagedPath() (string, error) {
 	return pathFor("yt-dlp.exe")
 }
 
+// FFmpegManagedDir restituisce la cartella della copia di ffmpeg gestita
+// dall'app (%AppData%\RenameMusic\ffmpeg), accanto a quella di yt-dlp.
+func FFmpegManagedDir() (string, error) {
+	return pathFor("ffmpeg")
+}
+
 // baseDir, se valorizzata con SetDir, sostituisce la cartella di configurazione
 // di sistema. Serve su Android, dove os.UserConfigDir non è disponibile (manca
 // $HOME) e la cartella giusta è quella privata dell'app (Context.getFilesDir).

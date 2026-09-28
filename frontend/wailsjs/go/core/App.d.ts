@@ -20,6 +20,8 @@ export function GetConfig():Promise<core.ActionResponse>;
 
 export function GetState():Promise<core.ActionResponse>;
 
+export function InstallFFmpeg():Promise<core.ActionResponse>;
+
 export function InstallYtDlp():Promise<core.ActionResponse>;
 
 export function OpenFolder(arg1:string):Promise<core.ActionResponse>;

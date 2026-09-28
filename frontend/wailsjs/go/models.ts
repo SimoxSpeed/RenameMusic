@@ -126,6 +126,7 @@ export namespace core {
 	    ytDlpEffectivePath: string;
 	    ytDlpAvailable: boolean;
 	    ytDlpVersion: string;
+	    ffmpegAvailable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new StateResponse(source);
@@ -148,6 +149,7 @@ export namespace core {
 	        this.ytDlpEffectivePath = source["ytDlpEffectivePath"];
 	        this.ytDlpAvailable = source["ytDlpAvailable"];
 	        this.ytDlpVersion = source["ytDlpVersion"];
+	        this.ffmpegAvailable = source["ffmpegAvailable"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

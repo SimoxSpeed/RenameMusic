@@ -50,6 +50,29 @@ type ProgressEvent struct {
 	Total int `json:"total"`
 }
 
+// EventInstallProgress è emesso durante InstallYtDlp/InstallFFmpeg con
+// l'avanzamento in byte del download (e, per ffmpeg, dell'estrazione), così la
+// UI può mostrare la percentuale.
+const EventInstallProgress = "install:progress"
+
+// InstallProgressEvent è il payload di EventInstallProgress. Tool è "yt-dlp" o
+// "ffmpeg"; Phase è playlist.PhaseDownload o playlist.PhaseExtract; Total <= 0
+// se la dimensione non è nota.
+type InstallProgressEvent struct {
+	Tool  string `json:"tool"`
+	Phase string `json:"phase"`
+	Done  int64  `json:"done"`
+	Total int64  `json:"total"`
+}
+
+// installProgress restituisce il callback che inoltra alla UI l'avanzamento
+// dell'installazione di `tool`.
+func (a *App) installProgress(tool string) playlist.Progress {
+	return func(phase string, done, total int64) {
+		a.emit(EventInstallProgress, InstallProgressEvent{Tool: tool, Phase: phase, Done: done, Total: total})
+	}
+}
+
 // TagPromptView descrive una traccia i cui tag, una volta normalizzato il nome,
 // risulterebbero sconosciuti (titolo o artista). ProcessAll ne restituisce
 // l'elenco nella risposta (campo Prompts di ActionResponse): la UI mostra un
@@ -111,6 +134,9 @@ type App struct {
 	ytDlpPath      string
 	ytDlpAvailable bool
 	ytDlpVersion   string
+	// ffmpegAvailable: cache di YtDlp.FFmpegAvailable (ffmpeg serve a yt-dlp
+	// per l'mp3), ricalcolata insieme allo stato di yt-dlp.
+	ffmpegAvailable bool
 
 	watcher *watcher.Watcher
 
@@ -197,6 +223,7 @@ type StateResponse struct {
 	YtDlpEffectivePath      string              `json:"ytDlpEffectivePath"`
 	YtDlpAvailable          bool                `json:"ytDlpAvailable"`
 	YtDlpVersion            string              `json:"ytDlpVersion"`
+	FFmpegAvailable         bool                `json:"ffmpegAvailable"`
 }
 
 // DownloadErrorView descrive un singolo video di playlist il cui download è
@@ -355,6 +382,7 @@ func (a *App) refreshYtDlpStatus() {
 	} else {
 		a.ytDlpVersion = ""
 	}
+	a.ffmpegAvailable = a.yt().FFmpegAvailable()
 }
 
 // Start esegue le operazioni di avvio (pulizia temporanei, stato di yt-dlp,
@@ -810,7 +838,9 @@ func (a *App) ChooseYtDlpFile() string {
 // InstallYtDlp scarica l'ultima versione ufficiale di yt-dlp nel percorso
 // effettivo in uso (la copia gestita in %AppData%\RenameMusic se "gestisci
 // autonomamente" è attivo, altrimenti il percorso personalizzato) sovrascrivendo
-// il file eventualmente presente: funge quindi anche da "Aggiorna".
+// il file eventualmente presente: funge quindi anche da "Aggiorna". Se manca
+// ffmpeg (necessario a yt-dlp per l'mp3) scarica anche quello, così un solo
+// "Scarica" rende l'app pronta per le playlist.
 func (a *App) InstallYtDlp() ActionResponse {
 	a.mu.Lock()
 	dest := a.ytDlpEffectivePath()
@@ -825,12 +855,12 @@ func (a *App) InstallYtDlp() ActionResponse {
 	a.addLogLocked(LogInfo, "Download di yt-dlp in corso...")
 	a.mu.Unlock()
 
-	err := a.yt().Install(dest)
+	err := a.yt().Install(dest, a.installProgress("yt-dlp"))
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.refreshYtDlpStatus()
 	if err != nil {
+		defer a.mu.Unlock()
 		a.addLogLocked(LogError, "Installazione di yt-dlp fallita: "+err.Error())
 		return ActionResponse{OK: false, Message: "Installazione di yt-dlp fallita: " + err.Error(), State: a.snapshot()}
 	}
@@ -839,7 +869,34 @@ func (a *App) InstallYtDlp() ActionResponse {
 		msg = "yt-dlp installato (versione " + a.ytDlpVersion + ")."
 	}
 	a.addLogLocked(LogSuccess, msg)
-	return ActionResponse{OK: true, Message: msg, State: a.snapshot()}
+	needFFmpeg := !a.ffmpegAvailable
+	a.mu.Unlock()
+
+	if needFFmpeg {
+		return a.InstallFFmpeg()
+	}
+	return ActionResponse{OK: true, Message: msg, State: a.snapshotLocked()}
+}
+
+// InstallFFmpeg scarica l'ultima build di ffmpeg nella copia gestita dall'app
+// (%AppData%\RenameMusic\ffmpeg), usata da yt-dlp per estrarre l'audio in mp3.
+// Funziona sia con yt-dlp gestito sia con quello scelto a mano.
+func (a *App) InstallFFmpeg() ActionResponse {
+	a.mu.Lock()
+	a.addLogLocked(LogInfo, "Download di ffmpeg in corso (circa 200 MB)...")
+	a.mu.Unlock()
+
+	err := a.yt().InstallFFmpeg(a.installProgress("ffmpeg"))
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.refreshYtDlpStatus()
+	if err != nil {
+		a.addLogLocked(LogError, "Installazione di ffmpeg fallita: "+err.Error())
+		return ActionResponse{OK: false, Message: "Installazione di ffmpeg fallita: " + err.Error(), State: a.snapshot()}
+	}
+	a.addLogLocked(LogSuccess, "ffmpeg installato.")
+	return ActionResponse{OK: true, Message: "ffmpeg installato.", State: a.snapshot()}
 }
 
 // UninstallYtDlp rimuove la copia di yt-dlp gestita dall'app
@@ -900,6 +957,9 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 
 	if !a.yt().Available(ytdlp) {
 		return ActionResponse{OK: false, Message: "yt-dlp non disponibile: scaricalo o imposta un percorso valido nelle impostazioni.", State: a.snapshotLocked()}
+	}
+	if !a.yt().FFmpegAvailable() {
+		return ActionResponse{OK: false, Message: "ffmpeg non disponibile: scaricalo dalle impostazioni (serve a yt-dlp per creare gli mp3).", State: a.snapshotLocked()}
 	}
 
 	a.mu.Lock()
@@ -1537,6 +1597,7 @@ func (a *App) snapshot() StateResponse {
 		YtDlpEffectivePath:      a.ytDlpEffectivePath(),
 		YtDlpAvailable:          a.ytDlpAvailable,
 		YtDlpVersion:            a.ytDlpVersion,
+		FFmpegAvailable:         a.ffmpegAvailable,
 	}
 }
 

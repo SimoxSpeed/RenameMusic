@@ -21,6 +21,7 @@ import {
     SetPlaylists,
     DownloadPlaylist,
     InstallYtDlp,
+    InstallFFmpeg,
     UninstallYtDlp,
     SetYtDlpConfig,
     ChooseYtDlpFile,
@@ -384,6 +385,51 @@ function splitName(full: string): { base: string; ext: string } {
     return { base: full.slice(0, idx), ext: full.slice(idx + 1).toLowerCase() }
 }
 
+// OpProgress è la barra di avanzamento delle operazioni lunghe: `percent`
+// (0-100) riempie la barra; null => totale non noto, si mostra solo l'etichetta.
+function OpProgress({ percent, label, className }: { percent: number | null; label: string; className?: string }) {
+    return (
+        <div className={'op-progress' + (className ? ' ' + className : '')}>
+            {percent !== null && (
+                <div
+                    className="op-progress-track"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={percent}
+                >
+                    <div className="op-progress-fill" style={{ width: percent + '%' }} />
+                </div>
+            )}
+            <span className="op-progress-label">{label}</span>
+        </div>
+    )
+}
+
+// InstallProgress è il payload dell'evento install:progress (download di
+// yt-dlp/ffmpeg ed estrazione di ffmpeg). total <= 0 se la dimensione non è nota.
+type InstallProgress = { tool: string; phase: 'download' | 'extract'; done: number; total: number }
+
+// installPercent restituisce la percentuale intera, o null se il totale non è noto.
+function installPercent(p: InstallProgress): number | null {
+    if (p.total <= 0) return null
+    return Math.min(100, Math.floor((p.done / p.total) * 100))
+}
+
+function formatMB(bytes: number): string {
+    return (bytes / (1024 * 1024)).toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
+// installLabel descrive l'avanzamento, es. "Download di ffmpeg · 45% (90,1 / 199,3 MB)".
+function installLabel(p: InstallProgress): string {
+    const pct = installPercent(p)
+    if (p.phase === 'extract') {
+        return `Estrazione di ${p.tool}` + (pct !== null ? ` · ${pct}%` : '…')
+    }
+    if (pct === null) return `Download di ${p.tool} · ${formatMB(p.done)} MB`
+    return `Download di ${p.tool} · ${pct}% (${formatMB(p.done)} / ${formatMB(p.total)} MB)`
+}
+
 // ExtChip mostra il formato del file in stile blu. I file trattati sono sempre
 // mp3 (nessuna conversione tra formati diversi), quindi mostriamo semplicemente
 // l'estensione: serve solo perché l'estensione non è mai visibile nei nomi.
@@ -589,6 +635,9 @@ function App() {
     // persistito con SetYtDlpConfig (all'uscita dal campo o via "Sfoglia").
     const [ytDlpManaged, setYtDlpManaged] = useState(true)
     const [ytDlpPathDraft, setYtDlpPathDraft] = useState('')
+    // ytDlpChecking: true mentre, riattivata la gestione autonoma, il backend
+    // cerca la copia locale di yt-dlp in %AppData% (ed esegue `--version`).
+    const [ytDlpChecking, setYtDlpChecking] = useState(false)
     const [confirmDeleteOriginals, setConfirmDeleteOriginals] = useState(false)
     const [confirmClearTags, setConfirmClearTags] = useState(false)
     // confirmInstallYtDlp: popup chiesto quando si preme "Scarica" playlist ma
@@ -602,12 +651,19 @@ function App() {
     // yt-dlp dal tasto dedicato (quando non è presente), separato dal flusso di
     // download di una playlist (confirmInstallYtDlp).
     const [confirmDownloadYtDlp, setConfirmDownloadYtDlp] = useState(false)
+    // confirmFFmpeg: popup prima di scaricare ffmpeg (solo desktop; serve a
+    // yt-dlp per creare gli mp3). 'install' dal tasto nel pannello, 'playlist'
+    // quando si preme "Scarica" di una playlist e ffmpeg manca (poi prosegue).
+    const [confirmFFmpeg, setConfirmFFmpeg] = useState<null | 'install' | 'playlist'>(null)
     // confirmLeaveSettings: popup chiesto premendo "Indietro" nelle Impostazioni
     // quando ci sono modifiche non salvate (salva / scarta / annulla).
     const [confirmLeaveSettings, setConfirmLeaveSettings] = useState(false)
     // progress: avanzamento dell'ultima elaborazione (x/totale), popolato dagli
     // eventi process:progress durante ProcessAll; null quando non pertinente.
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+    // installProgress: avanzamento del download di yt-dlp/ffmpeg (evento
+    // install:progress); azzerato quando l'installazione risponde.
+    const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null)
     // showOnlyChanged: vista dell'anteprima limitata ai soli file che cambieranno
     // nome. È SOLO una vista: l'elaborazione tratta comunque tutti i file.
     const [showOnlyChanged, setShowOnlyChanged] = useState(false)
@@ -801,6 +857,7 @@ function App() {
                           ytDlpAvailable: next.ytDlpAvailable,
                           ytDlpVersion: next.ytDlpVersion,
                           ytDlpEffectivePath: next.ytDlpEffectivePath,
+                          ffmpegAvailable: next.ffmpegAvailable,
                           logs: next.logs,
                       } as core.StateResponse)
                     : next,
@@ -832,6 +889,15 @@ function App() {
         return onEvent('process:progress', (payload: unknown) => {
             const p = payload as { done: number; total: number } | null
             if (p) setProgress(p)
+        })
+    }, [])
+
+    // Avanzamento del download di yt-dlp/ffmpeg: il backend emette un evento a
+    // ogni punto percentuale in più.
+    useEffect(() => {
+        return onEvent('install:progress', (payload: unknown) => {
+            const p = payload as InstallProgress | null
+            if (p) setInstallProgress(p)
         })
     }, [])
 
@@ -1257,12 +1323,17 @@ function App() {
     // Avvia il download della playlist selezionata. Se yt-dlp non è presente
     // chiede prima conferma con un popup: se la gestione automatica è attiva
     // propone solo di scaricarlo, altrimenti propone di attivarla e procedere
-    // (in entrambi i casi lo scarica e poi prosegue). Se yt-dlp c'è, scarica
-    // direttamente.
+    // (in entrambi i casi lo scarica, insieme a ffmpeg se manca, e poi prosegue).
+    // Se c'è yt-dlp ma manca ffmpeg, propone di scaricare solo ffmpeg. Se ci
+    // sono entrambi, scarica direttamente.
     function downloadPlaylist() {
         if (!selectedPlaylist) return
         if (!state?.ytDlpAvailable) {
             setConfirmInstallYtDlp(true)
+            return
+        }
+        if (!state?.ffmpegAvailable) {
+            setConfirmFFmpeg('playlist')
             return
         }
         runDownloadPlaylist()
@@ -1311,6 +1382,7 @@ function App() {
                 }
             }
             const inst = await InstallYtDlp()
+            setInstallProgress(null)
             absorb(inst)
             syncOptions(inst.state)
             notify(inst.ok, inst.message ?? '')
@@ -1332,9 +1404,14 @@ function App() {
     // percorso personalizzato correntemente nel campo. È un semplice cambio di
     // impostazione: niente busy a tutta UI (che farebbe sembrare la checkbox
     // lenta): flippiamo subito in modo ottimistico e persistiamo in background,
-    // assorbendo lo stato reale al ritorno.
+    // assorbendo lo stato reale al ritorno. Riattivandola, finché il backend
+    // cerca la copia locale di yt-dlp, al posto del badge compare un loader
+    // (per almeno MIN_CHECK_MS, così non lampeggia se la ricerca è istantanea).
     function toggleYtDlpManaged(next: boolean) {
+        const MIN_CHECK_MS = 700
+        const started = Date.now()
         setYtDlpManaged(next)
+        if (next) setYtDlpChecking(true)
         SetYtDlpConfig(next, ytDlpPathDraft)
             .then((resp) => {
                 absorb(resp)
@@ -1342,6 +1419,14 @@ function App() {
                 notify(resp.ok, resp.message ?? '')
             })
             .catch((e) => notify(false, String(e)))
+            .finally(async () => {
+                if (!next) return
+                const elapsed = Date.now() - started
+                if (elapsed < MIN_CHECK_MS) {
+                    await new Promise((r) => window.setTimeout(r, MIN_CHECK_MS - elapsed))
+                }
+                setYtDlpChecking(false)
+            })
     }
 
     // Persiste il percorso personalizzato (all'uscita dal campo): disattiva la
@@ -1377,9 +1462,48 @@ function App() {
         setConfirmDownloadYtDlp(false)
         guard(async () => {
             const resp = await InstallYtDlp()
+            setInstallProgress(null)
             absorb(resp)
             syncOptions(resp.state)
             notify(resp.ok, resp.message ?? '')
+        })
+    }
+
+    // Scarica ffmpeg nella copia gestita dall'app (%AppData%\RenameMusic\ffmpeg),
+    // dopo conferma. Se la richiesta nasce dal "Scarica" di una playlist, a
+    // installazione riuscita prosegue col download della playlist (un solo busy).
+    function installFFmpeg() {
+        const thenDownload = confirmFFmpeg === 'playlist'
+        setConfirmFFmpeg(null)
+        if (!thenDownload) {
+            guard(async () => {
+                const resp = await InstallFFmpeg()
+                setInstallProgress(null)
+                absorb(resp)
+                syncOptions(resp.state)
+                notify(resp.ok, resp.message ?? '')
+            })
+            return
+        }
+        setProgress(null)
+        setDownloadErrors([])
+        setCancellable(true)
+        guard(async () => {
+            const inst = await InstallFFmpeg()
+            setInstallProgress(null)
+            absorb(inst)
+            syncOptions(inst.state)
+            notify(inst.ok, inst.message ?? '')
+            if (!inst.ok) return
+            const resp = await DownloadPlaylist(selectedPlaylist)
+            setCancellable(false)
+            absorb(resp)
+            setResults(null)
+            setDownloadErrors(resp.downloadErrors ?? [])
+            notify(resp.ok, resp.message ?? '')
+        }).finally(() => {
+            setProgress(null)
+            setCancellable(false)
         })
     }
 
@@ -1406,6 +1530,7 @@ function App() {
         else if (confirmInstallYtDlp) setConfirmInstallYtDlp(false)
         else if (confirmUninstallYtDlp) setConfirmUninstallYtDlp(false)
         else if (confirmDownloadYtDlp) setConfirmDownloadYtDlp(false)
+        else if (confirmFFmpeg) setConfirmFFmpeg(null)
         else if (confirmLeaveSettings) setConfirmLeaveSettings(false)
         else if (confirmDefault) setConfirmDefault(false)
         else if (showSettings) backFromSettings()
@@ -1710,25 +1835,16 @@ function App() {
                             </Tooltip>
                         </div>
 
-                        {busy && progress && progress.total > 0 && (
-                            <div className="op-progress">
-                                <div
-                                    className="op-progress-track"
-                                    role="progressbar"
-                                    aria-valuemin={0}
-                                    aria-valuemax={progress.total}
-                                    aria-valuenow={progress.done}
-                                >
-                                    <div
-                                        className="op-progress-fill"
-                                        style={{ width: Math.round((progress.done / progress.total) * 100) + '%' }}
-                                    />
-                                </div>
-                                <span className="op-progress-label">
-                                    {progress.done} / {progress.total} completati
-                                </span>
-                            </div>
-                        )}
+                        {busy && progress && progress.total > 0 ? (
+                            <OpProgress
+                                percent={Math.round((progress.done / progress.total) * 100)}
+                                label={`${progress.done} / ${progress.total} completati`}
+                            />
+                        ) : busy && installProgress ? (
+                            // yt-dlp/ffmpeg scaricati da "Scarica" di una playlist,
+                            // prima che parta il download dei brani.
+                            <OpProgress percent={installPercent(installProgress)} label={installLabel(installProgress)} />
+                        ) : null}
                     </div>
 
                     <div className="activity-cell">
@@ -1776,17 +1892,22 @@ function App() {
                         <CheckOption
                             className="ytdlp-toggle"
                             label="Gestisci autonomamente yt-dlp"
-                            info="Quando attivo, l'app scarica e aggiorna da sé yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore): al primo 'Scarica' di una playlist, se manca, lo scarica dopo una conferma. Quando disattivo, indichi a mano il percorso di una tua versione di yt-dlp."
+                            info="Quando attivo, l'app scarica e aggiorna da sé yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore): al primo 'Scarica' di una playlist, se manca, lo scarica dopo una conferma (insieme a ffmpeg, che serve per creare gli mp3). Quando disattivo, indichi a mano il percorso di una tua versione di yt-dlp."
                             checked={ytDlpManaged}
                             onChange={toggleYtDlpManaged}
-                            disabled={busy}
+                            disabled={busy || ytDlpChecking}
                         />
                         )}
 
                         <div className="ytdlp-panel">
                             <div className="ytdlp-head">
                                 <span className="ytdlp-title">yt-dlp</span>
-                                {state?.ytDlpAvailable ? (
+                                {ytDlpChecking ? (
+                                    <span className="ytdlp-checking" role="status">
+                                        <span className="spinner" aria-hidden="true" />
+                                        Ricerca di una copia locale…
+                                    </span>
+                                ) : state?.ytDlpAvailable ? (
                                     <span className="ytdlp-badge ytdlp-ok">
                                         Presente{state?.ytDlpVersion ? ` · versione ${state.ytDlpVersion}` : ''}
                                     </span>
@@ -1795,7 +1916,7 @@ function App() {
                                         {isAndroid ? 'Non ancora pronto' : 'Non presente'}
                                     </span>
                                 )}
-                                {isAndroid ? (
+                                {ytDlpChecking ? null : isAndroid ? (
                                     <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
                                         <button
                                             className="ghost small with-icon ytdlp-install"
@@ -1858,6 +1979,47 @@ function App() {
                                     </>
                                 )}
                             </div>
+
+                            {busy && installProgress?.tool === 'yt-dlp' && (
+                                <OpProgress
+                                    className="ytdlp-progress"
+                                    percent={installPercent(installProgress)}
+                                    label={installLabel(installProgress)}
+                                />
+                            )}
+
+                            {/* ffmpeg serve a yt-dlp per creare gli mp3. Su Android
+                                è incorporato in youtubedl-android. */}
+                            {!isAndroid && (
+                                <div className="ytdlp-head">
+                                    <span className="ytdlp-title">ffmpeg</span>
+                                    {state?.ffmpegAvailable ? (
+                                        <span className="ytdlp-badge ytdlp-ok">Presente</span>
+                                    ) : (
+                                        <>
+                                            <span className="ytdlp-badge ytdlp-missing">Non presente</span>
+                                            <Tooltip label="Scarica ffmpeg (serve a yt-dlp per creare gli mp3)">
+                                                <button
+                                                    className="ghost small ytdlp-install"
+                                                    onClick={() => setConfirmFFmpeg('install')}
+                                                    disabled={busy}
+                                                    aria-label="Scarica ffmpeg"
+                                                >
+                                                    <DownloadIcon />
+                                                </button>
+                                            </Tooltip>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {busy && installProgress?.tool === 'ffmpeg' && (
+                                <OpProgress
+                                    className="ytdlp-progress"
+                                    percent={installPercent(installProgress)}
+                                    label={installLabel(installProgress)}
+                                />
+                            )}
                         </div>
 
                         <div className="replacements">
@@ -2352,7 +2514,8 @@ function App() {
                             <>
                                 <h3>Scaricare yt-dlp?</h3>
                                 <p>
-                                    yt-dlp non è presente. L'app lo scaricherà in{' '}
+                                    yt-dlp non è presente. L'app lo scaricherà
+                                    {!state?.ffmpegAvailable && <> insieme a ffmpeg (circa 200 MB)</>} in{' '}
                                     <code>%AppData%\RenameMusic</code> e avvierà subito il download
                                     della playlist.
                                 </p>
@@ -2363,7 +2526,8 @@ function App() {
                                 <p>
                                     <strong>"Gestisci autonomamente"</strong> non è attivo e yt-dlp
                                     non è disponibile. Vuoi attivarlo e procedere? L'app scaricherà la
-                                    propria copia in <code>%AppData%\RenameMusic</code> e avvierà
+                                    propria copia{!state?.ffmpegAvailable && <> (con ffmpeg, circa 200 MB)</>} in{' '}
+                                    <code>%AppData%\RenameMusic</code> e avvierà
                                     subito il download della playlist.
                                 </p>
                             </>
@@ -2386,7 +2550,7 @@ function App() {
                         <h3>Disinstallare yt-dlp?</h3>
                         <p>
                             La copia gestita dall'app in <code>%AppData%\RenameMusic</code> verrà
-                            <strong> rimossa</strong>. Potrai riscaricarla in qualsiasi momento dal
+                            <strong> rimossa</strong>, insieme a quella di ffmpeg. Potrai riscaricarla in qualsiasi momento dal
                             prossimo "Scarica" di una playlist.
                         </p>
                         <div className="modal-actions">
@@ -2413,6 +2577,9 @@ function App() {
                                 <> in <code>%AppData%\RenameMusic</code></>
                             ) : (
                                 <> nel percorso indicato</>
+                            )}
+                            {!isAndroid && !state?.ffmpegAvailable && (
+                                <>, insieme a <strong>ffmpeg</strong> (circa 200 MB, serve per creare gli mp3)</>
                             )}. Assicurati di scaricarlo solo da una fonte di cui ti fidi.
                         </p>
                         <div className="modal-actions">
@@ -2421,6 +2588,31 @@ function App() {
                             </button>
                             <button className="accent" onClick={installYtDlp} disabled={busy}>
                                 {isAndroid ? 'Aggiorna' : 'Scarica'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {confirmFFmpeg && (
+                <div className="modal-overlay" onClick={() => setConfirmFFmpeg(null)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Scaricare ffmpeg?</h3>
+                        <p>
+                            {confirmFFmpeg === 'playlist' && (
+                                <>Per creare gli mp3 yt-dlp ha bisogno di <strong>ffmpeg</strong>, che non è presente. </>
+                            )}
+                            Verrà scaricata l'ultima build ufficiale di <strong>ffmpeg</strong> per
+                            yt-dlp da Internet (GitHub, circa 200 MB) in{' '}
+                            <code>%AppData%\RenameMusic\ffmpeg</code>
+                            {confirmFFmpeg === 'playlist' && <>, poi partirà il download della playlist</>}.
+                        </p>
+                        <div className="modal-actions">
+                            <button onClick={() => setConfirmFFmpeg(null)} disabled={busy}>
+                                Annulla
+                            </button>
+                            <button className="accent" onClick={installFFmpeg} disabled={busy}>
+                                {confirmFFmpeg === 'playlist' ? 'Scarica e continua' : 'Scarica'}
                             </button>
                         </div>
                     </div>

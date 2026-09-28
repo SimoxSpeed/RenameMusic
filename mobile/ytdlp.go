@@ -56,8 +56,9 @@ func (y *androidYtDlp) Version(string) string {
 }
 
 // Install aggiorna yt-dlp all'ultima versione stabile (su Android è sempre
-// presente: "installare" equivale ad aggiornare).
-func (y *androidYtDlp) Install(string) error {
+// presente: "installare" equivale ad aggiornare). youtubedl-android non riporta
+// l'avanzamento dell'aggiornamento: `progress` non viene mai chiamata.
+func (y *androidYtDlp) Install(string, playlist.Progress) error {
 	if msg := y.host.YtDlpUpdate(); msg != "" {
 		y.load()
 		return errors.New(msg)
@@ -69,6 +70,10 @@ func (y *androidYtDlp) Install(string) error {
 func (y *androidYtDlp) Uninstall(string) error {
 	return errors.New("su Android yt-dlp è integrato nell'app e non può essere rimosso")
 }
+
+// ffmpeg è incorporato in youtubedl-android: sempre disponibile.
+func (y *androidYtDlp) FFmpegAvailable() bool { return true }
+func (y *androidYtDlp) InstallFFmpeg(playlist.Progress) error { return nil }
 
 func (y *androidYtDlp) Runner(string) playlist.Runner { return bridgeRunner{host: y.host} }
 

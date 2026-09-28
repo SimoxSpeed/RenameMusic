@@ -19,12 +19,18 @@ type Runner interface {
 }
 
 // ExecRunner esegue l'eseguibile yt-dlp indicato da Path come processo esterno,
-// senza finestra di console (vedi hideWindow).
+// senza finestra di console (vedi hideWindow). FFmpegDir, se valorizzata, è la
+// cartella con la copia di ffmpeg gestita dall'app, passata a yt-dlp con
+// --ffmpeg-location; vuota => yt-dlp cerca ffmpeg da sé (PATH).
 type ExecRunner struct {
-	Path string
+	Path      string
+	FFmpegDir string
 }
 
 func (r ExecRunner) Run(args []string) ([]byte, []byte, error) {
+	if r.FFmpegDir != "" {
+		args = append([]string{"--ffmpeg-location", r.FFmpegDir}, args...)
+	}
 	cmd := exec.Command(r.Path, args...)
 	hideWindow(cmd)
 	var stdout, stderr bytes.Buffer
