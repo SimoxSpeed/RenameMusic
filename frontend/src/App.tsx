@@ -1319,7 +1319,11 @@ function App() {
     // subiranno UNA QUALSIASI modifica — nel nome oppure nei tag ID3
     // (titolo/artista) — non solo quelli da rinominare. Resta comunque solo una
     // vista: l'elaborazione tratta sempre tutti i file.
-    const previewFiles = showOnlyChanged ? files.filter(fileWillChange) : files
+    // I brani spuntati da rivedere contano come "da modificare": il filtro non
+    // li nasconde, altrimenti resterebbero selezionati senza essere visibili.
+    const previewFiles = showOnlyChanged
+        ? files.filter((f) => fileWillChange(f) || reviewPaths.has(f.path))
+        : files
 
     // A ogni nuova anteprima (scansione, aggiornamento automatico, conversione)
     // la selezione tiene solo i file ancora presenti.
@@ -2544,7 +2548,7 @@ function App() {
                         </h2>
                             {!results && (
                                 <div className="preview-tools">
-                                    <Tooltip label="Mostra solo i file che subiranno una modifica, nel nome o nei tag. È solo una vista: l'elaborazione tratta comunque tutti i file.">
+                                    <Tooltip label="Mostra solo i file che subiranno una modifica, nel nome o nei tag, e quelli selezionati da rivedere. È solo una vista: l'elaborazione tratta comunque tutti i file.">
                                         <label className="toggle-changed">
                                             <input
                                                 type="checkbox"
