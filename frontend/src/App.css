@@ -1187,6 +1187,23 @@ button.folder-missing:disabled {
     flex-basis: 100%;
 }
 
+/* Il select della playlist sta sul bordo sinistro: il suo tooltip si allinea a
+   sinistra invece di centrarsi, così non esce dalla finestra. */
+.download-controls > .tip:first-child > .info-tooltip {
+    left: 0;
+    transform: translateY(-4px);
+}
+
+.download-controls > .tip:first-child:hover > .info-tooltip,
+.download-controls > .tip:first-child:has(:focus-visible) > .info-tooltip {
+    transform: translateY(0);
+}
+
+.download-controls > .tip:first-child > .info-tooltip::before {
+    left: 16px;
+    transform: none;
+}
+
 /* ---- Modalità semplificata ------------------------------------------------ */
 
 /* Il <main> occupa tutto lo spazio sotto l'header (.app è una colonna flex alta
@@ -1223,7 +1240,8 @@ main.is-simple {
     border: 1px solid var(--line);
     border-radius: 16px;
     box-shadow: 0 10px 34px rgba(15, 23, 42, 0.08);
-    overflow: hidden;
+    /* Niente overflow: hidden (taglierebbe i tooltip del piede): gli angoli
+       inferiori li arrotonda il piede stesso. */
 }
 
 .simple-hero-badge {
@@ -1335,6 +1353,7 @@ main.is-simple {
     margin: 28px -36px 0;
     padding: 12px 16px 12px 20px;
     border-top: 1px solid var(--line);
+    border-radius: 0 0 15px 15px; /* raggio della card meno il bordo */
     background: var(--panel-alt);
     color: var(--muted);
     font-size: 13px;
@@ -1702,6 +1721,44 @@ main.is-simple {
     display: flex;
     align-items: center;
     gap: 12px;
+}
+
+/* Il pannello Anteprima non ritaglia il contenuto (i tooltip dell'intestazione
+   devono poterne uscire): gli angoli arrotondati li danno intestazione e
+   ultima riga della tabella. */
+.preview-panel {
+    overflow: visible;
+}
+
+.preview-panel > .panel-head {
+    border-radius: 7px 7px 0 0;
+}
+
+.preview-panel tr:last-child > td:first-child {
+    border-bottom-left-radius: 7px;
+}
+
+.preview-panel tr:last-child > td:last-child {
+    border-bottom-right-radius: 7px;
+}
+
+/* I controlli stanno sul bordo destro: il tooltip si allinea a destra invece
+   di centrarsi, così non esce dalla finestra. */
+.preview-tools .info-tooltip {
+    left: auto;
+    right: 0;
+    transform: translateY(-4px);
+}
+
+.preview-tools .tip:hover > .info-tooltip,
+.preview-tools .tip:has(:focus-visible) > .info-tooltip {
+    transform: translateY(0);
+}
+
+.preview-tools .info-tooltip::before {
+    left: auto;
+    right: 16px;
+    transform: none;
 }
 
 /* Toggle "Solo da rinominare": è una vista, non cambia l'elaborazione. */

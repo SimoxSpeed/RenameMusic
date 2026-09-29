@@ -2835,7 +2835,7 @@ function App() {
                 {/* In modalità semplificata niente anteprima: il pannello compare
                     solo con i risultati dell'ultima conversione. */}
                 {!showSettings && (!simpleMode || results) && (
-                <section className={'panel fade-in' + (simpleMode ? ' simple-results' : '')}>
+                <section className={'panel preview-panel fade-in' + (simpleMode ? ' simple-results' : '')}>
                     <div className="panel-head">
                         <h2>
                             <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>
