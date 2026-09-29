@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Unici file condivisi tramite FileProvider: l'APK dell'aggiornamento, passato
+    all'installer di sistema (GoHost.launchInstaller). Le voci del template
+    Capacitor (tutta la memoria esterna e la cache) servono solo alle foto di un
+    <input type="file" capture>, che l'app non usa.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
     <!-- APK dell'aggiornamento scaricato dal core (mobile/update.go). -->
     <files-path name="updates" path="update/" />
 </paths>
