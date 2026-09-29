@@ -140,6 +140,8 @@ export namespace core {
 	    destinationSameAsSource: boolean;
 	    destinationFolder: string;
 	    deleteOriginals: boolean;
+	    folderMissing: boolean;
+	    destinationMissing: boolean;
 	    watchEnabled: boolean;
 	    watchActive: boolean;
 	    playlists: playlist.Playlist[];
@@ -165,6 +167,8 @@ export namespace core {
 	        this.destinationSameAsSource = source["destinationSameAsSource"];
 	        this.destinationFolder = source["destinationFolder"];
 	        this.deleteOriginals = source["deleteOriginals"];
+	        this.folderMissing = source["folderMissing"];
+	        this.destinationMissing = source["destinationMissing"];
 	        this.watchEnabled = source["watchEnabled"];
 	        this.watchActive = source["watchActive"];
 	        this.playlists = this.convertValues(source["playlists"], playlist.Playlist);

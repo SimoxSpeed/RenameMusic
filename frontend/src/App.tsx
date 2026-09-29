@@ -247,7 +247,9 @@ function KeyboardIcon() {
 // verso il basso) con un contenuto strutturato tasto → azione. In modalità
 // semplificata cartelle e anteprima non sono nella schermata principale, quindi
 // restano solo le scorciatoie che hanno senso lì.
-function ShortcutsLegend({ simple }: { simple: boolean }) {
+// separateDest: la destinazione è distinta dalla partenza (altrimenti Ctrl+O
+// non fa nulla e non compare).
+function ShortcutsLegend({ simple, separateDest }: { simple: boolean; separateDest: boolean }) {
     const shortcuts: [string, string][] = simple
         ? [
               ['Ctrl + Invio', 'Scarica e converti'],
@@ -255,7 +257,8 @@ function ShortcutsLegend({ simple }: { simple: boolean }) {
               ['Esc', 'Chiudi finestre e pannelli'],
           ]
         : [
-              ['Ctrl + O', 'Scegli cartella'],
+              ['Ctrl + I', 'Scegli cartella di partenza'],
+              ...(separateDest ? [['Ctrl + O', 'Scegli cartella di destinazione'] as [string, string]] : []),
               ['Ctrl + R', 'Aggiorna scansione'],
               ['Ctrl + Invio', 'Converti / Nuova scansione'],
               ['Ctrl + ,', 'Impostazioni'],
@@ -619,6 +622,161 @@ function AlertIcon() {
     )
 }
 
+// MissingFolderIcon: icona d'errore accanto a una cartella impostata ma non
+// trovata sul disco; il dettaglio compare solo in hover. Con onClick (fuori
+// dalle Impostazioni) è un pulsante che porta dove la si sceglie di nuovo.
+function MissingFolderIcon({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) {
+    const detail = label + ' non trovata: è stata spostata, rinominata o eliminata.'
+    if (!onClick) {
+        return (
+            <Tooltip label={detail}>
+                <span className="folder-missing" role="img" aria-label={label + ' non trovata'}>
+                    <AlertIcon />
+                </span>
+            </Tooltip>
+        )
+    }
+    return (
+        <Tooltip label={detail + ' Clicca per sceglierla di nuovo nelle Impostazioni.'}>
+            <button
+                type="button"
+                className="folder-missing"
+                onClick={onClick}
+                disabled={disabled}
+                aria-label={label + ' non trovata: apri le Impostazioni'}
+            >
+                <AlertIcon />
+            </button>
+        </Tooltip>
+    )
+}
+
+// FolderInIcon / FolderOutIcon: cartella con freccia in entrata (partenza) e
+// in uscita (destinazione), per distinguere le due righe del riepilogo.
+function FolderInIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1" />
+            <path d="M2 13h10" />
+            <path d="m9 16 3-3-3-3" />
+        </svg>
+    )
+}
+
+function FolderOutIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 7.5V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1.5" />
+            <path d="M2 13h10" />
+            <path d="m5 10-3 3 3 3" />
+        </svg>
+    )
+}
+
+// FolderInOutIcon: la cartella delle altre due icone con entrambe le frecce
+// sul lato aperto a sinistra, nei loro colori: in entrata (blu, come la
+// partenza) sopra e in uscita (verde, come la destinazione) sotto; la
+// cartella è blu come quella di partenza. Serve alla
+// riga unica quando la destinazione coincide con la partenza.
+function FolderInOutIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path
+                style={{ stroke: 'var(--primary)' }}
+                d="M2 6.5V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2"
+            />
+            <g style={{ stroke: 'var(--primary)' }}>
+                <path d="M2 10h8" />
+                <path d="m7.5 7.5 2.5 2.5-2.5 2.5" />
+            </g>
+            <g style={{ stroke: 'var(--accent)' }}>
+                <path d="M11 15.5H3" />
+                <path d="m5.5 13-2.5 2.5 2.5 2.5" />
+            </g>
+        </svg>
+    )
+}
+
+// FolderLine: una riga del riepilogo, con l'icona che la distingue e il
+// percorso completo (oppure un testo se la cartella non è impostata).
+function FolderLine(props: {
+    icon: ReactNode
+    kind: string
+    path: string
+    placeholder: string
+    missing: boolean
+    onMissingClick: () => void
+    disabled: boolean
+}) {
+    const { icon, kind, path, placeholder, missing, onMissingClick, disabled } = props
+    return (
+        <div className="folder-line">
+            <span className="folder-line-icon" role="img" aria-label={kind}>
+                {icon}
+            </span>
+            <span className="folder-line-path">{path || <em>{placeholder}</em>}</span>
+            {missing && <MissingFolderIcon label={kind} onClick={onMissingClick} disabled={disabled} />}
+        </div>
+    )
+}
+
+// FolderLines riepiloga le cartelle su due righe: partenza (dove si
+// leggono/scaricano i brani) e destinazione (dove finiscono quelli
+// convertiti); se coincidono, una riga sola con l'icona combinata. Una
+// cartella impostata ma non trovata sul disco è segnalata sulla sua riga
+// (onMissingClick: click sull'icona d'errore).
+function FolderLines(props: {
+    folder: string
+    destSameAsSource: boolean
+    destFolder: string
+    folderMissing: boolean
+    destMissing: boolean
+    onMissingClick: () => void
+    disabled: boolean
+}) {
+    const { folder, destSameAsSource, destFolder, folderMissing, destMissing, onMissingClick, disabled } = props
+    if (destSameAsSource) {
+        return (
+            <div className="folder-lines">
+                <FolderLine
+                    icon={<FolderInOutIcon />}
+                    kind="Cartella di partenza e destinazione"
+                    path={folder}
+                    placeholder="Nessuna cartella di partenza"
+                    missing={folderMissing}
+                    onMissingClick={onMissingClick}
+                    disabled={disabled}
+                />
+            </div>
+        )
+    }
+    return (
+        <div className="folder-lines">
+            <FolderLine
+                icon={<FolderInIcon />}
+                kind="Cartella di partenza"
+                path={folder}
+                placeholder="Nessuna cartella di partenza"
+                missing={folderMissing}
+                onMissingClick={onMissingClick}
+                disabled={disabled}
+            />
+            <FolderLine
+                icon={<FolderOutIcon />}
+                kind="Cartella di destinazione"
+                path={destFolder}
+                placeholder="Nessuna cartella di destinazione"
+                missing={destMissing}
+                onMissingClick={onMissingClick}
+                disabled={disabled}
+            />
+        </div>
+    )
+}
+
 function CloseIcon() {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -875,6 +1033,8 @@ function App() {
             if (granted && !wasGranted) {
                 requestNotifications()
                 if (folderRef.current) refresh()
+            } else {
+                recheckFolders()
             }
         })
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -894,14 +1054,37 @@ function App() {
             .catch((e) => notify(false, 'Impossibile richiedere il permesso: ' + String(e)))
     }
 
+    // Riporta nello stato solo se le cartelle impostate si trovano ancora sul disco.
+    function recheckFolders() {
+        GetConfig()
+            .then((resp) =>
+                setState((prev) =>
+                    prev
+                        ? ({
+                              ...prev,
+                              folderMissing: resp.state.folderMissing,
+                              destinationMissing: resp.state.destinationMissing,
+                          } as core.StateResponse)
+                        : prev,
+                ),
+            )
+            .catch(() => {})
+    }
+
     // Aggiorna e persiste le opzioni di elaborazione (destinazione + eliminazione originali).
     function applyOptions(same: boolean, dest: string, del: boolean) {
         setDestSameAsSource(same)
         setDestFolder(dest)
         setDeleteOriginals(del)
-        SetOptions(same, dest, del).catch(() => {
-            /* la persistenza opzioni non deve bloccare la UI */
-        })
+        SetOptions(same, dest, del)
+            .then((resp) =>
+                setState((prev) =>
+                    prev ? ({ ...prev, destinationMissing: resp.state.destinationMissing } as core.StateResponse) : prev,
+                ),
+            )
+            .catch(() => {
+                /* la persistenza opzioni non deve bloccare la UI */
+            })
     }
 
     // In modalità watch, il backend rileva variazioni nella cartella e ci
@@ -913,7 +1096,17 @@ function App() {
         return onEvent('watch:changed', (payload: unknown) => {
             const next = payload as core.StateResponse
             if (!next) return
-            setState((prev) => (prev ? ({ ...prev, files: next.files, logs: next.logs } as core.StateResponse) : next))
+            setState((prev) =>
+                prev
+                    ? ({
+                          ...prev,
+                          files: next.files,
+                          logs: next.logs,
+                          folderMissing: next.folderMissing,
+                          destinationMissing: next.destinationMissing,
+                      } as core.StateResponse)
+                    : next,
+            )
         })
     }, [])
 
@@ -1001,6 +1194,16 @@ function App() {
         }
         window.addEventListener('online', onOnline)
         return () => window.removeEventListener('online', onOnline)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Al ritorno sulla finestra ricontrolliamo che le cartelle esistano ancora
+    // (nel frattempo possono essere state spostate o eliminate): aggiorniamo solo
+    // gli avvisi, senza toccare anteprima e bozze. GetConfig non scansiona.
+    useEffect(() => {
+        const onFocus = () => recheckFolders()
+        window.addEventListener('focus', onFocus)
+        return () => window.removeEventListener('focus', onFocus)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -1312,7 +1515,21 @@ function App() {
         : files.filter((f) => f.preview !== f.name).length
     const failedCount = showingResults ? results!.filter((r) => r.failed).length : 0
     const destReady = destSameAsSource || destFolder !== ''
-    const canProcess = !busy && folder !== '' && files.length > 0 && destReady
+    // Cartelle impostate ma non trovate sul disco: si avverte e non si
+    // scansiona/scarica/converte (lo rifiuta comunque anche il core). Su Android
+    // senza accesso ai file sembrerebbero tutte mancanti: lì parla già il banner.
+    const folderMissing = storageGranted && !!state?.folderMissing
+    const destMissing = storageGranted && !destSameAsSource && !!state?.destinationMissing
+    const foldersOk = folder !== '' && !folderMissing && !destMissing
+    // Motivo per cui scansione e download non sono disponibili ('' se lo sono).
+    const foldersHint = !folder
+        ? 'Seleziona prima una cartella di partenza'
+        : folderMissing
+          ? 'Cartella di partenza non trovata: sceglila di nuovo nelle Impostazioni'
+          : destMissing
+            ? 'Cartella di destinazione non trovata: sceglila di nuovo nelle Impostazioni'
+            : ''
+    const canProcess = !busy && foldersOk && files.length > 0 && destReady
     // "Cancella tag" agisce in posto sugli MP3 scansionati: serve almeno un MP3.
     const canClearTags = !busy && files.some((f) => f.mp3)
     // Anteprima filtrata: se il toggle è attivo, mostra solo i file che
@@ -1766,22 +1983,30 @@ function App() {
 
         if (!e.ctrlKey) return
         switch (e.key.toLowerCase()) {
-            case 'o': // Scegli cartella di partenza (in modalità semplificata sta nelle Impostazioni)
-                if (busy || simpleMode) return
+            // Ctrl+I: cartella di partenza; Ctrl+O: cartella di destinazione, solo se
+            // distinta dalla partenza. Nella schermata normale e nelle Impostazioni;
+            // in modalità semplificata solo nelle Impostazioni.
+            case 'i':
+                if (busy || (simpleMode && !showSettings)) return
                 e.preventDefault()
                 chooseFolder()
                 break
+            case 'o':
+                if (busy || (simpleMode && !showSettings) || destSameAsSource) return
+                e.preventDefault()
+                chooseDestination()
+                break
             case 'r': // Aggiorna scansione (in modalità semplificata non c'è anteprima)
-                if (busy || !folder || simpleMode) return
+                if (busy || !foldersOk || simpleMode) return
                 e.preventDefault()
                 refresh()
                 break
             case 'enter': // Converti (o, nella vista risultati, nuova scansione); in modalità semplificata "Scarica e converti"
                 e.preventDefault()
                 if (simpleMode) {
-                    if (!busy && !showSettings && selectedPlaylist && folder) downloadPlaylist()
+                    if (!busy && !showSettings && selectedPlaylist && foldersOk) downloadPlaylist()
                 } else if (results) {
-                    if (!busy && folder) refresh()
+                    if (!busy && foldersOk) refresh()
                 } else if (canProcess) {
                     process()
                 }
@@ -1809,26 +2034,24 @@ function App() {
             <OpProgress percent={installPercent(installProgress)} label={installLabel(installProgress)} />
         ) : null
 
-    // Cartelle di partenza/destinazione e opzioni di conversione: in testa alla
-    // schermata principale oppure, in modalità semplificata (che lì lascia solo
-    // la scelta della playlist), nelle Impostazioni. Si applicano subito, come
+    // Cartelle di partenza/destinazione e opzioni di conversione: stanno sempre
+    // nelle Impostazioni, in qualunque modalità. Si applicano subito, come
     // sempre: non passano dal "Salva" delle Impostazioni.
     const folderSettings = (
         <>
             <div className="field-group">
                 <span className="field-label">Cartella di partenza</span>
                 <div className="toolbar">
-                    <Tooltip label={folder} grow>
-                        <div className="folder-path">
-                            {folder || 'Nessuna cartella selezionata'}
-                        </div>
-                    </Tooltip>
+                    <div className="folder-path">
+                        {folder || 'Nessuna cartella selezionata'}
+                    </div>
+                    {folderMissing && <MissingFolderIcon label="Cartella di partenza" />}
                     {!isAndroid && (
                         <Tooltip label="Apri la cartella in Esplora risorse">
                             <button
                                 className="ghost with-icon"
                                 onClick={() => openFolder(folder)}
-                                disabled={busy || !folder}
+                                disabled={busy || !folder || folderMissing}
                             >
                                 <span className="btn-icon"><FolderOpenIcon /></span>
                                 Apri
@@ -1845,17 +2068,16 @@ function App() {
                 <div className="field-group">
                     <span className="field-label">Cartella di destinazione</span>
                     <div className="toolbar">
-                        <Tooltip label={destFolder} grow>
-                            <div className="folder-path">
-                                {destFolder || 'Nessuna destinazione selezionata'}
-                            </div>
-                        </Tooltip>
+                        <div className="folder-path">
+                            {destFolder || 'Nessuna destinazione selezionata'}
+                        </div>
+                        {destMissing && <MissingFolderIcon label="Cartella di destinazione" />}
                         {!isAndroid && (
                             <Tooltip label="Apri la cartella in Esplora risorse">
                                 <button
                                     className="ghost with-icon"
                                     onClick={() => openFolder(destFolder)}
-                                    disabled={busy || !destFolder}
+                                    disabled={busy || !destFolder || destMissing}
                                 >
                                     <span className="btn-icon"><FolderOpenIcon /></span>
                                     Apri
@@ -1889,6 +2111,22 @@ function App() {
         </>
     )
 
+    // Riepilogo delle cartelle nella schermata principale: dove si
+    // leggono/finiscono i brani (si scelgono solo nelle Impostazioni).
+    const folderSummary = (
+        <>
+            <FolderLines
+                folder={folder}
+                destSameAsSource={destSameAsSource}
+                destFolder={destFolder}
+                folderMissing={folderMissing}
+                destMissing={destMissing}
+                onMissingClick={() => setShowSettings(true)}
+                disabled={busy}
+            />
+        </>
+    )
+
     // Finché non arriva il primo stato (GetConfig, pochi ms) non sappiamo quale
     // schermata disegnare (normale o semplificata): meglio un istante vuoto che
     // la schermata sbagliata che poi cambia.
@@ -1901,7 +2139,7 @@ function App() {
                 <div className="header-inner">
                 <h1>RenameMusic</h1>
                 <div className="header-right">
-                    {!isAndroid && <ShortcutsLegend simple={simpleMode} />}
+                    {!isAndroid && <ShortcutsLegend simple={simpleMode} separateDest={!destSameAsSource} />}
                     {!showSettings && (
                         <>
                             {/* Senza anteprima l'aggiornamento automatico non ha
@@ -1910,8 +2148,8 @@ function App() {
                             {!simpleMode && (
                             <Tooltip
                                 label={
-                                    !folder
-                                        ? 'Seleziona prima una cartella di partenza'
+                                    !folder || folderMissing
+                                        ? foldersHint
                                         : watchEnabled
                                           ? "Aggiornamento automatico attivo: clicca per disattivarlo. Le variazioni nella cartella aggiornano l'anteprima."
                                           : "Aggiornamento automatico disattivato: clicca per attivarlo e aggiornare l'anteprima automaticamente."
@@ -1919,9 +2157,12 @@ function App() {
                             >
                                 <button
                                     type="button"
-                                    className={'watch-toggle' + (watchEnabled ? ' is-on' : '')}
+                                    className={
+                                        'watch-toggle' +
+                                        (watchEnabled ? (folderMissing ? ' is-error' : ' is-on') : '')
+                                    }
                                     onClick={() => toggleWatch(!watchEnabled)}
-                                    disabled={busy || !folder}
+                                    disabled={busy || !folder || folderMissing}
                                     aria-pressed={watchEnabled}
                                 >
                                     <span className="watch-dot" aria-hidden="true" />
@@ -2003,7 +2244,7 @@ function App() {
                 {!showSettings && !simpleMode && (
                 <div className="top-row">
                     <div className="top-left-head">
-                        {folderSettings}
+                        <div className="folder-summary">{folderSummary}</div>
 
                         <div className="actions">
                             <div className="download-controls">
@@ -2015,11 +2256,11 @@ function App() {
                                         disabled={busy || playlists.length === 0}
                                     />
                                 </Tooltip>
-                                <Tooltip label={!folder ? 'Seleziona prima una cartella di partenza' : 'Scarica la playlist selezionata'}>
+                                <Tooltip label={foldersHint || 'Scarica la playlist selezionata'}>
                                     <button
                                         className="accent with-icon"
                                         onClick={downloadPlaylist}
-                                        disabled={busy || !selectedPlaylist || !folder}
+                                        disabled={busy || !selectedPlaylist || !foldersOk}
                                     >
                                         <span className="btn-icon"><DownloadIcon /></span>
                                         Scarica
@@ -2040,7 +2281,7 @@ function App() {
                                 )}
                             </div>
                             {results ? (
-                                <button className="accent with-icon" onClick={refresh} disabled={busy || !folder}>
+                                <button className="accent with-icon" onClick={refresh} disabled={busy || !foldersOk}>
                                     <span className="btn-icon"><RefreshIcon /></span>
                                     Avvia nuova scansione
                                 </button>
@@ -2139,11 +2380,11 @@ function App() {
                                         Annulla
                                     </button>
                                 ) : (
-                                    <Tooltip label={folder ? '' : 'Scegli prima la cartella di partenza nelle Impostazioni'}>
+                                    <Tooltip label={!folder ? 'Scegli prima la cartella di partenza nelle Impostazioni' : foldersHint}>
                                         <button
                                             className="accent simple-hero-action"
                                             onClick={downloadPlaylist}
-                                            disabled={busy || !selectedPlaylist || !folder}
+                                            disabled={busy || !selectedPlaylist || !foldersOk}
                                         >
                                             <DownloadIcon />
                                             Scarica e converti
@@ -2169,28 +2410,15 @@ function App() {
 
                             {/* Dove finiscono i brani, con la scorciatoia per cambiarlo. */}
                             <div className="simple-hero-foot">
-                                <span className="simple-hero-foot-icon" aria-hidden="true">
-                                    <FolderOpenIcon />
-                                </span>
-                                <span className="simple-hero-foot-text">
-                                    {!folder ? (
-                                        'Nessuna cartella di partenza impostata.'
-                                    ) : destSameAsSource ? (
-                                        <>Salvati in <strong>{folder}</strong></>
-                                    ) : (
-                                        <>
-                                            Scaricati in <strong>{folder}</strong>
-                                            {destFolder ? (
-                                                <>, convertiti in <strong>{destFolder}</strong></>
-                                            ) : (
-                                                ', manca la cartella di destinazione'
-                                            )}
-                                        </>
-                                    )}
-                                </span>
-                                <button className="ghost small" onClick={() => setShowSettings(true)} disabled={busy}>
-                                    {folder ? 'Cambia' : 'Imposta'}
-                                </button>
+                                <FolderLines
+                                    folder={folder}
+                                    destSameAsSource={destSameAsSource}
+                                    destFolder={destFolder}
+                                    folderMissing={folderMissing}
+                                    destMissing={destMissing}
+                                    onMissingClick={() => setShowSettings(true)}
+                                    disabled={busy}
+                                />
                             </div>
                         </section>
                     </div>
@@ -2202,17 +2430,13 @@ function App() {
                         <h2>Generale</h2>
                         <CheckOption
                             label="Modalità semplificata"
-                            info="Quando attiva, la schermata principale mostra solo la scelta della playlist: «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima. Le cartelle e le opzioni di conversione si impostano qui, nelle Impostazioni."
+                            info="Quando attiva, la schermata principale mostra solo la scelta della playlist: «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima."
                             checked={!!draft.simpleMode}
                             onChange={(checked) => setDraft({ ...draft, simpleMode: checked } as rules.Config)}
                             disabled={busy}
                         />
-                        {draft.simpleMode && (
-                            <>
-                                <hr className="settings-divider" />
-                                <div className="settings-folders">{folderSettings}</div>
-                            </>
-                        )}
+                        <hr className="settings-divider" />
+                        <div className="settings-folders">{folderSettings}</div>
                         </section>
 
                         <section className="settings">
@@ -2559,11 +2783,11 @@ function App() {
                                             Solo da modificare
                                         </label>
                                     </Tooltip>
-                                    <Tooltip label="Aggiorna la scansione della cartella">
+                                    <Tooltip label={foldersHint || 'Aggiorna la scansione della cartella'}>
                                         <button
                                             className="ghost small with-icon"
                                             onClick={refresh}
-                                            disabled={busy || !folder}
+                                            disabled={busy || !foldersOk}
                                         >
                                             <span className="btn-icon"><RefreshIcon /></span>
                                             Aggiorna

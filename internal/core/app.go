@@ -242,23 +242,28 @@ type LogEntry struct {
 }
 
 type StateResponse struct {
-	Folder                  string              `json:"folder"`
-	Files                   []FileView          `json:"files"`
-	Logs                    []LogEntry          `json:"logs"`
-	Config                  rules.Config        `json:"config"`
-	DestinationSameAsSource bool                `json:"destinationSameAsSource"`
-	DestinationFolder       string              `json:"destinationFolder"`
-	DeleteOriginals         bool                `json:"deleteOriginals"`
-	WatchEnabled            bool                `json:"watchEnabled"`
-	WatchActive             bool                `json:"watchActive"`
-	Playlists               []playlist.Playlist `json:"playlists"`
-	YtDlpManaged            bool                `json:"ytDlpManaged"`
-	YtDlpPath               string              `json:"ytDlpPath"`
-	YtDlpEffectivePath      string              `json:"ytDlpEffectivePath"`
-	YtDlpAvailable          bool                `json:"ytDlpAvailable"`
-	YtDlpVersion            string              `json:"ytDlpVersion"`
-	FFmpegAvailable         bool                `json:"ffmpegAvailable"`
-	AppVersion              string              `json:"appVersion"`
+	Folder                  string       `json:"folder"`
+	Files                   []FileView   `json:"files"`
+	Logs                    []LogEntry   `json:"logs"`
+	Config                  rules.Config `json:"config"`
+	DestinationSameAsSource bool         `json:"destinationSameAsSource"`
+	DestinationFolder       string       `json:"destinationFolder"`
+	DeleteOriginals         bool         `json:"deleteOriginals"`
+	// FolderMissing / DestinationMissing: la cartella di partenza (o quella di
+	// destinazione, se distinta) è impostata ma non si trova sul disco. La UI
+	// avverte e non permette scansione, download e conversione.
+	FolderMissing      bool                `json:"folderMissing"`
+	DestinationMissing bool                `json:"destinationMissing"`
+	WatchEnabled       bool                `json:"watchEnabled"`
+	WatchActive        bool                `json:"watchActive"`
+	Playlists          []playlist.Playlist `json:"playlists"`
+	YtDlpManaged       bool                `json:"ytDlpManaged"`
+	YtDlpPath          string              `json:"ytDlpPath"`
+	YtDlpEffectivePath string              `json:"ytDlpEffectivePath"`
+	YtDlpAvailable     bool                `json:"ytDlpAvailable"`
+	YtDlpVersion       string              `json:"ytDlpVersion"`
+	FFmpegAvailable    bool                `json:"ffmpegAvailable"`
+	AppVersion         string              `json:"appVersion"`
 	// Update è la nuova versione disponibile (assente se l'app è aggiornata o
 	// il controllo non è ancora riuscito).
 	Update *UpdateView `json:"update,omitempty"`
@@ -557,11 +562,17 @@ func (a *App) GetState() ActionResponse {
 // modalità normale ci pensa la riscansione di SetConfig).
 func (a *App) ensureScanned() string {
 	a.mu.Lock()
-	needScan := a.scanned == nil && !a.config.SimpleMode && appfs.IsDir(a.config.StartFolder)
+	needScan := a.scanned == nil && !a.config.SimpleMode && a.config.StartFolder != ""
 	cfg := a.config
 	a.mu.Unlock()
 	if !needScan {
 		return ""
+	}
+	if msg := a.foldersError(); msg != "" {
+		a.mu.Lock()
+		a.addLogLocked(LogError, msg)
+		a.mu.Unlock()
+		return msg
 	}
 
 	files, err := rename.NewService(cfg).Scan()
@@ -803,6 +814,17 @@ func (a *App) Scan() ActionResponse {
 // va chiamata SENZA lock. Usata sia da Scan sia da DownloadPlaylist (che
 // scansiona automaticamente a valle del download).
 func (a *App) performScan() (message string, ok bool) {
+	// Cartelle mancanti: niente scansione, e l'anteprima precedente (di una
+	// cartella che non c'è più) si svuota.
+	if msg := a.foldersError(); msg != "" {
+		a.mu.Lock()
+		a.scanned = nil
+		a.currentTags = nil
+		a.addLogLocked(LogError, msg)
+		a.mu.Unlock()
+		return msg, false
+	}
+
 	cfg := a.currentConfig()
 
 	// Rimuove eventuali temporanei orfani da run precedenti prima di scansionare.
@@ -826,6 +848,30 @@ func (a *App) performScan() (message string, ok bool) {
 	a.mu.Unlock()
 
 	return "Scansione completata.", true
+}
+
+// foldersError restituisce il motivo per cui le cartelle correnti non sono
+// utilizzabili ("" se lo sono): la cartella di partenza deve esistere, e così
+// quella di destinazione se è distinta e già scelta (se manca del tutto lo
+// segnala solo la conversione: l'anteprima si può vedere anche senza). Vale per
+// scansione, download e conversione. Fa I/O su disco: va chiamata SENZA lock.
+func (a *App) foldersError() string {
+	a.mu.Lock()
+	folder := a.config.StartFolder
+	destSame := a.destSameAsSource
+	destFolder := a.destFolder
+	a.mu.Unlock()
+
+	if folder == "" {
+		return "Seleziona prima una cartella di partenza."
+	}
+	if !appfs.IsDir(folder) {
+		return "Cartella di partenza non trovata: " + folder
+	}
+	if !destSame && destFolder != "" && !appfs.IsDir(destFolder) {
+		return "Cartella di destinazione non trovata: " + destFolder
+	}
+	return ""
 }
 
 // cleanPlaylists normalizza un elenco di playlist scartando le voci senza nome o
@@ -1061,8 +1107,10 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 	if !found {
 		return ActionResponse{OK: false, Message: "Playlist non trovata.", State: a.snapshotLocked()}, false
 	}
-	if !appfs.IsDir(folder) {
-		return ActionResponse{OK: false, Message: "Seleziona prima una cartella di partenza.", State: a.snapshotLocked()}, false
+	// Anche la destinazione: dopo il download la scansione (e, in modalità
+	// semplificata, la conversione) la richiede, meglio non scaricare invano.
+	if msg := a.foldersError(); msg != "" {
+		return ActionResponse{OK: false, Message: msg, State: a.snapshotLocked()}, false
 	}
 
 	if !a.yt().Available(ytdlp) {
@@ -1216,7 +1264,7 @@ func conversionDestination(sameAsSource bool, folder string) (destination, errMs
 		return "", "Scegli una cartella di destinazione."
 	}
 	if !appfs.IsDir(folder) {
-		return "", "La cartella di destinazione non esiste."
+		return "", "Cartella di destinazione non trovata: " + folder
 	}
 	return folder, ""
 }
@@ -1233,6 +1281,9 @@ func (a *App) processAll(opCtx context.Context, review []string) ActionResponse 
 	files := append([]string(nil), a.scanned...)
 	a.mu.Unlock()
 
+	if msg := a.foldersError(); msg != "" {
+		return ActionResponse{OK: false, Message: msg, State: a.snapshotLocked()}
+	}
 	destination, destErr := conversionDestination(destSame, destFolder)
 	if destErr != "" {
 		return ActionResponse{OK: false, Message: destErr, State: a.snapshotLocked()}
@@ -1673,6 +1724,19 @@ func (a *App) runWatchRescan() {
 	cfg := a.config
 	a.mu.Unlock()
 
+	if !appfs.IsDir(cfg.StartFolder) {
+		// La cartella osservata è sparita: svuotiamo l'anteprima e lo
+		// segnaliamo subito alla UI (che mostra l'avviso).
+		a.mu.Lock()
+		a.scanned = nil
+		a.currentTags = nil
+		a.addLogLocked(LogError, "Cartella di partenza non trovata: "+cfg.StartFolder)
+		state := a.snapshot()
+		a.mu.Unlock()
+		a.emit(EventWatchChanged, state)
+		return
+	}
+
 	files, err := rename.NewService(cfg).Scan()
 	if err != nil {
 		a.mu.Lock()
@@ -1756,17 +1820,20 @@ func (a *App) snapshot() StateResponse {
 		DestinationSameAsSource: a.destSameAsSource,
 		DestinationFolder:       a.destFolder,
 		DeleteOriginals:         a.deleteOriginals,
-		WatchEnabled:            a.watchEnabled,
-		WatchActive:             a.watcher != nil && a.watcher.Folder() != "",
-		Playlists:               append([]playlist.Playlist(nil), a.playlists...),
-		YtDlpManaged:            a.ytDlpManaged,
-		YtDlpPath:               a.ytDlpPath,
-		YtDlpEffectivePath:      a.ytDlpEffectivePath(),
-		YtDlpAvailable:          a.ytDlpAvailable,
-		YtDlpVersion:            a.ytDlpVersion,
-		FFmpegAvailable:         a.ffmpegAvailable,
-		AppVersion:              update.Version,
-		Update:                  a.updateViewLocked(),
+		// Solo uno stat per cartella: abbastanza leggero da farlo a ogni snapshot.
+		FolderMissing:      a.config.StartFolder != "" && !appfs.IsDir(a.config.StartFolder),
+		DestinationMissing: !a.destSameAsSource && a.destFolder != "" && !appfs.IsDir(a.destFolder),
+		WatchEnabled:       a.watchEnabled,
+		WatchActive:        a.watcher != nil && a.watcher.Folder() != "",
+		Playlists:          append([]playlist.Playlist(nil), a.playlists...),
+		YtDlpManaged:       a.ytDlpManaged,
+		YtDlpPath:          a.ytDlpPath,
+		YtDlpEffectivePath: a.ytDlpEffectivePath(),
+		YtDlpAvailable:     a.ytDlpAvailable,
+		YtDlpVersion:       a.ytDlpVersion,
+		FFmpegAvailable:    a.ffmpegAvailable,
+		AppVersion:         update.Version,
+		Update:             a.updateViewLocked(),
 	}
 }
 

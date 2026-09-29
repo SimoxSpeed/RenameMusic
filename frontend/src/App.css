@@ -148,6 +148,19 @@ header h1 {
     animation: watchPulse 1.8s ease-out infinite;
 }
 
+/* Attivo ma con la cartella di partenza non trovata: pillola rossa, comunque
+   attenuata come ogni tasto disabilitato, e puntino fermo (non sta osservando
+   nulla). */
+.watch-toggle.is-error {
+    background: rgba(229, 115, 115, 0.18);
+    border-color: rgba(229, 115, 115, 0.55);
+    color: #f0a9a9;
+}
+
+.watch-toggle.is-error .watch-dot {
+    background: #e57373;
+}
+
 /* Bottone azione nell'header (es. "Impostazioni"): coerente con il tema scuro
    dell'header, bordo tenue e testo chiaro. */
 .header-btn {
@@ -1038,14 +1051,12 @@ tr.changed td {
     color: var(--muted);
 }
 
-/* Riga in cima: la testata (cartelle+opzioni+azioni) e Attività condividono la
-   stessa riga di griglia e quindi la stessa altezza (align-items di default è
-   "stretch"), così Attività non supera mai il fondo del pulsante
-   "Impostazioni" qualunque sia lo stato della checkbox "Destinazione uguale
-   alla cartella di partenza" (che aggiunge/toglie un field-group sopra, e
-   quindi sposta il fondo della testata). Le impostazioni stanno su una riga
-   propria, fuori dall'altezza condivisa con Attività. Lascia la tabella di
-   anteprima sotto libera di usare tutta la larghezza. */
+/* Riga in cima: la testata (riepilogo cartelle+azioni) e Attività condividono
+   la stessa riga di griglia e quindi la stessa altezza (align-items di default
+   è "stretch"), così Attività non supera mai il fondo dei pulsanti. Le
+   impostazioni stanno su una riga propria, fuori dall'altezza condivisa con
+   Attività. Lascia la tabella di anteprima sotto libera di usare tutta la
+   larghezza. */
 .top-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
@@ -1067,12 +1078,94 @@ tr.changed td {
 }
 
 /* La cella Attività occupa la colonna destra della griglia e viene stirata
-   all'altezza della riga, che è dettata SOLO dalla colonna sinistra (i
-   bottoni): il pannello al suo interno è posizionato in assoluto, quindi non
-   contribuisce all'altezza della riga e non può mai superare i bottoni. */
+   all'altezza della riga, che è dettata dalla colonna sinistra (i bottoni) con
+   un minimo per mostrare qualche riga di log: il pannello al suo interno è
+   posizionato in assoluto, quindi non contribuisce all'altezza della riga. */
 .activity-cell {
     position: relative;
+    min-height: 180px;
+}
+
+/* Riquadro del riepilogo cartelle in testa alla schermata principale: le
+   cartelle si scelgono nelle Impostazioni, qui se ne mostrano solo i percorsi. */
+.folder-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-alt);
+    color: var(--muted);
+    font-size: 13px;
+}
+
+/* Riepilogo delle cartelle (schermata principale e card della modalità
+   semplificata): una riga per cartella con il percorso completo, distinte
+   dall'icona (freccia in entrata per la partenza, in uscita per la
+   destinazione; entrambe in una riga sola se coincidono). */
+.folder-lines {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.folder-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.folder-line-icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--primary);
+}
+
+.folder-line + .folder-line .folder-line-icon {
+    color: var(--accent);
+}
+
+/* Il percorso non si allarga: l'eventuale icona d'errore gli sta subito accanto. */
+.folder-line-path {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text);
+}
+
+.folder-line-path em {
+    color: var(--muted);
+}
+
+/* Icona d'errore accanto a una cartella che non c'è più sul disco (il
+   dettaglio è nel tooltip). */
+.folder-missing {
+    display: inline-flex;
+    flex: none;
+    color: var(--danger);
+    cursor: help;
+}
+
+/* Nella schermata principale l'icona è cliccabile (apre le Impostazioni):
+   solo il glifo, senza l'aspetto da pulsante. */
+button.folder-missing {
     min-height: 0;
+    padding: 2px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+}
+
+button.folder-missing:hover:not(:disabled) {
+    background: var(--row-error);
+}
+
+button.folder-missing:disabled {
+    cursor: default;
 }
 
 /* Attività riempie tutta l'altezza della cella (pari a quella della testata a
@@ -1235,22 +1328,6 @@ main.is-simple {
     text-align: left;
 }
 
-.simple-hero-foot-icon {
-    display: inline-flex;
-    flex: none;
-}
-
-.simple-hero-foot-text {
-    flex: 1;
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
-.simple-hero-foot-text strong {
-    color: var(--text);
-    font-weight: 600;
-}
-
 /* I risultati restano centrati sotto la card, senza allargarsi a tutto schermo. */
 .simple-results {
     width: 100%;
@@ -1277,8 +1354,7 @@ main.is-simple {
     }
 }
 
-/* Cartelle e opzioni nelle Impostazioni (modalità semplificata): stessa
-   spaziatura che hanno nella testata della schermata principale. */
+/* Cartelle e opzioni nelle Impostazioni (in qualunque modalità). */
 .settings-folders {
     display: flex;
     flex-direction: column;
