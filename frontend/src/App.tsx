@@ -2712,10 +2712,11 @@ function App() {
 
                                     <div className="ytdlp-panel">
                                         <div className="ytdlp-head">
-                                            {/* Nome, stato e (in gestione autonoma) percorso della
-                                                copia gestita: se non c'è spazio il percorso va a
-                                                capo. Il tasto per scaricarlo resta sempre subito
-                                                a destra di "Non presente". */}
+                                            {/* Nome, stato (la versione, se presente) e in gestione
+                                                autonoma il percorso della copia dell'app: se non
+                                                c'è spazio il percorso va a capo. Il tasto per
+                                                scaricarlo resta sempre subito a destra di "Non
+                                                presente". */}
                                             <div className="ytdlp-head-info">
                                             <span className="ytdlp-title">yt-dlp</span>
                                             {ytDlpChecking ? (
@@ -2724,8 +2725,11 @@ function App() {
                                                     Ricerca di una copia locale…
                                                 </span>
                                             ) : state?.ytDlpAvailable ? (
-                                                <span className="ytdlp-badge ytdlp-ok">
-                                                    Presente{state?.ytDlpVersion ? ` · versione ${state.ytDlpVersion}` : ''}
+                                                <span
+                                                    className="ytdlp-badge ytdlp-ok"
+                                                    title={state?.ytDlpVersion ? 'Versione di yt-dlp in uso' : undefined}
+                                                >
+                                                    {state?.ytDlpVersion || 'Presente'}
                                                 </span>
                                             ) : (
                                                 <span className="ytdlp-status">
@@ -2748,9 +2752,11 @@ function App() {
                                             )}
                                             {ytDlpManaged && !ytDlpChecking && state?.ytDlpEffectivePath && (
                                                 <span className="ytdlp-location">
-                                                    <span className="ytdlp-location-label">
-                                                        {state?.ytDlpAvailable ? 'Copia gestita:' : 'Verrà scaricato in:'}
-                                                    </span>{' '}
+                                                    {!state?.ytDlpAvailable && (
+                                                        <>
+                                                            <span className="ytdlp-location-label">Verrà scaricato in:</span>{' '}
+                                                        </>
+                                                    )}
                                                     <code className="ytdlp-path">{state.ytDlpEffectivePath}</code>
                                                 </span>
                                             )}
