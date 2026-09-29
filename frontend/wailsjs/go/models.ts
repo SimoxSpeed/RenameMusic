@@ -151,6 +151,7 @@ export namespace core {
 	    ytDlpAvailable: boolean;
 	    ytDlpVersion: string;
 	    ffmpegAvailable: boolean;
+	    ffmpegManaged: boolean;
 	    appVersion: string;
 	    update?: UpdateView;
 	
@@ -178,6 +179,7 @@ export namespace core {
 	        this.ytDlpAvailable = source["ytDlpAvailable"];
 	        this.ytDlpVersion = source["ytDlpVersion"];
 	        this.ffmpegAvailable = source["ffmpegAvailable"];
+	        this.ffmpegManaged = source["ffmpegManaged"];
 	        this.appVersion = source["appVersion"];
 	        this.update = this.convertValues(source["update"], UpdateView);
 	    }

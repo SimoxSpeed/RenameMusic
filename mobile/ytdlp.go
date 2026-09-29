@@ -85,6 +85,13 @@ func (y *androidYtDlp) Uninstall(string) error {
 func (y *androidYtDlp) FFmpegAvailable() bool { return true }
 func (y *androidYtDlp) InstallFFmpeg(playlist.Progress) error { return nil }
 
+// Non c'è una copia di ffmpeg gestita dall'app da rimuovere.
+func (y *androidYtDlp) FFmpegManaged() bool { return false }
+
+func (y *androidYtDlp) UninstallFFmpeg() error {
+	return errors.New("su Android ffmpeg è integrato nell'app e non può essere rimosso")
+}
+
 func (y *androidYtDlp) Runner(string) playlist.Runner { return bridgeRunner{host: y.host} }
 
 func (y *androidYtDlp) Workers() int { return androidWorkers }

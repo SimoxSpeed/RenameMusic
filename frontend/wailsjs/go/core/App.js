@@ -110,6 +110,10 @@ export function SetYtDlpConfig(arg1, arg2) {
   return window['go']['core']['App']['SetYtDlpConfig'](arg1, arg2);
 }
 
+export function UninstallFFmpeg() {
+  return window['go']['core']['App']['UninstallFFmpeg']();
+}
+
 export function UninstallYtDlp() {
   return window['go']['core']['App']['UninstallYtDlp']();
 }

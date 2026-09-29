@@ -50,8 +50,8 @@ type YtDlp interface {
 	// è più recente di quella presente; updated indica se l'ha fatto. Usata
 	// dall'aggiornamento automatico (vedi ytdlp_update.go), senza avanzamento.
 	Update(path string) (updated bool, err error)
-	// Uninstall rimuove la copia gestita (con l'eventuale ffmpeg gestito);
-	// nessun errore se era già assente.
+	// Uninstall rimuove la copia gestita di yt-dlp (ffmpeg resta: si rimuove a
+	// parte con UninstallFFmpeg); nessun errore se era già assente.
 	Uninstall(path string) error
 	// FFmpegAvailable indica se yt-dlp ha a disposizione ffmpeg, necessario
 	// per estrarre l'audio in mp3 (copia gestita dall'app o ffmpeg di sistema).
@@ -59,6 +59,12 @@ type YtDlp interface {
 	// InstallFFmpeg scarica/aggiorna la copia di ffmpeg gestita dall'app, con
 	// l'avanzamento su `progress` come Install.
 	InstallFFmpeg(progress playlist.Progress) error
+	// FFmpegManaged indica se è installata la copia di ffmpeg gestita
+	// dall'app, l'unica che l'app può rimuovere (non un ffmpeg di sistema).
+	FFmpegManaged() bool
+	// UninstallFFmpeg rimuove la copia di ffmpeg gestita dall'app; nessun
+	// errore se era già assente.
+	UninstallFFmpeg() error
 	// Runner restituisce l'esecutore di yt-dlp per il percorso indicato.
 	Runner(path string) playlist.Runner
 	// Workers è il numero di download paralleli (<= 0 => default di playlist).
@@ -117,11 +123,6 @@ func (ExecYtDlp) Uninstall(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if dir, err := settings.FFmpegManagedDir(); err == nil {
-		if err := os.RemoveAll(dir); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -135,6 +136,18 @@ func (ExecYtDlp) InstallFFmpeg(progress playlist.Progress) error {
 		return err
 	}
 	return playlist.InstallFFmpeg(dir, progress)
+}
+
+func (ExecYtDlp) FFmpegManaged() bool {
+	return managedFFmpegDir() != ""
+}
+
+func (ExecYtDlp) UninstallFFmpeg() error {
+	dir, err := settings.FFmpegManagedDir()
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(dir)
 }
 
 func (ExecYtDlp) Runner(path string) playlist.Runner {

@@ -5,7 +5,7 @@
 // con argomenti e risultati in JSON. Gli eventi del core arrivano in entrambi
 // i casi tramite onEvent.
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
-import { EventsOn } from '../wailsjs/runtime/runtime'
+import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime'
 import type { core, playlist, rules } from '../wailsjs/go/models'
 
 export type { core, playlist, rules }
@@ -68,6 +68,7 @@ export const DownloadAndProcess = (name: string): Action => call('DownloadAndPro
 export const InstallYtDlp = (): Action => call('InstallYtDlp')
 export const InstallFFmpeg = (): Action => call('InstallFFmpeg')
 export const UninstallYtDlp = (): Action => call('UninstallYtDlp')
+export const UninstallFFmpeg = (): Action => call('UninstallFFmpeg')
 export const SetYtDlpConfig = (managed: boolean, path: string): Action => call('SetYtDlpConfig', managed, path)
 export const ChooseYtDlpFile = (): Promise<string> => call('ChooseYtDlpFile')
 export const ResolveTagPrompt = (path: string, useEdited: boolean, editedBase: string): Action =>
@@ -75,6 +76,13 @@ export const ResolveTagPrompt = (path: string, useEdited: boolean, editedBase: s
 export const CheckUpdate = (): Action => call('CheckUpdate')
 export const MarkUpdateSeen = (version: string): Action => call('MarkUpdateSeen', version)
 export const InstallUpdate = (): Action => call('InstallUpdate')
+
+// openURL apre un link esterno nel browser di sistema. Su Android basta
+// navigarci: Capacitor apre nel browser gli indirizzi esterni all'app.
+export function openURL(url: string): void {
+    if (isAndroid) window.location.href = url
+    else BrowserOpenURL(url)
+}
 
 // ---- Solo Android ---------------------------------------------------------
 

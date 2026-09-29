@@ -58,4 +58,6 @@ export function SetWatchEnabled(arg1:boolean):Promise<core.ActionResponse>;
 
 export function SetYtDlpConfig(arg1:boolean,arg2:string):Promise<core.ActionResponse>;
 
+export function UninstallFFmpeg():Promise<core.ActionResponse>;
+
 export function UninstallYtDlp():Promise<core.ActionResponse>;

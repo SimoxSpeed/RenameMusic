@@ -172,25 +172,49 @@
     height: env(safe-area-inset-bottom, 0px);
 }
 
-/* In Impostazioni l'header è nascosto: il contenuto parte sotto la status bar. */
-.is-android main.settings-view {
-    padding-top: calc(16px + env(safe-area-inset-top, 0px));
-}
-
 .is-android main {
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
-.is-android .settings-bottombar {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+/* Impostazioni: la barra in alto scorre via col contenuto e restano ferme in
+   cima (sotto la status bar) le schede, come pillole orizzontali scorrevoli
+   invece delle tab del desktop. */
+.is-android .settings-header {
+    position: static;
+}
+
+.is-android .settings-layout {
+    gap: 12px;
+}
+
+.is-android .settings-tabs {
+    top: env(safe-area-inset-top, 0px);
+    margin: 0;
+    padding: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+}
+
+.is-android .settings-tab {
+    flex: 0 0 auto;
+    min-height: 36px;
+    margin-bottom: 0;
+    padding: 6px 14px;
+    border-bottom: 0;
+    border-radius: 999px;
+}
+
+.is-android .settings-tab.is-active {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 /* Toast come "snackbar" Android: in basso a tutta larghezza, a portata di
-   pollice e lontani dall'header. Sopra la barra di navigazione o, in
-   Impostazioni, sopra la barra inferiore (la cui altezza, --toast-offset,
-   comprende già la safe area). */
+   pollice e lontani dall'header, sopra la barra di navigazione. */
 .is-android .toast-container {
-    bottom: calc(12px + max(var(--toast-offset, 0px), env(safe-area-inset-bottom, 0px)));
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     left: 12px;
     right: 12px;
     max-width: none;
@@ -610,22 +634,14 @@
         padding: 14px 12px;
     }
 
-    /* Righe Da → A (e playlist nome → link): i due campi sulla prima riga,
-       ambito e rimozione sulla seconda. */
-    .is-android .replacement-row {
-        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-        row-gap: 6px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--line-soft);
+    /* Senza il rientro sotto la freccia: su schermo stretto serve spazio. */
+    .is-android .rule-group-body {
+        padding-left: 12px;
     }
 
-    .is-android .replacement-row > .tip {
-        grid-column: 1 / 3;
-    }
-
-    .is-android .replacement-row > button:last-child {
-        grid-column: 3;
-        justify-self: end;
+    /* ✕ delle etichette: bersaglio di tocco più grande. */
+    .is-android button.chip-remove {
+        padding: 6px;
     }
 
     .is-android .ytdlp-head {
@@ -636,29 +652,32 @@
         margin-left: auto;
     }
 
-    /* Barra inferiore: due righe da tre bottoni (navigazione/annulla sopra,
-       salvataggi sotto), invece di una fila che andrebbe a capo a caso. */
-    .is-android .settings-bottombar-inner {
+    /* Barra delle Impostazioni: Indietro (solo icona) e titolo sulla prima
+       riga, i due pulsanti dei predefiniti affiancati sulla seconda. */
+    .is-android .settings-header-title {
+        flex: 1 1 100%;
+        gap: 10px;
+    }
+
+    .is-android .settings-header h1 {
+        flex: 0 1 auto;
+    }
+
+    .is-android .settings-header .header-btn {
+        order: 0;
+    }
+
+    .is-android .settings-header-actions {
+        flex: 1 1 100%;
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
-        padding: 10px 12px;
     }
 
-    .is-android .settings-bottombar-actions {
-        display: contents;
-    }
-
-    .is-android .settings-actions-sep {
-        display: none;
-    }
-
-    .is-android .settings-bottombar button {
-        min-height: 44px;
-        padding: 6px 8px;
-        font-size: 13px;
-        line-height: 1.2;
-        white-space: normal;
+    .is-android .settings-header-actions .tip,
+    .is-android .settings-header-actions button {
+        display: flex;
+        width: 100%;
         justify-content: center;
     }
 

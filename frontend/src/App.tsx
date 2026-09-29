@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import './App.css'
 import './mobile.css'
@@ -25,6 +25,7 @@ import {
     InstallYtDlp,
     InstallFFmpeg,
     UninstallYtDlp,
+    UninstallFFmpeg,
     SetYtDlpConfig,
     ChooseYtDlpFile,
     ResolveTagPrompt,
@@ -34,6 +35,7 @@ import {
     isAndroid,
     onEvent,
     onResume,
+    openURL,
     requestNotifications,
     requestStorage,
     storageStatus,
@@ -47,6 +49,7 @@ import {
     AlertIcon,
     BackIcon,
     CaretIcon,
+    ChevronIcon,
     CheckIcon,
     CloseIcon,
     ConvertIcon,
@@ -61,6 +64,7 @@ import {
     PlusIcon,
     RefreshIcon,
     RemoveIcon,
+    RulesIcon,
     SettingsIcon,
     TagOffIcon,
     TrashIcon,
@@ -107,12 +111,75 @@ function promptsOf(resp: core.ActionResponse): TagPrompt[] {
     }))
 }
 
-function listToText(list: string[] | undefined): string {
-    return (list ?? []).join('\n')
-}
+// ChipList: elenco di voci modificabile come etichette affiancate (regole a
+// elenco delle Impostazioni). Invio o l'uscita dal campo aggiungono il testo
+// scritto, ✕ toglie una voce; incollando più righe ogni riga diventa una voce.
+// Le voci restano come scritte (gli spazi ai bordi possono contare, es. " x "):
+// si scartano solo quelle vuote e i doppioni. Non è dentro una <label>, perché
+// un clic sull'etichetta attiverebbe il primo ✕. label dà il nome al campo per
+// gli screen reader; caption, se c'è, è l'etichetta visibile sopra l'elenco.
+function ChipList({ values, onChange, label, caption, placeholder, disabled }: {
+    values: string[]
+    onChange: (values: string[]) => void
+    label: string
+    caption?: string
+    placeholder?: string
+    disabled?: boolean
+}) {
+    const [text, setText] = useState('')
 
-function textToList(text: string): string[] {
-    return text.split('\n')
+    function add(items: string[]) {
+        const next = [...values]
+        for (const v of items) {
+            if (v.trim() !== '' && !next.includes(v)) next.push(v)
+        }
+        if (next.length !== values.length) onChange(next)
+        setText('')
+    }
+
+    return (
+        <div className="field-group">
+            {caption && <span className="field-label">{caption}</span>}
+            <div className="chip-list">
+                {values.map((v, i) => (
+                    <span className="chip" key={i}>
+                        <span className="chip-text">{v}</span>
+                        <button
+                            type="button"
+                            className="chip-remove"
+                            onClick={() => onChange(values.filter((_, j) => j !== i))}
+                            disabled={disabled}
+                            aria-label={'Rimuovi ' + v.trim()}
+                        >
+                            <CloseIcon />
+                        </button>
+                    </span>
+                ))}
+                <input
+                    type="text"
+                    className="chip-input"
+                    placeholder={placeholder ?? 'Aggiungi e premi Invio'}
+                    aria-label={label}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault()
+                            add([text])
+                        }
+                    }}
+                    onBlur={() => add([text])}
+                    onPaste={(e) => {
+                        const pasted = e.clipboardData.getData('text')
+                        if (!pasted.includes('\n')) return
+                        e.preventDefault()
+                        add(pasted.split(/\r?\n/))
+                    }}
+                    disabled={disabled}
+                />
+            </div>
+        </div>
+    )
 }
 
 // InfoIcon: pulsante con tooltip custom. \u00c8 un <button> per essere focusabile
@@ -199,9 +266,28 @@ function CheckOption({ label, info, checked, onChange, disabled, className }: {
 // semplificata cartelle e anteprima non sono nella schermata principale, quindi
 // restano solo le scorciatoie che hanno senso lì.
 // separateDest: la destinazione è distinta dalla partenza (altrimenti Ctrl+O
-// non fa nulla e non compare).
-function ShortcutsLegend({ simple, separateDest }: { simple: boolean; separateDest: boolean }) {
-    const shortcuts: [string, string][] = simple
+// non fa nulla e non compare). settings: legenda della barra delle
+// Impostazioni, con le scorciatoie che valgono lì.
+function ShortcutsLegend({
+    simple,
+    separateDest,
+    settings,
+}: {
+    simple: boolean
+    separateDest: boolean
+    settings?: boolean
+}) {
+    const destShortcut: [string, string][] = separateDest ? [['Ctrl + O', 'Scegli cartella di destinazione']] : []
+    const shortcuts: [string, string][] = settings
+        ? [
+              ['Ctrl + 1…4', 'Vai alla scheda'],
+              ['Ctrl + ← / →', 'Scheda precedente / successiva'],
+              ['Ctrl + I', 'Scegli cartella di partenza'],
+              ...destShortcut,
+              ['Ctrl + ,', 'Chiudi le impostazioni'],
+              ['Esc', 'Chiudi finestre e impostazioni'],
+          ]
+        : simple
         ? [
               ['Ctrl + Invio', 'Scarica e converti'],
               ['Ctrl + ,', 'Impostazioni'],
@@ -209,7 +295,7 @@ function ShortcutsLegend({ simple, separateDest }: { simple: boolean; separateDe
           ]
         : [
               ['Ctrl + I', 'Scegli cartella di partenza'],
-              ...(separateDest ? [['Ctrl + O', 'Scegli cartella di destinazione'] as [string, string]] : []),
+              ...destShortcut,
               ['Ctrl + R', 'Aggiorna scansione'],
               ['Ctrl + Invio', 'Converti / Nuova scansione'],
               ['Ctrl + ,', 'Impostazioni'],
@@ -236,6 +322,30 @@ function ShortcutsLegend({ simple, separateDest }: { simple: boolean; separateDe
                 ))}
             </span>
         </button>
+    )
+}
+
+// RuleGroup: card richiudibile di una categoria di regole (scheda Regole). Il
+// titolo porta descrizione e numero di voci, così anche da chiusa si capisce
+// cosa contiene; tone è il colore della categoria (bordo e contatore). Parte
+// chiusa: le card chiuse fanno da indice della scheda.
+function RuleGroup({ title, hint, count, tone, children }: {
+    title: string
+    hint: string
+    count: number
+    tone: 'red' | 'blue' | 'green' | 'gray' | 'yellow'
+    children: ReactNode
+}) {
+    return (
+        <details className={'rule-group tone-' + tone}>
+            <summary>
+                <ChevronIcon />
+                <span className="rule-group-title">{title}</span>
+                <span className="rule-count">{count}</span>
+                {hint && <span className="rule-hint">{hint}</span>}
+            </summary>
+            <div className="rule-group-body">{children}</div>
+        </details>
     )
 }
 
@@ -589,20 +699,73 @@ function cloneConfig(cfg: rules.Config): rules.Config {
     } as rules.Config
 }
 
+// comparableConfig / comparablePlaylists: forma confrontabile di regole e
+// playlist, pulite come le pulisce il core al salvataggio (normalizeConfig,
+// cleanPlaylists): righe vuote e spazi ai bordi non contano come modifiche. La
+// cartella è esclusa, perché il core la gestisce a parte.
+function comparableConfig(cfg: rules.Config): string {
+    const list = (values?: string[]) => (values ?? []).filter((v) => v.trim() !== '')
+    const c = cloneConfig(cfg)
+    return JSON.stringify({
+        ...c,
+        startFolder: undefined,
+        supportedExtensions: list(c.supportedExtensions),
+        occurrenciesToRemove: list(c.occurrenciesToRemove),
+        occurrenciesToReplaceWithFt: list(c.occurrenciesToReplaceWithFt),
+        artistExceptions: list(c.artistExceptions),
+        ftAlias: (c.ftAlias ?? '').trim(),
+        replacements: c.replacements
+            .filter((r) => (r.from ?? '').trim() !== '')
+            .map((r) => ({ ...r, scope: r.scope || undefined })),
+    })
+}
+
+function comparablePlaylists(list: playlist.Playlist[]): string {
+    return JSON.stringify(
+        list
+            .map((p) => ({ name: p.name.trim(), url: p.url.trim() }))
+            .filter((p) => p.name !== '' && p.url !== ''),
+    )
+}
+
+// Ambiti delle sostituzioni Da → A, ognuno con il suo gruppo nella scheda
+// Regole (scope come in rules.Scope: vuoto = tutto il nome).
+const REPLACEMENT_SCOPES = [
+    { scope: '', label: 'Tutto il nome', hint: 'Su tutto il nome del file' },
+    { scope: 'artist', label: 'Solo artista', hint: 'Solo sulla parte prima di « - »' },
+    { scope: 'title', label: 'Solo titolo', hint: 'Solo sulla parte dopo « - »' },
+]
+
+// Repository del progetto, linkato nella scheda Info delle Impostazioni.
+const REPO_URL = 'https://github.com/SimoxSpeed/RenameMusic'
+
+// Schede delle Impostazioni, nell'ordine in cui compaiono (su desktop anche
+// Ctrl+1…4 e Ctrl+←/→).
+type SettingsTab = 'general' | 'download' | 'rules' | 'info'
+const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode }[] = [
+    { id: 'general', label: 'Generale', icon: <SettingsIcon /> },
+    { id: 'download', label: 'Download', icon: <DownloadIcon /> },
+    { id: 'rules', label: 'Regole', icon: <RulesIcon /> },
+    { id: 'info', label: 'Info', icon: <InfoCircleIcon size={16} /> },
+]
+
 function App() {
     const [state, setState] = useState<core.StateResponse | null>(null)
     const [toasts, setToasts] = useState<Toast[]>([])
     const toastIdRef = useRef(0)
-    // toastOffset: altezza (px) della barra inferiore delle Impostazioni quando
-    // è visibile: i toast si alzano di tanto per non coprirne i bottoni.
-    const [toastOffset, setToastOffset] = useState(0)
-    const bottombarRef = useRef<HTMLDivElement>(null)
     const [busy, setBusy] = useState(false)
     const [showSettings, setShowSettings] = useState(false)
+    // settingsTab: scheda delle Impostazioni aperta; resta quella dell'ultima
+    // visita finché l'app è aperta.
+    const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
+    // draft / playlistDraft: regole e playlist in editing nelle Impostazioni.
+    // Si salvano da sole poco dopo ogni modifica (vedi flushSave); le playlist
+    // passano da SetPlaylists perché non fanno parte di rules.Config.
     const [draft, setDraft] = useState<rules.Config | null>(null)
-    // playlistDraft: bozza in editing dell'elenco playlist YouTube (Impostazioni),
-    // salvata a parte da SetPlaylists (non fa parte di rules.Config).
     const [playlistDraft, setPlaylistDraft] = useState<playlist.Playlist[]>([])
+    // saveStatus: indicatore del salvataggio automatico nella barra delle
+    // Impostazioni ('saved' sparisce da solo dopo poco).
+    const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | null>(null)
     // selectedPlaylist: nome scelto nel select accanto al bottone "Scarica".
     const [selectedPlaylist, setSelectedPlaylist] = useState('')
     const [results, setResults] = useState<core.ResultView[] | null>(null)
@@ -628,6 +791,9 @@ function App() {
     const [confirmInstallYtDlp, setConfirmInstallYtDlp] = useState(false)
     // confirmUninstallYtDlp: popup di conferma per rimuovere la copia gestita.
     const [confirmUninstallYtDlp, setConfirmUninstallYtDlp] = useState(false)
+    // confirmUninstallFFmpeg: popup di conferma per rimuovere la copia di
+    // ffmpeg gestita dall'app (solo desktop).
+    const [confirmUninstallFFmpeg, setConfirmUninstallFFmpeg] = useState(false)
     // confirmDownloadYtDlp: popup di avvertimento prima di scaricare/installare
     // yt-dlp dal tasto dedicato (quando non è presente), separato dal flusso di
     // download di una playlist (confirmInstallYtDlp).
@@ -636,9 +802,9 @@ function App() {
     // yt-dlp per creare gli mp3). 'install' dal tasto nel pannello, 'playlist'
     // quando si preme "Scarica" di una playlist e ffmpeg manca (poi prosegue).
     const [confirmFFmpeg, setConfirmFFmpeg] = useState<null | 'install' | 'playlist'>(null)
-    // confirmLeaveSettings: popup chiesto premendo "Indietro" nelle Impostazioni
-    // quando ci sono modifiche non salvate (salva / scarta / annulla).
-    const [confirmLeaveSettings, setConfirmLeaveSettings] = useState(false)
+    // confirmReset: popup prima di "Ripristina predefiniti", che sovrascrive
+    // subito le regole e le playlist correnti.
+    const [confirmReset, setConfirmReset] = useState(false)
     // progress: avanzamento dell'ultima elaborazione (x/totale), popolato dagli
     // eventi process:progress durante ProcessAll; null quando non pertinente.
     // phase ('download' | 'convert') distingue le due fasi di "Scarica e converti".
@@ -692,6 +858,14 @@ function App() {
     // ritorno di chiamate partite prima di un cambio di schermata.
     const showSettingsRef = useRef(false)
     showSettingsRef.current = showSettings
+    // Copie sempre aggiornate di stato e bozze per il salvataggio automatico,
+    // che parte da un timer e deve vedere i valori più recenti.
+    const stateRef = useRef(state)
+    stateRef.current = state
+    const draftRef = useRef(draft)
+    draftRef.current = draft
+    const playlistDraftRef = useRef(playlistDraft)
+    playlistDraftRef.current = playlistDraft
 
     function absorb(resp: core.ActionResponse, resetDrafts = false) {
         absorbState(resp.state, resetDrafts)
@@ -699,25 +873,27 @@ function App() {
 
     // absorbState riporta nella UI lo stato del core. Fuori dalle Impostazioni
     // riallinea anche le bozze (regole e playlist in editing) allo stato
-    // salvato. Nelle Impostazioni invece le lascia com'erano: nessuna azione
-    // eseguita da lì (cartelle in modalità semplificata, yt-dlp/ffmpeg,
-    // scorciatoie, trascinamento di una cartella) deve far perdere le modifiche
-    // non ancora salvate. Allinea solo la cartella della bozza, che il core
-    // gestisce a parte, altrimenti la bozza risulterebbe modificata. resetDrafts
-    // forza il riallineamento: serve al salvataggio e al ripristino dei
-    // predefiniti, che cambiano proprio lo stato salvato delle bozze.
+    // salvato. Nelle Impostazioni invece le lascia com'erano: il core normalizza
+    // ciò che salva (scarta righe vuote, pulisce le liste) e riallineare a ogni
+    // salvataggio automatico toglierebbe di mano la riga appena aggiunta o lo
+    // spazio appena digitato. Allinea solo la cartella della bozza, che il core
+    // gestisce a parte. resetDrafts forza il riallineamento: serve al ripristino
+    // dei predefiniti, che cambia proprio lo stato salvato delle bozze.
     function absorbState(next: core.StateResponse, resetDrafts = false) {
         setState(next)
+        stateRef.current = next
         const playlists = next.playlists ?? []
         setSelectedPlaylist((prev) => (playlists.some((p) => p.name === prev) ? prev : (playlists[0]?.name ?? '')))
         if (showSettingsRef.current && !resetDrafts) {
             setDraft((prev) => (prev ? ({ ...prev, startFolder: next.folder } as rules.Config) : prev))
             return
         }
-        if (next.config) {
-            setDraft(cloneConfig(next.config))
-        }
-        setPlaylistDraft(playlists.map((p) => ({ name: p.name, url: p.url })))
+        syncDrafts(next)
+    }
+
+    function syncDrafts(s: core.StateResponse) {
+        if (s.config) setDraft(cloneConfig(s.config))
+        setPlaylistDraft((s.playlists ?? []).map((p) => ({ name: p.name, url: p.url })))
     }
 
     // Durata minima (ms) per cui lo stato "busy" resta attivo una volta partito:
@@ -1014,21 +1190,6 @@ function App() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [availableUpdate, updateBlocked])
 
-    // Tiene i toast sopra la barra inferiore delle Impostazioni: ne misuriamo
-    // l'altezza (che cambia quando i bottoni vanno a capo su schermi stretti) e
-    // la passiamo al contenitore dei toast. Fuori dalle Impostazioni vale 0.
-    const bottombarVisible = showSettings && draft !== null
-    useEffect(() => {
-        const bar = bottombarRef.current
-        if (!bottombarVisible || !bar) {
-            setToastOffset(0)
-            return
-        }
-        const ro = new ResizeObserver(() => setToastOffset(bar.offsetHeight))
-        ro.observe(bar)
-        return () => ro.disconnect()
-    }, [bottombarVisible])
-
     // Quando cambia la traccia in testa alla coda, reimpostiamo l'input del popup
     // al suo nome originale (l'utente riparte dal nome da correggere) o, per una
     // traccia selezionata da rivedere, al nome proposto dall'anteprima.
@@ -1231,8 +1392,96 @@ function App() {
         })
     }
 
-    function resetConfig() {
+    // Salvataggio automatico delle Impostazioni: ogni modifica alle bozze si
+    // salva da sola AUTOSAVE_MS dopo l'ultima, e comunque prima di uscire o di
+    // toccare i predefiniti (flushSave). Non passa da guard: busy disabiliterebbe
+    // i campi, e quello in cui si sta scrivendo perderebbe il focus. I
+    // salvataggi sono in fila (saveChainRef) e ognuno legge le bozze del momento
+    // in cui parte: vince l'ultimo.
+    const AUTOSAVE_MS = 600
+    const saveTimerRef = useRef(0)
+    const savedTimerRef = useRef(0)
+    const saveChainRef = useRef<Promise<void>>(Promise.resolve())
+
+    useEffect(() => {
+        if (!showSettingsRef.current) return
+        window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = window.setTimeout(flushSave, AUTOSAVE_MS)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [draft, playlistDraft])
+
+    function flushSave(): Promise<void> {
+        window.clearTimeout(saveTimerRef.current)
+        saveChainRef.current = saveChainRef.current.then(saveDrafts)
+        return saveChainRef.current
+    }
+
+    // saveDrafts salva solo ciò che differisce dallo stato salvato: le regole
+    // con SetConfig (che riscansiona la cartella), le playlist con SetPlaylists.
+    // Non rifiuta mai, così la fila dei salvataggi non si interrompe.
+    async function saveDrafts() {
+        const cfg = draftRef.current
+        const pl = playlistDraftRef.current
+        const saved = stateRef.current
+        if (!cfg || !saved?.config) return
+        const cfgChanged = comparableConfig(cfg) !== comparableConfig(saved.config)
+        const plChanged = comparablePlaylists(pl) !== comparablePlaylists(saved.playlists ?? [])
+        if (!cfgChanged && !plChanged) return
+
+        window.clearTimeout(savedTimerRef.current)
+        setSaveStatus('saving')
+        let ok = true
+        try {
+            if (cfgChanged) {
+                const resp = await SetConfig(cfg)
+                absorb(resp)
+                setResults(null)
+                ok = resp.ok
+                if (!resp.ok) notify(false, resp.message ?? '')
+            }
+            if (plChanged) {
+                const resp = await SetPlaylists(pl)
+                absorb(resp)
+                if (!resp.ok) notify(false, resp.message ?? '')
+                ok = ok && resp.ok
+            }
+        } catch (err: any) {
+            ok = false
+            notify(false, 'Errore: ' + (err?.message ?? String(err)))
+        }
+        setSaveStatus(ok ? 'saved' : null)
+        if (ok) savedTimerRef.current = window.setTimeout(() => setSaveStatus(null), 1800)
+    }
+
+    // openSettings apre le Impostazioni, sulla scheda indicata o sull'ultima usata.
+    function openSettings(tab?: SettingsTab) {
+        if (tab) setSettingsTab(tab)
+        setShowSettings(true)
+    }
+
+    // Cambio di scheda: il contenuto riparte dall'alto.
+    function selectSettingsTab(tab: SettingsTab) {
+        setSettingsTab(tab)
+        window.scrollTo({ top: 0 })
+    }
+
+    // leaveSettings esce dalle Impostazioni dopo aver salvato le modifiche in
+    // attesa, e riallinea le bozze a ciò che il core ha salvato (senza le righe
+    // lasciate vuote).
+    function leaveSettings() {
+        flushSave().then(() => {
+            setShowSettings(false)
+            if (stateRef.current) syncDrafts(stateRef.current)
+        })
+    }
+
+    // "Ripristina predefiniti" (dopo conferma): copia i predefiniti in regole e
+    // playlist correnti e riallinea le bozze. Prima completa un eventuale
+    // salvataggio in attesa, che altrimenti arriverebbe dopo e lo annullerebbe.
+    function confirmResetConfig() {
+        setConfirmReset(false)
         guard(async () => {
+            await flushSave()
             const resp = await ResetConfig()
             absorb(resp, true)
             setResults(null)
@@ -1250,23 +1499,16 @@ function App() {
         }
     }
 
-    // Riporta regole e playlist ai valori salvati (scarta tutte le modifiche non
-    // ancora salvate delle Impostazioni, comprese quelle alle playlist).
-    function revertDraft() {
-        if (!state?.config) return
-        setDraft(cloneConfig(state.config))
-        setPlaylistDraft((state?.playlists ?? []).map((p) => ({ name: p.name, url: p.url })))
-        notify(true, 'Ripristinate le impostazioni salvate.')
-    }
-
-    // Rende regole e playlist in editing il nuovo predefinito (dopo conferma dal
-    // popup). Non tocca i valori correnti né i draft in editing: aggiorna solo il
-    // log/stato.
+    // "Salva predefiniti" (dopo conferma): rende regole e playlist correnti il
+    // nuovo predefinito. Non tocca i valori correnti né le bozze: aggiorna solo
+    // il registro.
     function confirmMakeDefault() {
-        if (!draft) return
         setConfirmDefault(false)
         guard(async () => {
-            const resp = await SetAsDefault(draft, playlistDraft)
+            await flushSave()
+            const cfg = draftRef.current
+            if (!cfg) return
+            const resp = await SetAsDefault(cfg, playlistDraftRef.current)
             setState((prev) => (prev ? ({ ...prev, logs: resp.state.logs } as core.StateResponse) : resp.state))
             notify(resp.ok, resp.message ?? '')
         })
@@ -1276,32 +1518,11 @@ function App() {
     folderRef.current = folder
     // simpleMode: modalità semplificata salvata, che decide la schermata
     // principale (solo scelta della playlist, "Scarica e converti", niente
-    // anteprima). Nelle Impostazioni conta invece la bozza (draft.simpleMode),
-    // così le cartelle compaiono lì appena si spunta la casella.
+    // anteprima).
     const simpleMode = !!state?.config?.simpleMode
     const files = state?.files ?? []
     const logs = state?.logs ?? []
     const playlists = state?.playlists ?? []
-    // settingsDirty: true se ci sono modifiche non salvate nelle Impostazioni,
-    // ossia le regole in editing (draft) differiscono da quelle salvate, oppure
-    // l'elenco playlist in editing differisce da quello salvato. Il confronto usa
-    // cloneConfig su entrambi i lati per normalizzare l'ordine dei campi.
-    // Le sostituzioni lasciate del tutto vuote non contano: al salvataggio il
-    // core le scarta (e senza sostituzioni l'editor ne mostra comunque una).
-    const comparableConfig = (cfg: rules.Config) => {
-        const c = cloneConfig(cfg)
-        return JSON.stringify({
-            ...c,
-            replacements: (c.replacements ?? []).filter((r) => (r.from ?? '').trim() !== '' || (r.to ?? '').trim() !== ''),
-        })
-    }
-    const draftDirty = !!draft && !!state?.config && comparableConfig(draft) !== comparableConfig(state.config)
-    // Le righe lasciate del tutto vuote non contano: al salvataggio il core le
-    // scarta (e senza playlist l'editor ne mostra comunque una).
-    const playlistsDirty =
-        JSON.stringify(playlistDraft.filter((p) => p.name.trim() !== '' || p.url.trim() !== '')) !==
-        JSON.stringify(playlists.map((p) => ({ name: p.name, url: p.url })))
-    const settingsDirty = draftDirty || playlistsDirty
     // Contatori nell'header: dopo un'elaborazione la lista `files` \u00e8 vuota
     // (i file sono stati rinominati/spostati), quindi mostreremmo "0 file".
     // Quando ci sono `results` calcoliamo i contatori da quelli, cos\u00ec l'utente
@@ -1406,10 +1627,10 @@ function App() {
             | 'occurrenciesToRemove'
             | 'occurrenciesToReplaceWithFt'
             | 'artistExceptions',
-        text: string,
+        values: string[],
     ) {
         if (!draft) return
-        setDraft({ ...draft, [key]: textToList(text) } as rules.Config)
+        setDraft({ ...draft, [key]: values } as rules.Config)
     }
 
     function updateFtAlias(value: string) {
@@ -1417,24 +1638,20 @@ function App() {
         setDraft({ ...draft, ftAlias: value } as rules.Config)
     }
 
-    // Senza sostituzioni l'editor mostra comunque una riga vuota (vedi render),
-    // come per le playlist: la prima modifica la crea davvero nella bozza, e
-    // "Aggiungi" ne aggiunge una seconda.
-    function replacementRows(): rules.Replacement[] {
-        const rows = draft?.replacements ?? []
-        return rows.length > 0 ? rows : [{ from: '', to: '' } as rules.Replacement]
-    }
-
-    function updateReplacement(index: number, field: 'from' | 'to' | 'scope', value: string) {
+    // Le sostituzioni sono mostrate divise per ambito (REPLACEMENT_SCOPES) ma
+    // restano un unico elenco: la pipeline le applica in ordine, quindi ogni
+    // riga resta al suo posto (index è quello nell'elenco completo) e le nuove
+    // vanno in fondo.
+    function updateReplacement(index: number, field: 'from' | 'to', value: string) {
         if (!draft) return
-        const replacements = replacementRows().map((r, i) => (i === index ? { ...r, [field]: value } : r))
+        const replacements = (draft.replacements ?? []).map((r, i) => (i === index ? { ...r, [field]: value } : r))
         setDraft({ ...draft, replacements } as rules.Config)
     }
 
-    function addReplacement() {
+    function addReplacement(scope: string) {
         if (!draft) return
-        const replacements = [...replacementRows(), { from: '', to: '' } as rules.Replacement]
-        setDraft({ ...draft, replacements } as rules.Config)
+        const row = (scope ? { from: '', to: '', scope } : { from: '', to: '' }) as rules.Replacement
+        setDraft({ ...draft, replacements: [...(draft.replacements ?? []), row] } as rules.Config)
     }
 
     function removeReplacement(index: number) {
@@ -1463,58 +1680,6 @@ function App() {
 
     function removePlaylistDraft(index: number) {
         setPlaylistDraft((prev) => prev.filter((_, i) => i !== index))
-    }
-
-    // saveSettingsCore persiste in un colpo solo TUTTE le impostazioni della
-    // schermata: prima le regole di rinomina (SetConfig, che riscansiona con le
-    // nuove regole) e poi le playlist (SetPlaylists). Cattura i due draft prima di
-    // qualsiasi absorb() intermedio e assorbe solo alla fine, riallineando le
-    // bozze (resetDrafts) allo stato appena salvato.
-    async function saveSettingsCore() {
-        const cfgDraft = draft
-        const plDraft = playlistDraft
-        if (cfgDraft) {
-            await SetConfig(cfgDraft)
-        }
-        const resp = await SetPlaylists(plDraft)
-        absorb(resp, true)
-        setResults(null)
-        notify(resp.ok, resp.ok ? 'Impostazioni salvate.' : (resp.message ?? ''))
-    }
-
-    function saveSettings() {
-        guard(saveSettingsCore)
-    }
-
-    function saveSettingsAndExit() {
-        guard(async () => {
-            await saveSettingsCore()
-            setShowSettings(false)
-        })
-    }
-
-    // "Indietro": se ci sono modifiche non salvate (regole o playlist) chiede
-    // conferma (salva / scarta / annulla); altrimenti esce subito.
-    function backFromSettings() {
-        if (settingsDirty) {
-            setConfirmLeaveSettings(true)
-        } else {
-            setShowSettings(false)
-        }
-    }
-
-    // Scarta le modifiche non salvate: riporta i draft allo stato salvato e esce.
-    function discardSettingsAndLeave() {
-        setConfirmLeaveSettings(false)
-        if (state?.config) setDraft(cloneConfig(state.config))
-        setPlaylistDraft((state?.playlists ?? []).map((p) => ({ name: p.name, url: p.url })))
-        setShowSettings(false)
-    }
-
-    // Salva le modifiche (NON come predefiniti) e poi esce, dal prompt di uscita.
-    function saveSettingsAndLeaveFromPrompt() {
-        setConfirmLeaveSettings(false)
-        saveSettingsAndExit()
     }
 
     // Avvia il download della playlist selezionata. Se yt-dlp non è presente
@@ -1726,6 +1891,18 @@ function App() {
         })
     }
 
+    // Rimuove la copia di ffmpeg gestita dall'app, dopo conferma. Un ffmpeg di
+    // sistema non viene toccato (e resta in uso, se c'è).
+    function uninstallFFmpeg() {
+        setConfirmUninstallFFmpeg(false)
+        guard(async () => {
+            const resp = await UninstallFFmpeg()
+            absorb(resp)
+            syncOptions(resp.state)
+            notify(resp.ok, resp.message ?? '')
+        })
+    }
+
     // Controllo manuale degli aggiornamenti (Impostazioni): l'esito va sempre
     // in un toast, anche quando l'app è già aggiornata.
     function checkUpdate() {
@@ -1760,11 +1937,12 @@ function App() {
         else if (confirmClearTags) setConfirmClearTags(false)
         else if (confirmInstallYtDlp) setConfirmInstallYtDlp(false)
         else if (confirmUninstallYtDlp) setConfirmUninstallYtDlp(false)
+        else if (confirmUninstallFFmpeg) setConfirmUninstallFFmpeg(false)
         else if (confirmDownloadYtDlp) setConfirmDownloadYtDlp(false)
         else if (confirmFFmpeg) setConfirmFFmpeg(null)
-        else if (confirmLeaveSettings) setConfirmLeaveSettings(false)
+        else if (confirmReset) setConfirmReset(false)
         else if (confirmDefault) setConfirmDefault(false)
-        else if (showSettings) backFromSettings()
+        else if (showSettings) leaveSettings()
         else return false
         return true
     }
@@ -1793,9 +1971,16 @@ function App() {
     // corrente senza doversi ri-registrare ad ogni cambiamento.
     const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {})
     shortcutRef.current = (e: KeyboardEvent) => {
-        // Non intercettare mentre si scrive in un campo editabile.
+        // Non intercettare mentre si scrive in un campo di testo: lì Esc fa solo
+        // uscire dal campo (un secondo Esc chiude, come sempre). Le checkbox non
+        // contano: dopo averne spuntata una il primo Esc deve già chiudere.
         const target = e.target as HTMLElement | null
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        const isTextField =
+            target instanceof HTMLInputElement
+                ? target.type !== 'checkbox' && target.type !== 'radio'
+                : !!target && (target.tagName === 'TEXTAREA' || target.isContentEditable)
+        if (target && isTextField) {
+            if (e.key === 'Escape') target.blur()
             return
         }
 
@@ -1838,8 +2023,26 @@ function App() {
             case ',': // Mostra/nascondi impostazioni
                 if (busy) return
                 e.preventDefault()
-                setShowSettings((v) => !v)
+                if (showSettings) leaveSettings()
+                else openSettings()
                 break
+            case '1': // Ctrl+1…4: scheda delle Impostazioni
+            case '2':
+            case '3':
+            case '4':
+                if (!showSettings) return
+                e.preventDefault()
+                selectSettingsTab(SETTINGS_TABS[Number(e.key) - 1].id)
+                break
+            case 'arrowleft': // Ctrl+←/→: scheda precedente/successiva (in giro)
+            case 'arrowright': {
+                if (!showSettings) return
+                e.preventDefault()
+                const step = e.key === 'ArrowRight' ? 1 : -1
+                const current = SETTINGS_TABS.findIndex((t) => t.id === settingsTab)
+                selectSettingsTab(SETTINGS_TABS[(current + step + SETTINGS_TABS.length) % SETTINGS_TABS.length].id)
+                break
+            }
         }
     }
     useEffect(() => {
@@ -1859,8 +2062,8 @@ function App() {
         ) : null
 
     // Cartelle di partenza/destinazione e opzioni di conversione: stanno sempre
-    // nelle Impostazioni, in qualunque modalità. Si applicano subito, come
-    // sempre: non passano dal "Salva" delle Impostazioni.
+    // nelle Impostazioni (scheda Generale), in qualunque modalità. Si applicano
+    // subito e non fanno parte dei predefiniti.
     const folderSettings = (
         <>
             <div className="field-group">
@@ -1945,7 +2148,7 @@ function App() {
                 destFolder={destFolder}
                 folderMissing={folderMissing}
                 destMissing={destMissing}
-                onMissingClick={() => setShowSettings(true)}
+                onMissingClick={() => openSettings('general')}
                 disabled={busy}
             />
         </>
@@ -1958,6 +2161,57 @@ function App() {
 
     return (
         <div className={'app' + (isAndroid ? ' is-android' : '')}>
+            {/* Barra delle Impostazioni: al posto dell'header, fissa in cima. Le
+                modifiche si salvano da sole: qui restano solo l'uscita e i
+                predefiniti (regole, playlist e modalità semplificata). */}
+            {showSettings && (
+            <header className="settings-header">
+                <div className="header-inner">
+                    <div className="settings-header-title">
+                        <button
+                            type="button"
+                            className="header-btn settings-back"
+                            onClick={leaveSettings}
+                            disabled={busy}
+                            aria-label="Indietro"
+                        >
+                            <BackIcon />
+                            <span className="btn-label">Indietro</span>
+                        </button>
+                        <h1>Impostazioni</h1>
+                        {saveStatus && (
+                            <span className="save-status" role="status">
+                                {saveStatus === 'saving' ? 'Salvataggio…' : (
+                                    <>
+                                        <CheckIcon />
+                                        Salvato
+                                    </>
+                                )}
+                            </span>
+                        )}
+                    </div>
+                    <div className="settings-header-actions">
+                        {!isAndroid && <ShortcutsLegend simple={simpleMode} separateDest={!destSameAsSource} settings />}
+                        <Tooltip label="Riporta regole, playlist e modalità semplificata ai predefiniti salvati.">
+                            <button type="button" className="header-btn" onClick={() => setConfirmReset(true)} disabled={busy}>
+                                Ripristina predefiniti
+                            </button>
+                        </Tooltip>
+                        <Tooltip label="I predefiniti sono una configurazione di riserva, da recuperare con «Ripristina predefiniti». Salva come predefiniti regole, playlist e modalità semplificata attuali.">
+                            <button
+                                type="button"
+                                className="header-btn warn-solid"
+                                onClick={() => setConfirmDefault(true)}
+                                disabled={busy}
+                            >
+                                Salva predefiniti
+                            </button>
+                        </Tooltip>
+                    </div>
+                </div>
+            </header>
+            )}
+
             {!showSettings && (
             <header>
                 <div className="header-inner">
@@ -2026,7 +2280,7 @@ function App() {
                             <button
                                 type="button"
                                 className="header-btn with-icon"
-                                onClick={() => setShowSettings(true)}
+                                onClick={() => openSettings(state?.update ? 'info' : undefined)}
                                 disabled={busy}
                                 aria-label={state?.update ? 'Impostazioni (aggiornamento disponibile)' : 'Impostazioni'}
                             >
@@ -2041,7 +2295,7 @@ function App() {
             </header>
             )}
 
-            <main className={showSettings ? 'settings-view' : simpleMode ? 'is-simple' : ''}>
+            <main className={!showSettings && simpleMode ? 'is-simple' : ''}>
                 <div
                     className={'busy-bar' + (busy ? ' is-active' : '')}
                     role="progressbar"
@@ -2204,7 +2458,7 @@ function App() {
                                     <Tooltip label="Aggiungi una playlist nelle Impostazioni">
                                         <button
                                             className="ghost simple-hero-add"
-                                            onClick={() => setShowSettings(true)}
+                                            onClick={() => openSettings('download')}
                                             disabled={busy}
                                             aria-label="Aggiungi una playlist nelle Impostazioni"
                                         >
@@ -2257,7 +2511,7 @@ function App() {
                                     destFolder={destFolder}
                                     folderMissing={folderMissing}
                                     destMissing={destMissing}
-                                    onMissingClick={() => setShowSettings(true)}
+                                    onMissingClick={() => openSettings('general')}
                                     disabled={busy}
                                 />
                             </div>
@@ -2266,351 +2520,452 @@ function App() {
                 )}
 
                 {showSettings && draft && (
-                    <>
-                        <section className="settings">
-                        <h2>Generale</h2>
-                        <CheckOption
-                            label="Modalità semplificata"
-                            info="Quando attiva, la schermata principale mostra solo la scelta della playlist: «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima."
-                            checked={!!draft.simpleMode}
-                            onChange={(checked) => setDraft({ ...draft, simpleMode: checked } as rules.Config)}
-                            disabled={busy}
-                        />
-                        <hr className="settings-divider" />
-                        <div className="settings-folders">{folderSettings}</div>
-                        </section>
+                    <div className="settings-layout">
+                        {/* Schede: tab orizzontali in cima su desktop, pillole
+                            scorrevoli su Android (mobile.css). */}
+                        <nav className="settings-tabs" aria-label="Sezioni delle impostazioni">
+                            {SETTINGS_TABS.map((t) => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    className={'settings-tab' + (settingsTab === t.id ? ' is-active' : '')}
+                                    aria-current={settingsTab === t.id ? 'page' : undefined}
+                                    onClick={() => selectSettingsTab(t.id)}
+                                >
+                                    {t.icon}
+                                    <span>{t.label}</span>
+                                    {t.id === 'info' && state?.update && <span className="update-dot" aria-hidden="true" />}
+                                </button>
+                            ))}
+                        </nav>
 
-                        <section className="settings">
-                        <h2>Download da YouTube</h2>
-
-                        {/* Su Android yt-dlp è integrato nell'app: niente scelta
-                            tra copia gestita e percorso personalizzato. */}
-                        {!isAndroid && (
-                        <CheckOption
-                            className="ytdlp-toggle"
-                            label="Gestisci autonomamente yt-dlp"
-                            info="Quando attivo, l'app scarica e aggiorna da sé yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore): al primo 'Scarica' di una playlist, se manca, lo scarica dopo una conferma (insieme a ffmpeg, che serve per creare gli mp3). Quando disattivo, indichi a mano il percorso di una tua versione di yt-dlp."
-                            checked={ytDlpManaged}
-                            onChange={toggleYtDlpManaged}
-                            disabled={busy || ytDlpChecking}
-                        />
-                        )}
-
-                        <div className="ytdlp-panel">
-                            <div className="ytdlp-head">
-                                {/* Nome, stato e (in gestione autonoma) percorso della
-                                    copia gestita: se non c'è spazio il percorso va a
-                                    capo. Il tasto per scaricarlo resta sempre subito
-                                    a destra di "Non presente". */}
-                                <div className="ytdlp-head-info">
-                                <span className="ytdlp-title">yt-dlp</span>
-                                {ytDlpChecking ? (
-                                    <span className="ytdlp-checking" role="status">
-                                        <span className="spinner" aria-hidden="true" />
-                                        Ricerca di una copia locale…
-                                    </span>
-                                ) : state?.ytDlpAvailable ? (
-                                    <span className="ytdlp-badge ytdlp-ok">
-                                        Presente{state?.ytDlpVersion ? ` · versione ${state.ytDlpVersion}` : ''}
-                                    </span>
-                                ) : (
-                                    <span className="ytdlp-status">
-                                        <span className="ytdlp-badge ytdlp-missing">
-                                            {isAndroid ? 'Non ancora pronto' : 'Non presente'}
-                                        </span>
-                                        {!isAndroid && (
-                                            <Tooltip label="Scarica yt-dlp">
-                                                <button
-                                                    className="ghost small ytdlp-install"
-                                                    onClick={() => setConfirmDownloadYtDlp(true)}
-                                                    disabled={busy}
-                                                    aria-label="Scarica yt-dlp"
-                                                >
-                                                    <DownloadIcon />
-                                                </button>
-                                            </Tooltip>
-                                        )}
-                                    </span>
-                                )}
-                                {ytDlpManaged && !ytDlpChecking && state?.ytDlpEffectivePath && (
-                                    <span className="ytdlp-location">
-                                        <span className="ytdlp-location-label">
-                                            {state?.ytDlpAvailable ? 'Copia gestita:' : 'Verrà scaricato in:'}
-                                        </span>{' '}
-                                        <code className="ytdlp-path">{state.ytDlpEffectivePath}</code>
-                                    </span>
-                                )}
-                                {/* Fuori dalla gestione autonoma il percorso si imposta
-                                    a mano, sulla stessa riga (scende sotto se non c'è
-                                    spazio). */}
-                                {!ytDlpManaged && (
-                                    <div className="ytdlp-path-edit">
-                                        <span className="ytdlp-location-label">Percorso:</span>
-                                        <input
-                                            type="text"
-                                            placeholder="Percorso a yt-dlp.exe"
-                                            value={ytDlpPathDraft}
-                                            onChange={(e) => setYtDlpPathDraft(e.target.value)}
-                                            onBlur={applyYtDlpPath}
-                                            disabled={busy}
-                                        />
-                                        <button className="ghost with-icon" onClick={browseYtDlp} disabled={busy}>
-                                            <span className="btn-icon"><FolderOpenIcon /></span>
-                                            Sfoglia
-                                        </button>
-                                    </div>
-                                )}
-                                </div>
-                                {ytDlpChecking ? null : isAndroid ? (
-                                    <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
-                                        <button
-                                            className="ghost small with-icon ytdlp-install"
-                                            onClick={() => setConfirmDownloadYtDlp(true)}
-                                            disabled={busy}
-                                        >
-                                            <span className="btn-icon"><RefreshIcon /></span>
-                                            Aggiorna
-                                        </button>
-                                    </Tooltip>
-                                ) : state?.ytDlpAvailable && ytDlpManaged ? (
-                                    <Tooltip label="Rimuovi yt-dlp (elimina la copia gestita dall'app)">
-                                        <button
-                                            className="ghost small danger ytdlp-uninstall"
-                                            onClick={() => setConfirmUninstallYtDlp(true)}
-                                            disabled={busy}
-                                            aria-label="Rimuovi yt-dlp"
-                                        >
-                                            <RemoveIcon />
-                                        </button>
-                                    </Tooltip>
-                                ) : null}
-                            </div>
-
-                            {busy && installProgress?.tool === 'yt-dlp' && (
-                                <OpProgress
-                                    className="ytdlp-progress"
-                                    percent={installPercent(installProgress)}
-                                    label={installLabel(installProgress)}
-                                />
+                        <div className="settings-panel">
+                            {settingsTab === 'general' && (
+                                <section className="settings">
+                                    <CheckOption
+                                        label="Modalità semplificata"
+                                        info="Quando attiva, la schermata principale mostra solo la scelta della playlist: «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima."
+                                        checked={!!draft.simpleMode}
+                                        onChange={(checked) => setDraft({ ...draft, simpleMode: checked } as rules.Config)}
+                                        disabled={busy}
+                                    />
+                                    <hr className="settings-divider" />
+                                    <div className="settings-folders">{folderSettings}</div>
+                                </section>
                             )}
 
-                            {/* ffmpeg serve a yt-dlp per creare gli mp3. Su Android
-                                è incorporato in youtubedl-android. */}
-                            {!isAndroid && (
-                                <div className="ytdlp-head">
-                                    <span className="ytdlp-title">ffmpeg</span>
-                                    {state?.ffmpegAvailable ? (
-                                        <span className="ytdlp-badge ytdlp-ok">Presente</span>
-                                    ) : (
-                                        <>
-                                            <span className="ytdlp-badge ytdlp-missing">Non presente</span>
-                                            <Tooltip label="Scarica ffmpeg (serve a yt-dlp per creare gli mp3)">
-                                                <button
-                                                    className="ghost small ytdlp-install"
-                                                    onClick={() => setConfirmFFmpeg('install')}
-                                                    disabled={busy}
-                                                    aria-label="Scarica ffmpeg"
-                                                >
-                                                    <DownloadIcon />
-                                                </button>
-                                            </Tooltip>
-                                        </>
+                            {settingsTab === 'download' && (
+                                <section className="settings">
+                                    {/* Su Android yt-dlp è integrato nell'app: niente scelta
+                                        tra copia gestita e percorso personalizzato. */}
+                                    {!isAndroid && (
+                                    <CheckOption
+                                        className="ytdlp-toggle"
+                                        label="Gestisci autonomamente yt-dlp"
+                                        info="Quando attivo, l'app tiene una propria copia di yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore) e la aggiorna da sola. Se manca, puoi scaricarla dal tasto accanto a «Non presente» oppure, dopo una conferma, al primo download di una playlist. Quando disattivo, indichi a mano il percorso di una tua copia di yt-dlp."
+                                        checked={ytDlpManaged}
+                                        onChange={toggleYtDlpManaged}
+                                        disabled={busy || ytDlpChecking}
+                                    />
                                     )}
-                                </div>
+
+                                    <div className="ytdlp-panel">
+                                        <div className="ytdlp-head">
+                                            {/* Nome, stato e (in gestione autonoma) percorso della
+                                                copia gestita: se non c'è spazio il percorso va a
+                                                capo. Il tasto per scaricarlo resta sempre subito
+                                                a destra di "Non presente". */}
+                                            <div className="ytdlp-head-info">
+                                            <span className="ytdlp-title">yt-dlp</span>
+                                            {ytDlpChecking ? (
+                                                <span className="ytdlp-checking" role="status">
+                                                    <span className="spinner" aria-hidden="true" />
+                                                    Ricerca di una copia locale…
+                                                </span>
+                                            ) : state?.ytDlpAvailable ? (
+                                                <span className="ytdlp-badge ytdlp-ok">
+                                                    Presente{state?.ytDlpVersion ? ` · versione ${state.ytDlpVersion}` : ''}
+                                                </span>
+                                            ) : (
+                                                <span className="ytdlp-status">
+                                                    <span className="ytdlp-badge ytdlp-missing">
+                                                        {isAndroid ? 'Non ancora pronto' : 'Non presente'}
+                                                    </span>
+                                                    {!isAndroid && (
+                                                        <Tooltip label="Scarica yt-dlp">
+                                                            <button
+                                                                className="ghost small ytdlp-install"
+                                                                onClick={() => setConfirmDownloadYtDlp(true)}
+                                                                disabled={busy}
+                                                                aria-label="Scarica yt-dlp"
+                                                            >
+                                                                <DownloadIcon />
+                                                            </button>
+                                                        </Tooltip>
+                                                    )}
+                                                </span>
+                                            )}
+                                            {ytDlpManaged && !ytDlpChecking && state?.ytDlpEffectivePath && (
+                                                <span className="ytdlp-location">
+                                                    <span className="ytdlp-location-label">
+                                                        {state?.ytDlpAvailable ? 'Copia gestita:' : 'Verrà scaricato in:'}
+                                                    </span>{' '}
+                                                    <code className="ytdlp-path">{state.ytDlpEffectivePath}</code>
+                                                </span>
+                                            )}
+                                            {/* Fuori dalla gestione autonoma il percorso si imposta
+                                                a mano, sulla stessa riga (scende sotto se non c'è
+                                                spazio). */}
+                                            {!ytDlpManaged && (
+                                                <div className="ytdlp-path-edit">
+                                                    <span className="ytdlp-location-label">Percorso:</span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Percorso a yt-dlp.exe"
+                                                        value={ytDlpPathDraft}
+                                                        onChange={(e) => setYtDlpPathDraft(e.target.value)}
+                                                        onBlur={applyYtDlpPath}
+                                                        disabled={busy}
+                                                    />
+                                                    <button className="ghost with-icon" onClick={browseYtDlp} disabled={busy}>
+                                                        <span className="btn-icon"><FolderOpenIcon /></span>
+                                                        Sfoglia
+                                                    </button>
+                                                </div>
+                                            )}
+                                            </div>
+                                            {ytDlpChecking ? null : isAndroid ? (
+                                                <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
+                                                    <button
+                                                        className="ghost small with-icon ytdlp-install"
+                                                        onClick={() => setConfirmDownloadYtDlp(true)}
+                                                        disabled={busy}
+                                                    >
+                                                        <span className="btn-icon"><RefreshIcon /></span>
+                                                        Aggiorna
+                                                    </button>
+                                                </Tooltip>
+                                            ) : state?.ytDlpAvailable && ytDlpManaged ? (
+                                                <Tooltip label="Rimuovi yt-dlp (elimina la copia gestita dall'app)">
+                                                    <button
+                                                        className="ghost small danger ytdlp-uninstall"
+                                                        onClick={() => setConfirmUninstallYtDlp(true)}
+                                                        disabled={busy}
+                                                        aria-label="Rimuovi yt-dlp"
+                                                    >
+                                                        <RemoveIcon />
+                                                    </button>
+                                                </Tooltip>
+                                            ) : null}
+                                        </div>
+
+                                        {busy && installProgress?.tool === 'yt-dlp' && (
+                                            <OpProgress
+                                                className="ytdlp-progress"
+                                                percent={installPercent(installProgress)}
+                                                label={installLabel(installProgress)}
+                                            />
+                                        )}
+
+                                        {/* ffmpeg serve a yt-dlp per creare gli mp3. Su Android
+                                            è incorporato in youtubedl-android. */}
+                                        {!isAndroid && (
+                                            <div className="ytdlp-head">
+                                                <span className="ytdlp-title">ffmpeg</span>
+                                                {state?.ffmpegAvailable ? (
+                                                    <>
+                                                        {/* Si rimuove solo la copia gestita: un
+                                                            ffmpeg di sistema non è dell'app. */}
+                                                        <span className="ytdlp-badge ytdlp-ok">
+                                                            Presente{!state.ffmpegManaged && ' · di sistema'}
+                                                        </span>
+                                                        {state.ffmpegManaged && (
+                                                            <Tooltip label="Rimuovi ffmpeg (elimina la copia gestita dall'app)">
+                                                                <button
+                                                                    className="ghost small danger ytdlp-uninstall"
+                                                                    onClick={() => setConfirmUninstallFFmpeg(true)}
+                                                                    disabled={busy}
+                                                                    aria-label="Rimuovi ffmpeg"
+                                                                >
+                                                                    <RemoveIcon />
+                                                                </button>
+                                                            </Tooltip>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="ytdlp-badge ytdlp-missing">Non presente</span>
+                                                        <Tooltip label="Scarica ffmpeg (serve a yt-dlp per creare gli mp3)">
+                                                            <button
+                                                                className="ghost small ytdlp-install"
+                                                                onClick={() => setConfirmFFmpeg('install')}
+                                                                disabled={busy}
+                                                                aria-label="Scarica ffmpeg"
+                                                            >
+                                                                <DownloadIcon />
+                                                            </button>
+                                                        </Tooltip>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {busy && installProgress?.tool === 'ffmpeg' && (
+                                            <OpProgress
+                                                className="ytdlp-progress"
+                                                percent={installPercent(installProgress)}
+                                                label={installLabel(installProgress)}
+                                            />
+                                        )}
+                                    </div>
+
+                                    <div className="replacements">
+                                        <div className="replacements-head">
+                                            <span>Playlist YouTube (nome → link)</span>
+                                            <button className="ghost small add-replacement" onClick={addPlaylistDraft} disabled={busy}>
+                                                + Aggiungi
+                                            </button>
+                                        </div>
+                                        {/* Senza playlist una riga vuota è già pronta da compilare,
+                                            senza dover premere prima "Aggiungi". */}
+                                        {(playlistDraft.length > 0 ? playlistDraft : [{ name: '', url: '' }]).map((p, i) => (
+                                            <div className="replacement-row" key={i}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Nome"
+                                                    value={p.name}
+                                                    onChange={(e) => updatePlaylistDraft(i, 'name', e.target.value)}
+                                                    disabled={busy}
+                                                />
+                                                <span className="arrow">→</span>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Link playlist"
+                                                    value={p.url}
+                                                    onChange={(e) => updatePlaylistDraft(i, 'url', e.target.value)}
+                                                    disabled={busy}
+                                                />
+                                                <button
+                                                    className="ghost small danger"
+                                                    onClick={() => removePlaylistDraft(i)}
+                                                    disabled={busy || playlistDraft.length <= 1}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
                             )}
 
-                            {busy && installProgress?.tool === 'ffmpeg' && (
-                                <OpProgress
-                                    className="ytdlp-progress"
-                                    percent={installPercent(installProgress)}
-                                    label={installLabel(installProgress)}
-                                />
+                            {settingsTab === 'rules' && (
+                                <section className="settings">
+                                    {/* Una card richiudibile per categoria: da chiuse fanno
+                                        da indice (titolo, descrizione e numero di voci). */}
+                                    <div className="rule-groups">
+                                        <RuleGroup
+                                            title="Pulizia del nome"
+                                            hint="Testi tolti dal nome, ad esempio «(Official Video)»"
+                                            count={(draft.occurrenciesToRemove ?? []).length}
+                                            tone="red"
+                                        >
+                                            <ChipList
+                                                label="Testi da rimuovere"
+                                                values={draft.occurrenciesToRemove ?? []}
+                                                onChange={(v) => updateDraftList('occurrenciesToRemove', v)}
+                                                disabled={busy}
+                                            />
+                                        </RuleGroup>
+
+                                        <RuleGroup
+                                            title="Featuring"
+                                            hint="«feat.», «featuring» e simili diventano un unico alias"
+                                            count={(draft.occurrenciesToReplaceWithFt ?? []).length}
+                                            tone="blue"
+                                        >
+                                            <label className="ft-alias">
+                                                <span>Alias da usare</span>
+                                                <input
+                                                    type="text"
+                                                    placeholder="ft"
+                                                    value={draft.ftAlias ?? ''}
+                                                    onChange={(e) => updateFtAlias(e.target.value)}
+                                                    disabled={busy}
+                                                />
+                                            </label>
+                                            <ChipList
+                                                label="Varianti da sostituire con l'alias"
+                                                caption="Varianti da sostituire"
+                                                values={draft.occurrenciesToReplaceWithFt ?? []}
+                                                onChange={(v) => updateDraftList('occurrenciesToReplaceWithFt', v)}
+                                                disabled={busy}
+                                            />
+                                        </RuleGroup>
+
+                                        <RuleGroup
+                                            title="Artisti"
+                                            hint="Nomi d'arte con « & » o « x » da non dividere nei tag"
+                                            count={(draft.artistExceptions ?? []).length}
+                                            tone="green"
+                                        >
+                                            <ChipList
+                                                label="Nomi d'arte da non separare"
+                                                values={draft.artistExceptions ?? []}
+                                                onChange={(v) => updateDraftList('artistExceptions', v)}
+                                                disabled={busy}
+                                            />
+                                        </RuleGroup>
+
+                                        <RuleGroup
+                                            title="File"
+                                            hint="Estensioni dei file considerati nella cartella"
+                                            count={(draft.supportedExtensions ?? []).length}
+                                            tone="gray"
+                                        >
+                                            <ChipList
+                                                label="Estensioni supportate"
+                                                values={draft.supportedExtensions ?? []}
+                                                onChange={(v) => updateDraftList('supportedExtensions', v)}
+                                                disabled={busy}
+                                            />
+                                        </RuleGroup>
+                                    </div>
+
+                                    {/* Sostituzioni Da → A: un gruppo per ambito, così
+                                        l'ambito si legge una volta sola nel titolo. */}
+                                    <h3 className="rule-title">Sostituzioni (Da → A)</h3>
+                                    <div className="rule-groups">
+                                        {REPLACEMENT_SCOPES.map((g) => {
+                                            const rows = (draft.replacements ?? [])
+                                                .map((r, i) => ({ r, i }))
+                                                .filter(({ r }) => (r.scope ?? '') === g.scope)
+                                            return (
+                                                <RuleGroup
+                                                    key={g.scope}
+                                                    title={g.label}
+                                                    hint={g.hint}
+                                                    count={rows.length}
+                                                    tone="yellow"
+                                                >
+                                                    {rows.length === 0 && <p className="rule-empty">Nessuna sostituzione.</p>}
+                                                    {rows.map(({ r, i }) => (
+                                                        <div className="replacement-row" key={i}>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Da"
+                                                                value={r.from}
+                                                                onChange={(e) => updateReplacement(i, 'from', e.target.value)}
+                                                                disabled={busy}
+                                                            />
+                                                            <span className="arrow">→</span>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="A"
+                                                                value={r.to}
+                                                                onChange={(e) => updateReplacement(i, 'to', e.target.value)}
+                                                                disabled={busy}
+                                                            />
+                                                            <button
+                                                                className="ghost small danger"
+                                                                onClick={() => removeReplacement(i)}
+                                                                disabled={busy}
+                                                                aria-label="Rimuovi sostituzione"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <div>
+                                                        <button
+                                                            className="ghost small add-replacement"
+                                                            onClick={() => addReplacement(g.scope)}
+                                                            disabled={busy}
+                                                        >
+                                                            + Aggiungi
+                                                        </button>
+                                                    </div>
+                                                </RuleGroup>
+                                            )
+                                        })}
+                                    </div>
+                                </section>
+                            )}
+
+                            {settingsTab === 'info' && (
+                                <section className="settings about">
+                                    <h2>RenameMusic</h2>
+                                    <p className="about-desc">
+                                        RenameMusic scarica le tue playlist di YouTube direttamente in MP3 e mette in ordine la tua musica in un clic, con nomi puliti e tag di titolo e artista coerenti.
+                                    </p>
+                                    <div className="ytdlp-panel">
+                                        <div className="ytdlp-head">
+                                            <span className="ytdlp-title">Versione {state?.appVersion}</span>
+                                            {state?.update ? (
+                                                <>
+                                                    <span className="ytdlp-badge update-badge">
+                                                        Disponibile la versione {state.update.version}
+                                                    </span>
+                                                    <button
+                                                        className="ghost small with-icon ytdlp-install"
+                                                        onClick={() => state.update && setUpdatePopup(state.update)}
+                                                        disabled={busy}
+                                                    >
+                                                        <span className="btn-icon"><DownloadIcon /></span>
+                                                        Aggiorna
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <Tooltip label="Controlla subito su GitHub se è uscita una nuova versione (l'app lo fa comunque da sola quando è connessa a Internet)">
+                                                    <button
+                                                        className="ghost small with-icon ytdlp-install"
+                                                        onClick={checkUpdate}
+                                                        disabled={busy}
+                                                    >
+                                                        <span className="btn-icon"><RefreshIcon /></span>
+                                                        Verifica aggiornamenti
+                                                    </button>
+                                                </Tooltip>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <dl className="about-list">
+                                        <dt>Autore</dt>
+                                        <dd>Simone D'Alessandro</dd>
+                                        <dt>Codice sorgente</dt>
+                                        <dd>
+                                            <a
+                                                href={REPO_URL}
+                                                onClick={(e) => {
+                                                    e.preventDefault()
+                                                    openURL(REPO_URL)
+                                                }}
+                                            >
+                                                github.com/SimoxSpeed/RenameMusic
+                                            </a>
+                                        </dd>
+                                    </dl>
+
+                                    <hr className="settings-divider" />
+
+                                    <div className="about-disclaimer">
+                                        <h3>Esclusione di responsabilità</h3>
+                                        <p>
+                                            RenameMusic è distribuito così com'è, senza alcuna garanzia. Rinomina e
+                                            sposta file e, se lo attivi, elimina gli originali: prima di usarlo su
+                                            una raccolta a cui tieni, fanne una copia. L'autore non risponde di
+                                            perdite di dati o di altri danni causati dall'uso dell'app.
+                                        </p>
+                                        <p>
+                                            Scaricare da YouTube può violare i suoi Termini di servizio e il diritto
+                                            d'autore: scarica solo contenuti di cui hai i diritti o che sono
+                                            distribuiti liberamente. L'uso che ne fai è sotto la tua responsabilità.
+                                        </p>
+                                    </div>
+                                </section>
                             )}
                         </div>
-
-                        <div className="replacements">
-                            <div className="replacements-head">
-                                <span>Playlist YouTube (nome → link)</span>
-                                <button className="ghost small add-replacement" onClick={addPlaylistDraft} disabled={busy}>
-                                    + Aggiungi
-                                </button>
-                            </div>
-                            {/* Senza playlist una riga vuota è già pronta da compilare,
-                                senza dover premere prima "Aggiungi". */}
-                            {(playlistDraft.length > 0 ? playlistDraft : [{ name: '', url: '' }]).map((p, i) => (
-                                <div className="replacement-row" key={i}>
-                                    <input
-                                        type="text"
-                                        placeholder="Nome"
-                                        value={p.name}
-                                        onChange={(e) => updatePlaylistDraft(i, 'name', e.target.value)}
-                                        disabled={busy}
-                                    />
-                                    <span className="arrow">→</span>
-                                    <input
-                                        type="text"
-                                        placeholder="Link playlist"
-                                        value={p.url}
-                                        onChange={(e) => updatePlaylistDraft(i, 'url', e.target.value)}
-                                        disabled={busy}
-                                    />
-                                    <button
-                                        className="ghost small danger"
-                                        onClick={() => removePlaylistDraft(i)}
-                                        disabled={busy || playlistDraft.length <= 1}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                        </section>
-
-                        <section className="settings">
-                        <h2>Regole di rinomina (salvate su disco)</h2>
-
-                        <div className="ft-alias">
-                            <div className="ft-alias-body">
-                                <label className="ft-alias-dest">
-                                    <span>Alias di destinazione</span>
-                                    <input
-                                        type="text"
-                                        placeholder="ft"
-                                        value={draft.ftAlias ?? ''}
-                                        onChange={(e) => updateFtAlias(e.target.value)}
-                                        disabled={busy}
-                                    />
-                                </label>
-                                <label className="ft-alias-sources">
-                                    <span>Occorrenze da sostituire</span>
-                                    <textarea
-                                        rows={6}
-                                        value={listToText(draft.occurrenciesToReplaceWithFt)}
-                                        onChange={(e) =>
-                                            updateDraftList('occurrenciesToReplaceWithFt', e.target.value)
-                                        }
-                                        disabled={busy}
-                                    />
-                                </label>
-                            </div>
-                        </div>
-
-                        <hr className="settings-divider" />
-
-                        <div className="settings-grid">
-                            <label>
-                                <span>Estensioni supportate</span>
-                                <textarea
-                                    rows={6}
-                                    value={listToText(draft.supportedExtensions)}
-                                    onChange={(e) => updateDraftList('supportedExtensions', e.target.value)}
-                                    disabled={busy}
-                                />
-                            </label>
-                            <label>
-                                <span>Occorrenze da rimuovere</span>
-                                <textarea
-                                    rows={6}
-                                    value={listToText(draft.occurrenciesToRemove)}
-                                    onChange={(e) => updateDraftList('occurrenciesToRemove', e.target.value)}
-                                    disabled={busy}
-                                />
-                            </label>
-                            <label>
-                                <span>Nomi d'arte da non separare</span>
-                                <textarea
-                                    rows={6}
-                                    value={listToText(draft.artistExceptions)}
-                                    onChange={(e) => updateDraftList('artistExceptions', e.target.value)}
-                                    disabled={busy}
-                                />
-                            </label>
-                        </div>
-
-                        <div className="replacements">
-                            <div className="replacements-head">
-                                <span>Sostituzioni (Da → A)</span>
-                                <button className="ghost small add-replacement" onClick={addReplacement} disabled={busy}>
-                                    + Aggiungi
-                                </button>
-                            </div>
-                            {replacementRows().map((r, i) => (
-                                <div className="replacement-row" key={i}>
-                                    <input
-                                        type="text"
-                                        placeholder="Da"
-                                        value={r.from}
-                                        onChange={(e) => updateReplacement(i, 'from', e.target.value)}
-                                        disabled={busy}
-                                    />
-                                    <span className="arrow">→</span>
-                                    <input
-                                        type="text"
-                                        placeholder="A"
-                                        value={r.to}
-                                        onChange={(e) => updateReplacement(i, 'to', e.target.value)}
-                                        disabled={busy}
-                                    />
-                                    <Tooltip label="Dove applicare la sostituzione: su tutto il nome, solo sulla parte artista (prima di « - ») o solo sul titolo (dopo « - »)">
-                                        <Select
-                                            className="select-scope"
-                                            value={r.scope ?? ''}
-                                            options={[
-                                                { value: '', label: 'Tutto' },
-                                                { value: 'artist', label: 'Solo artista' },
-                                                { value: 'title', label: 'Solo titolo' },
-                                            ]}
-                                            onChange={(v) => updateReplacement(i, 'scope', v)}
-                                            disabled={busy}
-                                        />
-                                    </Tooltip>
-                                    <button
-                                        className="ghost small danger"
-                                        onClick={() => removeReplacement(i)}
-                                        disabled={busy || (draft.replacements ?? []).length <= 1}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-
-                        <section className="settings">
-                        <h2>Aggiornamenti</h2>
-                        <div className="ytdlp-panel">
-                            <div className="ytdlp-head">
-                                <span className="ytdlp-title">RenameMusic {state?.appVersion}</span>
-                                {state?.update ? (
-                                    <>
-                                        <span className="ytdlp-badge update-badge">
-                                            Disponibile la versione {state.update.version}
-                                        </span>
-                                        <button
-                                            className="ghost small with-icon ytdlp-install"
-                                            onClick={() => state.update && setUpdatePopup(state.update)}
-                                            disabled={busy}
-                                        >
-                                            <span className="btn-icon"><DownloadIcon /></span>
-                                            Aggiorna
-                                        </button>
-                                    </>
-                                ) : (
-                                    <Tooltip label="Controlla subito su GitHub se è uscita una nuova versione (l'app lo fa comunque da sola quando è connessa a Internet)">
-                                        <button
-                                            className="ghost small with-icon ytdlp-install"
-                                            onClick={checkUpdate}
-                                            disabled={busy}
-                                        >
-                                            <span className="btn-icon"><RefreshIcon /></span>
-                                            Verifica aggiornamenti
-                                        </button>
-                                    </Tooltip>
-                                )}
-                            </div>
-                        </div>
-                        </section>
-                    </>
+                    </div>
                 )}
 
                 {/* In modalità semplificata niente anteprima: il pannello compare
@@ -2812,36 +3167,6 @@ function App() {
                 )}
             </main>
 
-            {showSettings && draft && (
-                <div className="settings-bottombar" ref={bottombarRef}>
-                    <div className="settings-bottombar-inner">
-                        <button className="ghost with-icon settings-back" onClick={backFromSettings} disabled={busy}>
-                            <span className="btn-icon"><BackIcon /></span>
-                            Indietro
-                        </button>
-                        <div className="settings-bottombar-actions">
-                            <button onClick={revertDraft} disabled={busy || !settingsDirty}>
-                                Annulla modifiche
-                            </button>
-                            <button onClick={resetConfig} disabled={busy}>
-                                Ripristina predefiniti
-                            </button>
-                            <span className="settings-actions-sep" aria-hidden="true" />
-                            <button className="warn-solid" onClick={() => setConfirmDefault(true)} disabled={busy}>
-                                Salva come predefinito
-                            </button>
-                            <span className="settings-actions-sep" aria-hidden="true" />
-                            <button className="primary" onClick={saveSettings} disabled={busy}>
-                                Salva
-                            </button>
-                            <button className="accent" onClick={saveSettingsAndExit} disabled={busy}>
-                                Salva ed esci
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {folderPicker && (
                 <FolderPicker
                     title={folderPicker === 'dest' ? 'Cartella di destinazione' : 'Cartella di partenza'}
@@ -3042,14 +3367,36 @@ function App() {
                         <h3>Disinstallare yt-dlp?</h3>
                         <p>
                             La copia gestita dall'app in <code>%AppData%\RenameMusic</code> verrà
-                            <strong> rimossa</strong>, insieme a quella di ffmpeg. Potrai riscaricarla in qualsiasi momento dal
-                            prossimo "Scarica" di una playlist.
+                            <strong> rimossa</strong> (ffmpeg resta). Potrai riscaricarla in qualsiasi momento
+                            dal tasto accanto a yt-dlp o dal prossimo download di una playlist.
                         </p>
                         <div className="modal-actions">
                             <button onClick={() => setConfirmUninstallYtDlp(false)} disabled={busy}>
                                 Annulla
                             </button>
                             <button className="danger-solid" onClick={uninstallYtDlp} disabled={busy}>
+                                Disinstalla
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {confirmUninstallFFmpeg && (
+                <div className="modal-overlay" onClick={() => setConfirmUninstallFFmpeg(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Disinstallare ffmpeg?</h3>
+                        <p>
+                            La copia gestita dall'app in <code>%AppData%\RenameMusic\ffmpeg</code> verrà
+                            <strong> rimossa</strong>. Senza ffmpeg non si possono scaricare playlist in mp3:
+                            potrai riscaricarlo dal tasto accanto a ffmpeg o dal prossimo download di una
+                            playlist.
+                        </p>
+                        <div className="modal-actions">
+                            <button onClick={() => setConfirmUninstallFFmpeg(false)} disabled={busy}>
+                                Annulla
+                            </button>
+                            <button className="danger-solid" onClick={uninstallFFmpeg} disabled={busy}>
                                 Disinstalla
                             </button>
                         </div>
@@ -3110,23 +3457,21 @@ function App() {
                 </div>
             )}
 
-            {confirmLeaveSettings && (
-                <div className="modal-overlay" onClick={() => setConfirmLeaveSettings(false)}>
+            {confirmReset && (
+                <div className="modal-overlay" onClick={() => setConfirmReset(false)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Uscire dalle impostazioni?</h3>
+                        <h3>Ripristinare i predefiniti?</h3>
                         <p>
-                            Ci sono <strong>modifiche non salvate</strong>. Vuoi salvarle prima di
-                            tornare indietro oppure scartarle?
+                            Regole di rinomina, playlist e modalità semplificata verranno{' '}
+                            <strong>sostituite</strong> dai valori predefiniti. Le impostazioni attuali andranno
+                            perse.
                         </p>
                         <div className="modal-actions">
-                            <button onClick={() => setConfirmLeaveSettings(false)} disabled={busy}>
+                            <button onClick={() => setConfirmReset(false)} disabled={busy}>
                                 Annulla
                             </button>
-                            <button className="danger" onClick={discardSettingsAndLeave} disabled={busy}>
-                                Scarta modifiche
-                            </button>
-                            <button className="primary" onClick={saveSettingsAndLeaveFromPrompt} disabled={busy}>
-                                Salva ed esci
+                            <button className="danger" onClick={confirmResetConfig} disabled={busy}>
+                                Ripristina
                             </button>
                         </div>
                     </div>
@@ -3136,11 +3481,11 @@ function App() {
             {confirmDefault && (
                 <div className="modal-overlay" onClick={() => setConfirmDefault(false)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Rendere queste regole il nuovo predefinito?</h3>
+                        <h3>Salvare come predefiniti?</h3>
                         <p>
-                            I predefiniti attuali verranno <strong>sovrascritti</strong> con le regole
-                            correnti e salvati su disco. "Ripristina predefiniti" userà d'ora in poi queste
-                            regole.
+                            I predefiniti attuali verranno <strong>sovrascritti</strong> con le regole di
+                            rinomina, le playlist e la modalità semplificata correnti. "Ripristina predefiniti"
+                            userà d'ora in poi questi valori.
                         </p>
                         <div className="modal-actions">
                             <button onClick={() => setConfirmDefault(false)} disabled={busy}>
@@ -3174,7 +3519,7 @@ function App() {
                                 label={installLabel(installProgress)}
                             />
                         )}
-                        <p className="update-later">Puoi aggiornare anche più tardi dalle Impostazioni.</p>
+                        <p className="update-later">Puoi aggiornare anche più tardi dalla scheda Info delle Impostazioni.</p>
                         <div className="modal-actions">
                             <button onClick={() => setUpdatePopup(null)} disabled={busy}>
                                 Più tardi
@@ -3191,7 +3536,6 @@ function App() {
                 className="toast-container"
                 aria-live="polite"
                 aria-atomic="false"
-                style={{ '--toast-offset': toastOffset + 'px' } as CSSProperties}
             >
                 {toasts.map((t) => (
                     <div key={t.id} className={'toast ' + (t.ok ? 'toast-ok' : 'toast-err')} role="status">

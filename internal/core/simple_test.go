@@ -55,6 +55,8 @@ func (fakeYtDlp) Update(string) (bool, error)             { return false, nil }
 func (fakeYtDlp) Uninstall(string) error                  { return nil }
 func (fakeYtDlp) FFmpegAvailable() bool                   { return true }
 func (fakeYtDlp) InstallFFmpeg(playlist.Progress) error   { return nil }
+func (fakeYtDlp) FFmpegManaged() bool                     { return false }
+func (fakeYtDlp) UninstallFFmpeg() error                  { return nil }
 func (f fakeYtDlp) Runner(string) playlist.Runner         { return f.runner }
 func (fakeYtDlp) Workers() int                            { return 1 }
 

@@ -150,9 +150,11 @@ type App struct {
 	ytDlpPath      string
 	ytDlpAvailable bool
 	ytDlpVersion   string
-	// ffmpegAvailable: cache di YtDlp.FFmpegAvailable (ffmpeg serve a yt-dlp
-	// per l'mp3), ricalcolata insieme allo stato di yt-dlp.
+	// ffmpegAvailable / ffmpegManaged: cache di YtDlp.FFmpegAvailable (ffmpeg
+	// serve a yt-dlp per l'mp3) e YtDlp.FFmpegManaged (c'è la copia gestita
+	// dall'app, rimovibile), ricalcolate insieme allo stato di yt-dlp.
 	ffmpegAvailable bool
+	ffmpegManaged   bool
 
 	watcher *watcher.Watcher
 
@@ -263,6 +265,7 @@ type StateResponse struct {
 	YtDlpAvailable     bool                `json:"ytDlpAvailable"`
 	YtDlpVersion       string              `json:"ytDlpVersion"`
 	FFmpegAvailable    bool                `json:"ffmpegAvailable"`
+	FFmpegManaged      bool                `json:"ffmpegManaged"`
 	AppVersion         string              `json:"appVersion"`
 	// Update è la nuova versione disponibile (assente se l'app è aggiornata o
 	// il controllo non è ancora riuscito).
@@ -432,6 +435,7 @@ func (a *App) refreshYtDlpStatus() {
 		a.ytDlpVersion = ""
 	}
 	a.ffmpegAvailable = a.yt().FFmpegAvailable()
+	a.ffmpegManaged = a.yt().FFmpegManaged()
 }
 
 // Start esegue le operazioni di avvio (pulizia temporanei, stato di yt-dlp,
@@ -703,10 +707,9 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 		a.currentTags = currentTags
 		a.watchPaused = false
 	}
+	// Nessuna riga di log sul successo: la UI salva le regole a ogni modifica.
 	if saveErr != nil {
 		a.addLogLocked(LogError, "Configurazione applicata ma NON salvata: "+saveErr.Error())
-	} else {
-		a.addLogLocked(LogSuccess, "Configurazione salvata.")
 	}
 	if scanErr != nil {
 		a.addLogLocked(LogError, "Scansione con le nuove regole fallita: "+scanErr.Error())
@@ -898,10 +901,9 @@ func (a *App) SetPlaylists(list []playlist.Playlist) ActionResponse {
 
 	a.mu.Lock()
 	a.playlists = cleaned
+	// Nessuna riga di log sul successo: la UI salva le playlist a ogni modifica.
 	if saveErr != nil {
 		a.addLogLocked(LogError, "Playlist aggiornate ma NON salvate su disco: "+saveErr.Error())
-	} else {
-		a.addLogLocked(LogSuccess, "Playlist salvate.")
 	}
 	state := a.snapshot()
 	a.mu.Unlock()
@@ -1003,6 +1005,24 @@ func (a *App) InstallFFmpeg() ActionResponse {
 	}
 	a.addLogLocked(LogSuccess, "ffmpeg installato.")
 	return ActionResponse{OK: true, Message: "ffmpeg installato.", State: a.snapshot()}
+}
+
+// UninstallFFmpeg rimuove la copia di ffmpeg gestita dall'app
+// (%AppData%\RenameMusic\ffmpeg). Un ffmpeg di sistema (nel PATH) non viene
+// toccato e, se c'è, resta in uso.
+func (a *App) UninstallFFmpeg() ActionResponse {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if err := a.yt().UninstallFFmpeg(); err != nil {
+		msg := "Rimozione di ffmpeg fallita: " + err.Error()
+		a.addLogLocked(LogError, msg)
+		return ActionResponse{OK: false, Message: msg, State: a.snapshot()}
+	}
+
+	a.refreshYtDlpStatus()
+	a.addLogLocked(LogSuccess, "ffmpeg rimosso.")
+	return ActionResponse{OK: true, Message: "ffmpeg rimosso.", State: a.snapshot()}
 }
 
 // UninstallYtDlp rimuove la copia di yt-dlp gestita dall'app
@@ -1828,6 +1848,7 @@ func (a *App) snapshot() StateResponse {
 		YtDlpAvailable:     a.ytDlpAvailable,
 		YtDlpVersion:       a.ytDlpVersion,
 		FFmpegAvailable:    a.ffmpegAvailable,
+		FFmpegManaged:      a.ffmpegManaged,
 		AppVersion:         update.Version,
 		Update:             a.updateViewLocked(),
 	}
