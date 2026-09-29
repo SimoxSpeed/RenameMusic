@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import { ListDirectory, MakeDirectory, type FolderListing } from './api'
+import { ChevronIcon, FolderIcon, UpIcon } from './icons'
 
 // FolderPicker: selettore di cartelle interno all'app, usato su Android al
 // posto del dialog di sistema. Il selettore di Android (SAF) non restituisce
@@ -8,34 +9,6 @@ import { ListDirectory, MakeDirectory, type FolderListing } from './api'
 // memoria né Download; con l'accesso a tutti i file navighiamo direttamente il
 // filesystem tramite il core (ListDirectory/MakeDirectory). Il tasto Indietro
 // del telefono risale di una cartella, e alla radice chiude il selettore.
-
-function FolderIcon() {
-    return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-        </svg>
-    )
-}
-
-function UpIcon() {
-    return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 19V5" />
-            <path d="M5 12l7-7 7 7" />
-        </svg>
-    )
-}
-
-function ChevronIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M9 6l6 6-6 6" />
-        </svg>
-    )
-}
 
 // displayPath mostra il percorso relativo al volume ("Memoria interna / Music")
 // invece del percorso tecnico (/storage/emulated/0/Music).
