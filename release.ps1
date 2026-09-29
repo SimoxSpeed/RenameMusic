@@ -179,6 +179,20 @@ function Invoke-Quiet([string]$what, [scriptblock]$block) {
     if ($code -ne 0) { throw "$what fallito (exit code $code)" }
 }
 
+# Output di git da mostrare (log, status), letto come UTF-8: Windows PowerShell
+# 5.1 lo decodificherebbe con la codepage OEM della console e l'emoji del
+# messaggio di commit apparirebbe come "≡ƒÜÇ" (solo a video: il commit è
+# corretto).
+function Get-GitOutput([string[]]$gitArgs) {
+    $prev = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = $utf8
+        return (& git @gitArgs)
+    } finally {
+        [Console]::OutputEncoding = $prev
+    }
+}
+
 function Show-Asset([string]$rel) {
     $path = Join-Path $root $rel
     if (Test-Path -LiteralPath $path) {
@@ -493,12 +507,12 @@ try {
     $hasChanges = $LASTEXITCODE -ne 0
     if ($hasChanges) {
         Write-Host '  File nel commit' -ForegroundColor White
-        foreach ($f in @(git status --short)) { Detail $f }
+        foreach ($f in (Get-GitOutput @('status', '--short'))) { Detail $f }
         Write-Host '  Messaggio      ' -NoNewline -ForegroundColor White
         Write-Host $message -ForegroundColor Green
     } else {
         Warn "Nessuna modifica da committare: il tag $tag andrà sul commit corrente"
-        Detail (git log --oneline -1)
+        Detail (Get-GitOutput @('log', '--oneline', '-1'))
     }
     Write-Host '  Tag            ' -NoNewline -ForegroundColor White
     Write-Host $tag -NoNewline -ForegroundColor Green
@@ -538,7 +552,7 @@ try {
             Remove-Item $msgFile -ErrorAction SilentlyContinue
         }
         $committed = $true
-        Ok ("Commit {0}" -f (git log --oneline -1))
+        Ok ("Commit {0}" -f (Get-GitOutput @('log', '--oneline', '-1')))
     }
 
     if ($retag) {
