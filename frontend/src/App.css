@@ -1054,7 +1054,7 @@ tr.changed td {
    larghezza. */
 .top-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 380px;
     gap: 16px;
     margin-bottom: 16px;
 }
