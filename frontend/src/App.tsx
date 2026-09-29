@@ -1788,6 +1788,16 @@ function App() {
             syncOptions(inst.state)
             notify(inst.ok, inst.message ?? '')
             if (!inst.ok) return
+            // InstallYtDlp scarica solo yt-dlp: se manca anche ffmpeg (serve per
+            // gli mp3) lo scarichiamo qui, come annunciato dal popup.
+            if (!isAndroid && !inst.state.ffmpegAvailable) {
+                const ff = await InstallFFmpeg()
+                setInstallProgress(null)
+                absorb(ff)
+                syncOptions(ff.state)
+                notify(ff.ok, ff.message ?? '')
+                if (!ff.ok) return
+            }
             await playlistStep()
         })
     }
@@ -3209,13 +3219,12 @@ function App() {
                             Verrà scaricata l'ultima versione ufficiale di <strong>yt-dlp</strong> da
                             Internet (GitHub){isAndroid ? (
                                 <>, al posto di quella integrata nell'app</>
+                            ) : state?.ytDlpEffectivePath ? (
+                                <> in <code>{state.ytDlpEffectivePath}</code></>
                             ) : ytDlpManaged ? (
                                 <> in <code>%AppData%\RenameMusic</code></>
                             ) : (
                                 <> nel percorso indicato</>
-                            )}
-                            {!isAndroid && !state?.ffmpegAvailable && (
-                                <>, insieme a <strong>ffmpeg</strong> (circa 200 MB, serve per creare gli mp3)</>
                             )}. Assicurati di scaricarlo solo da una fonte di cui ti fidi.
                         </p>
                         <div className="modal-actions">

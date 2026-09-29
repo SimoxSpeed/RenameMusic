@@ -946,9 +946,9 @@ func (a *App) ChooseYtDlpFile() string {
 // InstallYtDlp scarica l'ultima versione ufficiale di yt-dlp nel percorso
 // effettivo in uso (la copia gestita in %AppData%\RenameMusic se "gestisci
 // autonomamente" è attivo, altrimenti il percorso personalizzato) sovrascrivendo
-// il file eventualmente presente: funge quindi anche da "Aggiorna". Se manca
-// ffmpeg (necessario a yt-dlp per l'mp3) scarica anche quello, così un solo
-// "Scarica" rende l'app pronta per le playlist.
+// il file eventualmente presente: funge quindi anche da "Aggiorna". Scarica
+// solo yt-dlp: ffmpeg ha il suo InstallFFmpeg (la UI li concatena solo nel
+// "Scarica" di una playlist, quando mancano entrambi).
 func (a *App) InstallYtDlp() ActionResponse {
 	a.mu.Lock()
 	dest := a.ytDlpEffectivePath()
@@ -979,13 +979,9 @@ func (a *App) InstallYtDlp() ActionResponse {
 		msg = "yt-dlp installato (versione " + a.ytDlpVersion + ")."
 	}
 	a.addLogLocked(LogSuccess, msg)
-	needFFmpeg := !a.ffmpegAvailable
+	state := a.snapshot()
 	a.mu.Unlock()
-
-	if needFFmpeg {
-		return a.InstallFFmpeg()
-	}
-	return ActionResponse{OK: true, Message: msg, State: a.snapshotLocked()}
+	return ActionResponse{OK: true, Message: msg, State: state}
 }
 
 // InstallFFmpeg scarica l'ultima build di ffmpeg nella copia gestita dall'app
