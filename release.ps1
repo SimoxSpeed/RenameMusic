@@ -3,7 +3,10 @@
     Pubblica una nuova versione di RenameMusic: versione, build, commit, tag e push.
 
 .DESCRIPTION
-    1. controlli: branch, tag libero (in locale e su origin), modifiche pendenti
+    1. controlli: branch, tag libero (in locale e su origin), modifiche
+       pendenti e GitHub CLI. Con gh pronta apre nel Blocco note un file
+       temporaneo vuoto in cui scrivere le note di rilascio: letto il testo,
+       il file si elimina (le note restano solo in memoria)
     2. incrementa la versione in internal/update/update.go (update.Version,
        unica fonte della versione: la usano il controllo aggiornamenti e l'APK)
     3. compila l'exe desktop (wails build)
@@ -11,7 +14,10 @@
     5. commit di tutte le modifiche (dopo conferma) con il messaggio fisso
        "chore(release): 🚀 release <versione>", tag annotato v<versione> e push
        di branch e tag insieme (--atomic: o tutti e due o nessuno)
-    6. apre su GitHub la pagina della nuova release, a cui allegare i file
+    6. crea la release su GitHub con GitHub CLI (gh): titolo "RenameMusic
+       <versione>", le note scritte al passo 1 ed exe + APK allegati.
+       Senza gh (o se non è autenticata) apre la pagina della nuova release,
+       da completare a mano.
 
     Se qualcosa fallisce, o alla conferma rispondi no, non viene committato
     nulla e lo script annulla da solo le sue modifiche (versione, staging,
@@ -62,7 +68,8 @@ $ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot
 $versionFile = Join-Path $root 'internal\update\update.go'
 $versionFileRel = 'internal\update\update.go'
-$repoUrl = 'https://github.com/SimoxSpeed/RenameMusic'
+$repoSlug = 'SimoxSpeed/RenameMusic'
+$repoUrl = "https://github.com/$repoSlug"
 $desktopAsset = 'build\bin\RenameMusic.exe'
 $apkAssets = @('build\bin\RenameMusic-arm64-v8a.apk', 'build\bin\RenameMusic-x86_64.apk')
 $allAssets = @($desktopAsset) + $apkAssets
@@ -179,6 +186,13 @@ function Show-Asset([string]$rel) {
     }
 }
 
+# Tutti i file da allegare alla release devono esserci prima del commit: una
+# release senza exe o APK non si aggiorna.
+function Assert-Assets {
+    $missing = @($allAssets | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root $_)) })
+    if ($missing.Count -gt 0) { throw ("File da pubblicare mancanti: {0}" -f ($missing -join ', ')) }
+}
+
 # Sposta da parte exe e APK attuali prima delle build: se la release non va in
 # porto Restore-Assets li rimette al loro posto, così in build\bin non restano
 # file compilati con una versione mai pubblicata (che crederebbero di essere
@@ -208,6 +222,27 @@ function Restore-Assets {
     $script:assetsBackedUp = $false
 }
 
+# Le note di rilascio si scrivono solo qui: un file temporaneo vuoto aperto nel
+# Blocco note, letto quando si preme Invio ed eliminato subito dopo (anche se
+# si annulla con Ctrl+C). Il testo resta solo in memoria.
+function Read-ReleaseNotes {
+    $file = Join-Path ([System.IO.Path]::GetTempPath()) ("RenameMusic-note-{0}-{1}.txt" -f $Version, [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+        [System.IO.File]::WriteAllText($file, '', $utf8)
+        Start-Process notepad.exe -ArgumentList "`"$file`""
+        Write-Host '  ' -NoNewline
+        Badge '?' Black Magenta
+        Write-Host ' Scrivi le note di rilascio nel Blocco note (compaiono nel popup di aggiornamento),' -ForegroundColor White
+        Write-Host '      salva e premi Invio qui per continuare ' -NoNewline -ForegroundColor White
+        Read-Host | Out-Null
+        # Senza encoding esplicito ReadAllText riconosce il BOM e altrimenti
+        # legge in UTF-8, come salva il Blocco note.
+        return [System.IO.File]::ReadAllText($file).Trim()
+    } finally {
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # ---- Stato, per spiegare come tornare indietro se qualcosa va storto ---------------
 
 $versionWritten = $false
@@ -218,6 +253,7 @@ $committed = $false
 $tagged = $false
 $pushed = $false
 $assetsBackedUp = $false
+$ghReady = $false
 $tag = ''
 
 # Annulla da solo quello che lo script ha fatto prima del commit (versione in
@@ -360,6 +396,23 @@ try {
         Warn 'wails dev è in esecuzione: l''app di sviluppo prenderà la versione nuova; se la release si annulla riavvialo'
     }
 
+    # Release su GitHub automatica solo con gh installata e autenticata; le note
+    # si scrivono subito, per non accorgersene dopo build e push.
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        gh auth status --hostname github.com *> $null
+        $ghReady = $LASTEXITCODE -eq 0
+        if (-not $ghReady) { Warn 'GitHub CLI non autenticata (gh auth login): la release su GitHub sarà da creare a mano' }
+    } else {
+        Warn 'GitHub CLI non trovata (winget install GitHub.cli): la release su GitHub sarà da creare a mano'
+    }
+    if ($ghReady) {
+        $notesText = Read-ReleaseNotes
+        if (-not $notesText) {
+            throw 'Note di rilascio vuote: scrivile nel Blocco note e salva prima di premere Invio.'
+        }
+        Ok ("Release su GitHub automatica (gh), note scritte ({0} righe)" -f @($notesText -split "`r?`n").Count)
+    }
+
     # ---- 2. Versione --------------------------------------------------------------
 
     Step 2 'Versione'
@@ -393,6 +446,7 @@ try {
         Invoke-Checked 'build-apk.ps1' { powershell @apkArgs }
         foreach ($a in $apkAssets) { Show-Asset $a }
     }
+    Assert-Assets
 
     # ---- 5. Commit, tag, push -----------------------------------------------------
 
@@ -415,12 +469,16 @@ try {
     Write-Host $tag -ForegroundColor Green
     Write-Host '  Push su        ' -NoNewline -ForegroundColor White
     Write-Host "origin/$branch" -ForegroundColor Green
+    Write-Host '  Release GitHub ' -NoNewline -ForegroundColor White
+    if ($ghReady) { Write-Host "RenameMusic $Version, note scritte al passo 1, 3 file allegati" -ForegroundColor Green }
+    else { Write-Host 'da creare a mano nel browser' -ForegroundColor Yellow }
 
     if (-not $Yes) {
         Write-Host ''
         Write-Host '  ' -NoNewline
         Badge '?' Black Magenta
-        Write-Host ' Procedere con commit, tag e push? ' -NoNewline -ForegroundColor White
+        $what = if ($ghReady) { 'commit, tag, push e release su GitHub' } else { 'commit, tag e push' }
+        Write-Host " Procedere con ${what}? " -NoNewline -ForegroundColor White
         Write-Host '[s/N] ' -NoNewline -ForegroundColor Yellow
         $answer = Read-Host
         if ($answer -notmatch '^(s|si|sì|y|yes)$') {
@@ -467,17 +525,54 @@ try {
     # ---- 6. Release su GitHub -----------------------------------------------------
 
     Step 6 'Release su GitHub'
-    $releaseUrl = "$repoUrl/releases/new?tag=$tag&title=RenameMusic%20$Version"
-    Write-Host '  Nella pagina aperta nel browser:' -ForegroundColor White
-    Write-Host '    1. allega questi file, con questi nomi esatti:' -ForegroundColor Gray
-    foreach ($a in @($desktopAsset) + $apkAssets) { Write-Host "         $(Join-Path $root $a)" -ForegroundColor Cyan }
-    Write-Host '    2. scrivi le novità nella descrizione (compaiono nel popup di aggiornamento)' -ForegroundColor Gray
-    Write-Host '    3. lascia spento "Set as a pre-release" e premi "Publish release"' -ForegroundColor Gray
-    Detail $releaseUrl
-    Start-Process $releaseUrl
+    $assetPaths = @($allAssets | ForEach-Object { Join-Path $root $_ })
+    $published = $false
+    if ($ghReady) {
+        Detail 'Creazione della release e caricamento di exe e APK...'
+        # gh carica i file col loro nome (quelli esatti che cerca l'app) e
+        # pubblica la release solo a caricamento finito. --verify-tag: il tag
+        # deve già essere su origin (appena fatto il push).
+        # Le note passano da un file temporaneo che esiste solo per questa
+        # chiamata: come argomento, PowerShell 5.1 rovinerebbe virgolette e a capo.
+        $ghNotes = [System.IO.Path]::GetTempFileName()
+        try {
+            [System.IO.File]::WriteAllText($ghNotes, $notesText, $utf8)
+            gh release create $tag @assetPaths --repo $repoSlug --title "RenameMusic $Version" --notes-file $ghNotes --verify-tag
+            $ghCode = $LASTEXITCODE
+        } finally {
+            Remove-Item -LiteralPath $ghNotes -Force -ErrorAction SilentlyContinue
+        }
+        if ($ghCode -eq 0) {
+            $published = $true
+            $releaseUrl = "$repoUrl/releases/tag/$tag"
+            Ok "Release pubblicata: $releaseUrl"
+            Start-Process $releaseUrl
+        } else {
+            Warn "gh release create fallito (exit code $ghCode)"
+            Detail "Controlla $repoUrl/releases: se è rimasta una bozza, eliminala o completala."
+            Detail "Oppure creala a mano da $repoUrl/releases/new?tag=$tag allegando:"
+            foreach ($p in $assetPaths) { Detail "  $p" }
+            Detail 'con queste note (copiale da qui, non sono salvate altrove):'
+            Write-Host ''
+            foreach ($l in ($notesText -split "`r?`n")) { Write-Host "    $l" -ForegroundColor Cyan }
+        }
+    } else {
+        $releaseUrl = "$repoUrl/releases/new?tag=$tag&title=RenameMusic%20$Version"
+        Write-Host '  Nella pagina aperta nel browser:' -ForegroundColor White
+        Write-Host '    1. allega questi file, con questi nomi esatti:' -ForegroundColor Gray
+        foreach ($p in $assetPaths) { Write-Host "         $p" -ForegroundColor Cyan }
+        Write-Host "    2. scrivi le novità nella descrizione (compaiono nel popup di aggiornamento)" -ForegroundColor Gray
+        Write-Host '    3. lascia spento "Set as a pre-release" e premi "Publish release"' -ForegroundColor Gray
+        Detail $releaseUrl
+        Start-Process $releaseUrl
+    }
 
-    Banner 'FATTO' Black Green Green "RenameMusic ${Version}: tag $tag su origin/$branch  ($(Elapsed))"
-    Write-Host '  Manca solo pubblicare la release su GitHub con i 3 file allegati.' -ForegroundColor Gray
+    if ($published) {
+        Banner 'FATTO' Black Green Green "RenameMusic ${Version} pubblicata: tag $tag su origin/$branch  ($(Elapsed))"
+    } else {
+        Banner 'FATTO' Black Green Green "RenameMusic ${Version}: tag $tag su origin/$branch  ($(Elapsed))"
+        Write-Host '  Manca solo pubblicare la release su GitHub con i 3 file allegati.' -ForegroundColor Gray
+    }
     Write-Host ''
 } catch {
     Banner 'ERRORE' White DarkRed Red "Release interrotta: $($_.Exception.Message)"
