@@ -3,6 +3,8 @@ package playlist
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,10 +15,18 @@ import (
 	"sync/atomic"
 )
 
-// ytDlpDownloadURL è l'ultima release ufficiale di yt-dlp per Windows: il
-// redirect "latest" punta sempre alla versione più recente, così l'installazione
-// dalla UI scarica sempre l'aggiornamento corrente.
-const ytDlpDownloadURL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+// ytDlpReleaseURL è la base dei file di una release ufficiale di yt-dlp
+// (seguita da "/<versione>/<file>"). Si scarica sempre da una versione
+// precisa, non da "latest", così eseguibile e impronte arrivano dalla stessa
+// release anche se ne esce una nuova fra le due richieste.
+const ytDlpReleaseURL = "https://github.com/yt-dlp/yt-dlp/releases/download"
+
+// ytDlpAsset e ytDlpSumsAsset sono l'eseguibile Windows e il file con le sue
+// impronte sha256, pubblicati in ogni release.
+const (
+	ytDlpAsset     = "yt-dlp.exe"
+	ytDlpSumsAsset = "SHA2-256SUMS"
+)
 
 // Options controlla un'esecuzione di Download.
 type Options struct {
@@ -87,13 +97,30 @@ func VersionWith(r Runner) string {
 }
 
 // Install scarica l'ultima release ufficiale di yt-dlp.exe e la salva in
-// `destPath` (creando le cartelle mancanti), sovrascrivendo il file eventualmente
-// presente: funge quindi sia da installazione sia da aggiornamento. Scrittura
-// atomica: scarica su un file temporaneo nella stessa cartella e poi lo rinomina
-// sul percorso finale, così un download interrotto non lascia un eseguibile
-// parziale al posto giusto (né cancella quello funzionante finché il nuovo non è
-// pronto). `progress` (può essere nil) riceve l'avanzamento del download.
+// `destPath`: vedi InstallVersion.
 func Install(destPath string, progress Progress) error {
+	version, err := LatestVersion()
+	if err != nil {
+		return err
+	}
+	return InstallVersion(destPath, version, progress)
+}
+
+// InstallVersion scarica yt-dlp.exe della release `version` e lo salva in
+// `destPath` (creando le cartelle mancanti), sovrascrivendo il file
+// eventualmente presente: funge quindi sia da installazione sia da
+// aggiornamento. Il file scaricato deve avere l'impronta sha256 pubblicata
+// nella release. Scrittura atomica: scarica su un file temporaneo nella stessa
+// cartella e poi lo rinomina sul percorso finale, così un download interrotto
+// o corrotto non lascia un eseguibile parziale al posto giusto (né cancella
+// quello funzionante finché il nuovo non è pronto). `progress` (può essere
+// nil) riceve l'avanzamento del download.
+func InstallVersion(destPath, version string, progress Progress) error {
+	base := ytDlpReleaseURL + "/" + version + "/"
+	return installYtDlp(destPath, base+ytDlpAsset, base+ytDlpSumsAsset, progress)
+}
+
+func installYtDlp(destPath, exeURL, sumsURL string, progress Progress) error {
 	if destPath == "" {
 		return fmt.Errorf("percorso di destinazione non specificato")
 	}
@@ -102,7 +129,12 @@ func Install(destPath string, progress Progress) error {
 		return fmt.Errorf("impossibile creare la cartella %s: %w", dir, err)
 	}
 
-	resp, err := http.Get(ytDlpDownloadURL)
+	want, err := fetchSHA256(sumsURL, ytDlpAsset)
+	if err != nil {
+		return fmt.Errorf("download di yt-dlp fallito: %w", err)
+	}
+
+	resp, err := http.Get(exeURL)
 	if err != nil {
 		return fmt.Errorf("download di yt-dlp fallito: %w", err)
 	}
@@ -117,8 +149,9 @@ func Install(destPath string, progress Progress) error {
 	}
 	tmpPath := tmp.Name()
 
+	hash := sha256.New()
 	pw := newProgressWriter(progress, PhaseDownload, resp.ContentLength)
-	_, copyErr := io.Copy(tmp, io.TeeReader(resp.Body, pw))
+	_, copyErr := io.Copy(io.MultiWriter(tmp, hash), io.TeeReader(resp.Body, pw))
 	closeErr := tmp.Close()
 	if copyErr != nil {
 		os.Remove(tmpPath)
@@ -127,6 +160,10 @@ func Install(destPath string, progress Progress) error {
 	if closeErr != nil {
 		os.Remove(tmpPath)
 		return closeErr
+	}
+	if hex.EncodeToString(hash.Sum(nil)) != want {
+		os.Remove(tmpPath)
+		return fmt.Errorf("download di yt-dlp fallito: %w", errChecksumMismatch)
 	}
 
 	if err := os.Rename(tmpPath, destPath); err != nil {

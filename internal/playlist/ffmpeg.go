@@ -2,6 +2,8 @@ package playlist
 
 import (
 	"archive/zip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +17,11 @@ import (
 // (la stessa consigliata nel suo README, con le patch per yt-dlp): il tag
 // "latest" punta sempre alla build più recente. Lo zip contiene
 // <cartella>/bin/ffmpeg.exe e ffprobe.exe, gli unici file che servono.
-const ffmpegDownloadURL = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+const (
+	ffmpegReleaseURL = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/"
+	ffmpegAsset      = "ffmpeg-master-latest-win64-gpl.zip"
+	ffmpegSumsAsset  = "checksums.sha256" // impronte sha256 di tutti i file della release
+)
 
 // ffmpegBinaries sono gli eseguibili estratti dallo zip: yt-dlp usa ffmpeg per
 // l'estrazione dell'audio in mp3 e ffprobe per analizzare i file scaricati.
@@ -46,11 +52,16 @@ func FFmpegInPath() bool {
 // InstallFFmpeg scarica l'ultima build di ffmpeg ed estrae ffmpeg.exe e
 // ffprobe.exe in `dir` (creandola se manca), sovrascrivendo quelli presenti.
 // Lo zip (~200 MB) viene scaricato su un file temporaneo nella stessa cartella
-// e rimosso al termine; ogni eseguibile è scritto in modo atomico (temporaneo +
-// rename), così un'installazione interrotta non lascia file parziali al posto
-// giusto. `progress` (può essere nil) riceve l'avanzamento del download e poi
-// quello dell'estrazione.
+// e rimosso al termine; deve avere l'impronta sha256 pubblicata nella release,
+// altrimenti non si estrae nulla. Ogni eseguibile è scritto in modo atomico
+// (temporaneo + rename), così un'installazione interrotta non lascia file
+// parziali al posto giusto. `progress` (può essere nil) riceve l'avanzamento
+// del download e poi quello dell'estrazione.
 func InstallFFmpeg(dir string, progress Progress) error {
+	return installFFmpeg(dir, ffmpegReleaseURL+ffmpegAsset, ffmpegReleaseURL+ffmpegSumsAsset, progress)
+}
+
+func installFFmpeg(dir, zipURL, sumsURL string, progress Progress) error {
 	if dir == "" {
 		return fmt.Errorf("cartella di destinazione non specificata")
 	}
@@ -58,7 +69,12 @@ func InstallFFmpeg(dir string, progress Progress) error {
 		return fmt.Errorf("impossibile creare la cartella %s: %w", dir, err)
 	}
 
-	resp, err := http.Get(ffmpegDownloadURL)
+	want, err := fetchSHA256(sumsURL, ffmpegAsset)
+	if err != nil {
+		return fmt.Errorf("download di ffmpeg fallito: %w", err)
+	}
+
+	resp, err := http.Get(zipURL)
 	if err != nil {
 		return fmt.Errorf("download di ffmpeg fallito: %w", err)
 	}
@@ -75,14 +91,24 @@ func InstallFFmpeg(dir string, progress Progress) error {
 	zipPath := tmp.Name()
 	defer os.Remove(zipPath)
 
+	hash := sha256.New()
 	pw := newProgressWriter(progress, PhaseDownload, resp.ContentLength)
-	_, copyErr := io.Copy(tmp, io.TeeReader(resp.Body, pw))
+	_, copyErr := io.Copy(io.MultiWriter(tmp, hash), io.TeeReader(resp.Body, pw))
 	closeErr := tmp.Close()
 	if copyErr != nil {
 		return fmt.Errorf("download di ffmpeg fallito: %w", copyErr)
 	}
 	if closeErr != nil {
 		return closeErr
+	}
+	if got := hex.EncodeToString(hash.Sum(nil)); got != want {
+		// La release "latest" viene ripubblicata ogni giorno: se è cambiata fra
+		// la lettura delle impronte e il download, le impronte nuove
+		// corrispondono allo zip appena scaricato.
+		again, err := fetchSHA256(sumsURL, ffmpegAsset)
+		if err != nil || got != again {
+			return fmt.Errorf("download di ffmpeg fallito: %w", errChecksumMismatch)
+		}
 	}
 
 	zr, err := zip.OpenReader(zipPath)

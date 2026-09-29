@@ -113,7 +113,7 @@ func (ExecYtDlp) Update(path string) (bool, error) {
 	if !playlist.NewerVersion(latest, playlist.Version(path)) {
 		return false, nil
 	}
-	if err := playlist.Install(path, nil); err != nil {
+	if err := playlist.InstallVersion(path, latest, nil); err != nil {
 		return false, err
 	}
 	return true, nil
