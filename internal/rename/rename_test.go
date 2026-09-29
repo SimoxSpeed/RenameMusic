@@ -270,3 +270,55 @@ func TestProcessCopiesToDestinationKeepingOriginals(t *testing.T) {
 		t.Fatalf("la copia in destinazione manca: %v", err)
 	}
 }
+
+// Un nome che cambia solo per maiuscole/minuscole ("X" → "x") su un file system
+// case-insensitive indica lo stesso file: non deve essere cancellato, ma solo
+// rinominato. Su un file system case-sensitive è un normale spostamento/copia.
+func TestProcessCaseOnlyRenameKeepsFile(t *testing.T) {
+	for _, deleteOriginals := range []bool{true, false} {
+		dir := t.TempDir()
+		const audio = "dummy-mp3-audio-bytes"
+		old := filepath.Join(dir, "Artist X Guest - Song.mp3")
+		if err := os.WriteFile(old, []byte(audio), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := rules.FactoryConfig()
+		cfg.StartFolder = dir
+		results, err := NewService(cfg).Process([]string{old}, Options{DeleteOriginals: deleteOriginals})
+		if err != nil {
+			t.Fatalf("Process: %v", err)
+		}
+		if len(results) != 1 || results[0].Failed || results[0].Skipped {
+			t.Fatalf("DeleteOriginals=%v: risultato inatteso %+v", deleteOriginals, results)
+		}
+
+		// Il nome su disco deve essere esattamente quello nuovo (ReadDir riporta
+		// il nome reale, mentre Stat su un file system case-insensitive
+		// troverebbe il file anche col nome vecchio).
+		const want = "Artist x Guest - Song.mp3"
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), caseTempSuffix) {
+				t.Fatalf("DeleteOriginals=%v: resta il file di passaggio %q", deleteOriginals, e.Name())
+			}
+			if e.Name() == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("DeleteOriginals=%v: %q non trovato fra %v", deleteOriginals, want, entries)
+		}
+		data, err := os.ReadFile(filepath.Join(dir, want))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(string(data), audio) {
+			t.Fatalf("DeleteOriginals=%v: audio perso dopo la rinomina", deleteOriginals)
+		}
+	}
+}

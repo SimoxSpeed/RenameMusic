@@ -19,6 +19,10 @@ import (
 // un eventuale ".tmp" legittimo dell'utente nella cartella musicale.
 const tempSuffix = ".renamemusic.tmp"
 
+// caseTempSuffix è il nome di passaggio di renameCase. È diverso da tempSuffix
+// perché lì il file temporaneo È l'originale: CleanTempFiles non deve toccarlo.
+const caseTempSuffix = ".renamemusic-case"
+
 type Service struct {
 	Config rules.Config
 }
@@ -223,6 +227,17 @@ func (s *Service) applyItem(it workItem, opts Options) Result {
 	switch {
 	case samePath:
 		// Nome già corretto: nulla da spostare/copiare (i tag si scrivono comunque).
+	case sameFile(it.path, it.newPath):
+		// Il nuovo nome differisce solo per maiuscole/minuscole e il file system
+		// non le distingue (Windows, memoria condivisa Android): è lo stesso file,
+		// e rimuovere/sovrascrivere la destinazione cancellerebbe l'originale. Si
+		// rinomina e basta, anche senza DeleteOriginals (una copia accanto
+		// all'originale con lo stesso nome non può esistere).
+		if err := renameCase(it.path, it.newPath); err != nil {
+			result.Failed = true
+			result.Reason = "rinomina fallita: " + err.Error()
+			return result
+		}
 	case opts.DeleteOriginals:
 		// Sposta/rinomina, sovrascrivendo un eventuale file preesistente con quel nome.
 		if err := moveFile(it.path, it.newPath); err != nil {
@@ -329,6 +344,36 @@ func (s *Service) WriteTags(path string) error {
 	}
 	if gotTitle != title || gotArtist != artist {
 		return fmt.Errorf("tag riletti non corrispondono (titolo %q≠%q, artista %q≠%q)", gotTitle, title, gotArtist, artist)
+	}
+	return nil
+}
+
+// sameFile riporta se a e b indicano lo stesso file su disco (es. percorsi che
+// differiscono solo per maiuscole/minuscole su un file system case-insensitive).
+func sameFile(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fa, fb)
+}
+
+// renameCase cambia solo maiuscole/minuscole del nome di src passando da un
+// nome temporaneo: alcuni file system ignorano un rename diretto fra due nomi
+// che considerano uguali. Se il secondo passo fallisce ripristina il nome
+// originale.
+func renameCase(src, dst string) error {
+	tmp := src + caseTempSuffix
+	if err := os.Rename(src, tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Rename(tmp, src)
+		return err
 	}
 	return nil
 }
