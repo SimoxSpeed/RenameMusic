@@ -1269,6 +1269,24 @@ main.is-simple {
     text-align: left;
 }
 
+.simple-hero-pick {
+    display: flex;
+    flex: 1 1 auto;
+    gap: 10px;
+    min-width: 0;
+}
+
+/* Tasto "+" (porta alle Impostazioni): quadrato, alto come select e azione. */
+.simple-hero-add {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    min-height: 48px;
+    padding: 0;
+}
+
 .simple-hero-controls .select-playlist .select-trigger {
     width: 100%;
     max-width: none;
@@ -1346,6 +1364,9 @@ main.is-simple {
     }
     .simple-hero-controls .select-wrap {
         flex: none;
+    }
+    .simple-hero-controls .simple-hero-pick .select-wrap {
+        flex: 1 1 auto;
     }
 }
 

@@ -105,6 +105,16 @@ function DownloadIcon() {
 }
 
 // CaretIcon: chevron verso il basso per il trigger del dropdown playlist.
+// PlusIcon: "+" del tasto che porta alle Impostazioni per aggiungere playlist.
+function PlusIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+        </svg>
+    )
+}
+
 function CaretIcon() {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2399,12 +2409,29 @@ function App() {
                             </p>
 
                             <div className="simple-hero-controls">
-                                <PlaylistSelect
-                                    value={selectedPlaylist}
-                                    options={playlists}
-                                    onChange={setSelectedPlaylist}
-                                    disabled={busy}
-                                />
+                                {/* Select + "+" restano affiancati anche quando, su
+                                    schermi stretti, i comandi si impilano. Il "+"
+                                    compare solo finché non c'è nessuna playlist. */}
+                                <div className="simple-hero-pick">
+                                    <PlaylistSelect
+                                        value={selectedPlaylist}
+                                        options={playlists}
+                                        onChange={setSelectedPlaylist}
+                                        disabled={busy}
+                                    />
+                                    {playlists.length === 0 && (
+                                    <Tooltip label="Aggiungi una playlist nelle Impostazioni">
+                                        <button
+                                            className="ghost simple-hero-add"
+                                            onClick={() => setShowSettings(true)}
+                                            disabled={busy}
+                                            aria-label="Aggiungi una playlist nelle Impostazioni"
+                                        >
+                                            <PlusIcon />
+                                        </button>
+                                    </Tooltip>
+                                    )}
+                                </div>
                                 {/* Durante l'operazione il pulsante principale
                                     diventa "Annulla": una sola azione alla volta. */}
                                 {busy && cancellable ? (
