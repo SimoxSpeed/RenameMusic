@@ -2720,8 +2720,12 @@ function App() {
                             )
                         ) : !booted ? (
                             <div className="empty">Caricamento…</div>
+                        ) : !folder ? (
+                            <div className="empty">Scegli una cartella di partenza nelle Impostazioni per vedere l'anteprima.</div>
+                        ) : folderMissing ? (
+                            <div className="empty">Cartella di partenza non trovata.</div>
                         ) : files.length === 0 ? (
-                            <div className="empty">Scegli una cartella per vedere l'anteprima.</div>
+                            <div className="empty">Nessun file MP3 nella cartella di partenza.</div>
                         ) : previewFiles.length === 0 ? (
                             <div className="empty">Nessun file da modificare.</div>
                         ) : (
