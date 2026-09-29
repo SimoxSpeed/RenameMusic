@@ -367,6 +367,84 @@ function Tooltip({ label, children }: { label: string; children: ReactNode }) {
     )
 }
 
+// DefaultsMenu: solo Android. Un unico tasto "Predefiniti" nella barra delle
+// Impostazioni, sulla stessa riga del titolo, che apre un pannello con i due
+// tasti veri (Ripristina e Salva, ciascuno con la sua conferma). Lo stato di
+// apertura vive in App, così anche il tasto Indietro lo chiude (closeTopmost);
+// qui si chiude toccando fuori.
+function DefaultsMenu({
+    open,
+    onOpenChange,
+    onReset,
+    onSave,
+    disabled,
+}: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    onReset: () => void
+    onSave: () => void
+    disabled?: boolean
+}) {
+    const wrapRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        if (!open) return
+        function onDown(e: PointerEvent) {
+            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) onOpenChange(false)
+        }
+        window.addEventListener('pointerdown', onDown)
+        return () => window.removeEventListener('pointerdown', onDown)
+    }, [open, onOpenChange])
+
+    return (
+        <div className="defaults-menu" ref={wrapRef}>
+            <button
+                type="button"
+                className="header-btn defaults-trigger"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={() => onOpenChange(!open)}
+                disabled={disabled}
+            >
+                Predefiniti
+                <span className={'select-caret' + (open ? ' is-open' : '')}>
+                    <CaretIcon />
+                </span>
+            </button>
+            {open && (
+                <div className="defaults-popover" role="menu">
+                    <p className="defaults-popover-hint">
+                        Configurazione di riserva di regole, playlist e modalità semplificata.
+                    </p>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                            onOpenChange(false)
+                            onReset()
+                        }}
+                        disabled={disabled}
+                    >
+                        Ripristina predefiniti
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        className="warn-solid"
+                        onClick={() => {
+                            onOpenChange(false)
+                            onSave()
+                        }}
+                        disabled={disabled}
+                    >
+                        Salva predefiniti
+                    </button>
+                </div>
+            )}
+        </div>
+    )
+}
+
 // Select: dropdown custom riutilizzabile. Il <select> nativo apre una lista
 // disegnata dal WebView (aspetto "di sistema", non stilabile): qui la
 // sostituiamo con un trigger + lista nostra (angoli arrotondati, ombra, colori
@@ -773,6 +851,12 @@ function App() {
     const [selectedPlaylist, setSelectedPlaylist] = useState('')
     const [results, setResults] = useState<core.ResultView[] | null>(null)
     const [confirmDefault, setConfirmDefault] = useState(false)
+    // defaultsMenu: pannello dei predefiniti aperto (solo Android, DefaultsMenu).
+    const [defaultsMenu, setDefaultsMenu] = useState(false)
+    // Uscendo dalle Impostazioni il pannello si chiude: al rientro è chiuso.
+    useEffect(() => {
+        if (!showSettings) setDefaultsMenu(false)
+    }, [showSettings])
     // crashReport: solo Android, l'app si è chiusa in modo anomalo e c'è il
     // registro dell'errore da condividere (popup all'avvio).
     const [crashReport, setCrashReport] = useState(false)
@@ -1969,6 +2053,7 @@ function App() {
         else if (confirmFFmpeg) setConfirmFFmpeg(null)
         else if (confirmReset) setConfirmReset(false)
         else if (confirmDefault) setConfirmDefault(false)
+        else if (defaultsMenu) setDefaultsMenu(false)
         else if (showSettings) leaveSettings()
         else return false
         return true
@@ -2208,17 +2293,35 @@ function App() {
                         <h1>Impostazioni</h1>
                         {saveStatus && (
                             <span className="save-status" role="status">
-                                {saveStatus === 'saving' ? 'Salvataggio…' : (
+                                {/* Su Android, per stare sulla riga con
+                                    "Predefiniti", sul telefono resta solo
+                                    l'icona (spinner o spunta, mobile.css). */}
+                                {saveStatus === 'saving' ? (
+                                    <>
+                                        {isAndroid && <span className="spinner" aria-hidden="true" />}
+                                        <span className="save-status-text">Salvataggio…</span>
+                                    </>
+                                ) : (
                                     <>
                                         <CheckIcon />
-                                        Salvato
+                                        <span className="save-status-text">Salvato</span>
                                     </>
                                 )}
                             </span>
                         )}
                     </div>
                     <div className="settings-header-actions">
-                        {!isAndroid && <ShortcutsLegend simple={simpleMode} separateDest={!destSameAsSource} settings />}
+                        {isAndroid ? (
+                            <DefaultsMenu
+                                open={defaultsMenu}
+                                onOpenChange={setDefaultsMenu}
+                                onReset={() => setConfirmReset(true)}
+                                onSave={() => setConfirmDefault(true)}
+                                disabled={busy}
+                            />
+                        ) : (
+                        <>
+                        <ShortcutsLegend simple={simpleMode} separateDest={!destSameAsSource} settings />
                         <Tooltip label="Riporta regole, playlist e modalità semplificata ai predefiniti salvati.">
                             <button type="button" className="header-btn" onClick={() => setConfirmReset(true)} disabled={busy}>
                                 Ripristina predefiniti
@@ -2234,6 +2337,8 @@ function App() {
                                 Salva predefiniti
                             </button>
                         </Tooltip>
+                        </>
+                        )}
                     </div>
                 </div>
             </header>

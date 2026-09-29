@@ -213,6 +213,51 @@
     background: color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
+/* Predefiniti (DefaultsMenu): un solo tasto nella barra delle Impostazioni che
+   apre, sotto di sé e allineato a destra, un pannello con i due tasti veri. */
+.is-android .defaults-menu {
+    position: relative;
+}
+
+.is-android .defaults-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.is-android .defaults-trigger .select-caret {
+    color: inherit;
+}
+
+.is-android .defaults-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(280px, calc(100vw - 24px));
+    padding: 12px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+}
+
+.is-android .defaults-popover-hint {
+    margin: 0 0 2px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--muted);
+}
+
+.is-android .defaults-popover button {
+    width: 100%;
+    justify-content: center;
+}
+
 /* Toast come "snackbar" Android: in basso a tutta larghezza, a portata di
    pollice e lontani dall'header, sopra la barra di navigazione. */
 .is-android .toast-container {
@@ -659,15 +704,24 @@
         margin-left: auto;
     }
 
-    /* Barra delle Impostazioni: Indietro (solo icona) e titolo sulla prima
-       riga, i due pulsanti dei predefiniti affiancati sulla seconda. */
+    /* Barra delle Impostazioni su una sola riga: Indietro (solo icona), titolo
+       e stato del salvataggio (solo icona) a sinistra, "Predefiniti" a destra.
+       Se lo spazio non basta si accorcia il titolo, senza andare a capo. */
+    .is-android .settings-header .header-inner {
+        flex-wrap: nowrap;
+    }
+
     .is-android .settings-header-title {
-        flex: 1 1 100%;
+        flex: 1 1 auto;
         gap: 10px;
     }
 
     .is-android .settings-header h1 {
         flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .is-android .settings-header .header-btn {
@@ -675,17 +729,22 @@
     }
 
     .is-android .settings-header-actions {
-        flex: 1 1 100%;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
+        flex: none;
     }
 
-    .is-android .settings-header-actions .tip,
-    .is-android .settings-header-actions button {
-        display: flex;
-        width: 100%;
-        justify-content: center;
+    /* Il testo resta per i lettori di schermo. */
+    .is-android .save-status-text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .is-android .save-status .spinner {
+        border-color: color-mix(in srgb, var(--header-muted) 35%, transparent);
+        border-top-color: var(--header-text);
     }
 
     /* ---- Modali ---- */
