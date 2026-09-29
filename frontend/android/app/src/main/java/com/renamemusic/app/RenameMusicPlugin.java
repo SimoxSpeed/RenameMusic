@@ -1,6 +1,7 @@
 package com.renamemusic.app;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -67,19 +68,36 @@ public class RenameMusicPlugin extends Plugin {
 
     private final AtomicInteger longOps = new AtomicInteger();
 
-    private GoHost host;
+    /**
+     * Il core vive quanto il processo, il plugin quanto l'Activity (ricreata
+     * se il processo della WebView termina, vedi MainActivity): l'host resta
+     * unico e a ogni nuovo plugin gli eventi vengono reindirizzati a lui.
+     */
+    private static GoHost host;
 
     @Override
     public void load() {
-        host = new GoHost(getContext().getApplicationContext(), this::onCoreEvent);
-        try {
-            Mobile.start(getContext().getFilesDir().getAbsolutePath(), host);
-        } catch (Exception e) {
-            Log.e(TAG, "avvio del core fallito", e);
+        synchronized (RenameMusicPlugin.class) {
+            if (host != null) {
+                host.setSink(this::onCoreEvent);
+                return;
+            }
+            Context app = getContext().getApplicationContext();
+            host = new GoHost(app, this::onCoreEvent);
+            try {
+                Mobile.setCrashOutput(CrashLog.file(app).getAbsolutePath());
+            } catch (Exception e) {
+                Log.e(TAG, "registro dei crash del core non disponibile", e);
+            }
+            try {
+                Mobile.start(getContext().getFilesDir().getAbsolutePath(), host);
+            } catch (Exception e) {
+                Log.e(TAG, "avvio del core fallito", e);
+            }
+            // youtubedl-android estrae Python al primo avvio (qualche secondo): lo
+            // inizializziamo in background e il core notifica la UI a fine init.
+            host.initYtDlpAsync();
         }
-        // youtubedl-android estrae Python al primo avvio (qualche secondo): lo
-        // inizializziamo in background e il core notifica la UI a fine init.
-        host.initYtDlpAsync();
     }
 
     /** Evento del core: lo inoltriamo alla UI e aggiorniamo la notifica di avanzamento. */
@@ -110,7 +128,9 @@ public class RenameMusicPlugin extends Plugin {
                 if (MediaRescan.concerns(method)) {
                     MediaRescan.afterCall(getContext(), method, result);
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                // Anche gli Error (es. memoria esaurita): su un thread del pool
+                // chiuderebbero l'app invece di arrivare alla UI come errore.
                 call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
             } finally {
                 if (isLong && longOps.decrementAndGet() == 0) {
@@ -204,6 +224,35 @@ public class RenameMusicPlugin extends Plugin {
 
     @PermissionCallback
     private void notificationsCallback(PluginCall call) {
+        call.resolve();
+    }
+
+    // ---- Registro dei crash ---------------------------------------------------
+
+    /** Indica se c'è il registro di un crash precedente da condividere. */
+    @PluginMethod
+    public void crashReport(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("present", CrashLog.exists(getContext()));
+        call.resolve(ret);
+    }
+
+    /** Apre il menu di condivisione di Android con il registro, poi lo elimina. */
+    @PluginMethod
+    public void shareCrashReport(PluginCall call) {
+        try {
+            String version = getContext().getPackageManager()
+                .getPackageInfo(getContext().getPackageName(), 0).versionName;
+            CrashLog.share(getActivity(), version);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
+        }
+    }
+
+    @PluginMethod
+    public void discardCrashReport(PluginCall call) {
+        CrashLog.discard(getContext());
         call.resolve();
     }
 

@@ -966,8 +966,10 @@ func (a *App) InstallYtDlp() ActionResponse {
 	a.mu.Unlock()
 
 	a.ytDlpMu.Lock()
-	err := a.yt().Install(dest, a.installProgress("yt-dlp"))
-	a.ytDlpMu.Unlock()
+	err := func() error {
+		defer a.ytDlpMu.Unlock()
+		return a.yt().Install(dest, a.installProgress("yt-dlp"))
+	}()
 
 	a.mu.Lock()
 	a.refreshYtDlpStatus()
@@ -1153,17 +1155,21 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 		a.mu.Unlock()
 		a.ytDlpMu.Lock()
 	}
-	result, err := playlist.Download(playlist.Options{
-		Runner:  a.yt().Runner(ytdlp),
-		URL:     url,
-		Folder:  folder,
-		Workers: a.yt().Workers(),
-		OnProgress: func(done, total int) {
-			a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total, Phase: PhaseDownload})
-		},
-		Cancelled: func() bool { return opCtx.Err() != nil },
-	})
-	a.ytDlpMu.Unlock()
+	result, err := func() (playlist.Result, error) {
+		// Unlock anche in caso di panic (recuperato da mobile.Call): yt-dlp
+		// resterebbe altrimenti "in uso" per sempre.
+		defer a.ytDlpMu.Unlock()
+		return playlist.Download(playlist.Options{
+			Runner:  a.yt().Runner(ytdlp),
+			URL:     url,
+			Folder:  folder,
+			Workers: a.yt().Workers(),
+			OnProgress: func(done, total int) {
+				a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total, Phase: PhaseDownload})
+			},
+			Cancelled: func() bool { return opCtx.Err() != nil },
+		})
+	}()
 	canceled := opCtx.Err() != nil
 
 	if err != nil {
@@ -1724,7 +1730,12 @@ func (a *App) onWatchFile(_ string) {
 		a.watchDebounce.Reset(watchRescanDebounce)
 		return
 	}
-	a.watchDebounce = time.AfterFunc(watchRescanDebounce, a.runWatchRescan)
+	a.watchDebounce = time.AfterFunc(watchRescanDebounce, func() {
+		_ = a.safely("aggiornamento automatico", func() error {
+			a.runWatchRescan()
+			return nil
+		})
+	})
 }
 
 // runWatchRescan esegue la scansione differita e notifica l'UI. Chiamata dal

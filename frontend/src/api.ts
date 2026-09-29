@@ -20,6 +20,9 @@ interface RenameMusicPlugin {
     storageStatus(): Promise<{ granted: boolean }>
     requestStorage(): Promise<{ granted: boolean }>
     requestNotifications(): Promise<void>
+    crashReport(): Promise<{ present: boolean }>
+    shareCrashReport(): Promise<void>
+    discardCrashReport(): Promise<void>
     addListener(event: 'event', cb: (e: EventPayload) => void): Promise<PluginListenerHandle>
     addListener(event: 'resume', cb: (e: { storageGranted: boolean }) => void): Promise<PluginListenerHandle>
 }
@@ -118,6 +121,18 @@ export async function requestStorage(): Promise<boolean> {
 export function requestNotifications(): void {
     if (isAndroid) native.requestNotifications().catch(() => {})
 }
+
+// Registro dei crash (solo Android): hasCrashReport indica se l'app si è
+// chiusa in modo anomalo dopo l'ultima condivisione; shareCrashReport apre il
+// menu di condivisione con il file di testo e lo elimina, discardCrashReport
+// lo elimina e basta.
+export async function hasCrashReport(): Promise<boolean> {
+    if (!isAndroid) return false
+    return (await native.crashReport()).present
+}
+
+export const shareCrashReport = (): Promise<void> => native.shareCrashReport()
+export const discardCrashReport = (): Promise<void> => native.discardCrashReport()
 
 // onResume: l'app Android torna in primo piano (es. dalle impostazioni di sistema).
 export function onResume(cb: (storageGranted: boolean) => void): () => void {

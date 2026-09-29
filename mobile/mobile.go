@@ -14,7 +14,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
+	"runtime/debug"
 	"sync"
 
 	"renamemusic/internal/core"
@@ -71,6 +73,20 @@ func Start(dataDir string, host Host) error {
 	app = core.New(opts)
 	core.Start(app)
 	return nil
+}
+
+// SetCrashOutput fa scrivere in coda al file path (il registro dei crash del
+// lato Java, che l'utente può condividere) l'errore fatale che chiude il
+// processo: un panic non recuperato in una goroutine o un errore del runtime.
+// Senza, finirebbe solo nel logcat. Va chiamata prima di Start.
+func SetCrashOutput(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	// Il runtime duplica il descrittore: il file può essere chiuso subito.
+	defer f.Close()
+	return debug.SetCrashOutput(f, debug.CrashOptions{})
 }
 
 // Call invoca per nome un metodo della UI (i metodi esportati di core.App, più

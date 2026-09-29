@@ -40,10 +40,17 @@ const (
 // tutta la vita dell'app, avviato da Start solo se la piattaforma fornisce un
 // Updater.
 func (a *App) updateLoop() {
-	a.updater.Cleanup()
+	_ = a.safely("pulizia aggiornamenti", func() error {
+		a.updater.Cleanup()
+		return nil
+	})
 	for {
 		wait := updateRecheckInterval
-		if _, err := a.checkUpdate(); err != nil {
+		err := a.safely("controllo aggiornamenti", func() error {
+			_, err := a.checkUpdate()
+			return err
+		})
+		if err != nil {
 			wait = updateRetryInterval
 		}
 		time.Sleep(wait)

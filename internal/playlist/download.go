@@ -230,7 +230,7 @@ func Download(opts Options) (Result, error) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			if err := downloadOne(opts.Runner, opts.Folder, info.id); err != nil {
+			if err := safeDownloadOne(opts.Runner, opts.Folder, info.id); err != nil {
 				atomic.AddInt32(&failed, 1)
 				mu.Lock()
 				failures = append(failures, Failure{
@@ -287,6 +287,18 @@ func listVideos(r Runner, url string) ([]videoInfo, error) {
 		videos = append(videos, videoInfo{id: id, title: strings.TrimSpace(title)})
 	}
 	return videos, nil
+}
+
+// safeDownloadOne è downloadOne con un eventuale panic (es. nel ponte verso
+// youtubedl-android) trasformato nell'errore del singolo brano: gira in una
+// goroutine, dove un panic chiuderebbe l'intera app.
+func safeDownloadOne(r Runner, folder, videoID string) (err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("errore interno: %v", p)
+		}
+	}()
+	return downloadOne(r, folder, videoID)
 }
 
 // downloadOne scarica ed estrae in mp3 un singolo video, con nome file basato

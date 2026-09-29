@@ -39,6 +39,9 @@ import {
     requestNotifications,
     requestStorage,
     storageStatus,
+    hasCrashReport,
+    shareCrashReport,
+    discardCrashReport,
     type core,
     type rules,
     type playlist,
@@ -770,6 +773,9 @@ function App() {
     const [selectedPlaylist, setSelectedPlaylist] = useState('')
     const [results, setResults] = useState<core.ResultView[] | null>(null)
     const [confirmDefault, setConfirmDefault] = useState(false)
+    // crashReport: solo Android, l'app si è chiusa in modo anomalo e c'è il
+    // registro dell'errore da condividere (popup all'avvio).
+    const [crashReport, setCrashReport] = useState(false)
     const [destSameAsSource, setDestSameAsSource] = useState(true)
     const [destFolder, setDestFolder] = useState('')
     const [deleteOriginals, setDeleteOriginals] = useState(false)
@@ -981,6 +987,9 @@ function App() {
             // Niente toast all'avvio: l'anteprima popolata basta a dire che la
             // scansione è andata, e un eventuale errore finisce già in Attività.
         }).finally(() => setBooted(true))
+        hasCrashReport()
+            .then(setCrashReport)
+            .catch(() => {})
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -1926,11 +1935,27 @@ function App() {
         })
     }
 
+    // Popup del crash: "Condividi errore" apre il menu di condivisione di
+    // Android (es. WhatsApp) con il file di testo; entrambe le scelte eliminano
+    // il registro, così il popup non ricompare.
+    function shareCrash() {
+        setCrashReport(false)
+        shareCrashReport().catch((err: any) => notify(false, 'Condivisione non riuscita: ' + (err?.message ?? String(err))))
+    }
+
+    function discardCrash() {
+        setCrashReport(false)
+        discardCrashReport().catch(() => {})
+    }
+
     // closeTopmost chiude, in ordine, la modale aperta o il pannello
     // impostazioni (Esc su desktop, tasto Indietro su Android). Restituisce
     // false se non c'era nulla da chiudere.
     function closeTopmost(): boolean {
-        if (updatePopup) {
+        if (crashReport) {
+            // Indietro lo chiude senza eliminare: ricompare al prossimo avvio.
+            setCrashReport(false)
+        } else if (updatePopup) {
             if (!busy) setUpdatePopup(null)
         } else if (showDownloadErrors) setShowDownloadErrors(false)
         else if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
@@ -3376,6 +3401,24 @@ function App() {
                             </button>
                             <button className="danger-solid" onClick={uninstallYtDlp} disabled={busy}>
                                 Disinstalla
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {crashReport && (
+                <div className="modal-overlay">
+                    <div className="modal">
+                        <h3>L'app si è chiusa in modo anomalo</h3>
+                        <p>
+                            È stato salvato un file con i dettagli dell'errore. Condividilo con lo
+                            sviluppatore (per esempio su WhatsApp) per aiutarlo a risolvere il problema.
+                        </p>
+                        <div className="modal-actions">
+                            <button onClick={discardCrash}>Ignora</button>
+                            <button className="accent" onClick={shareCrash}>
+                                Condividi errore
                             </button>
                         </div>
                     </div>

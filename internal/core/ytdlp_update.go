@@ -30,7 +30,7 @@ var errYtDlpBusy = errors.New("yt-dlp in uso")
 func (a *App) ytDlpUpdateLoop() {
 	for {
 		wait := ytDlpRecheckInterval
-		if err := a.autoUpdateYtDlp(); err != nil {
+		if err := a.safely("aggiornamento di yt-dlp", a.autoUpdateYtDlp); err != nil {
 			wait = ytDlpRetryInterval
 		}
 		select {
@@ -66,8 +66,10 @@ func (a *App) autoUpdateYtDlp() error {
 	if !a.ytDlpMu.TryLock() {
 		return errYtDlpBusy
 	}
-	updated, err := a.yt().Update(path)
-	a.ytDlpMu.Unlock()
+	updated, err := func() (bool, error) {
+		defer a.ytDlpMu.Unlock()
+		return a.yt().Update(path)
+	}()
 	if err != nil || !updated {
 		return err
 	}

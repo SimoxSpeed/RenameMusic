@@ -42,7 +42,7 @@ final class GoHost implements Host {
     }
 
     private final Context context;
-    private final EventSink sink;
+    private volatile EventSink sink;
 
     /** Si apre al termine (riuscito o meno) dell'inizializzazione di youtubedl-android. */
     private final CountDownLatch initDone = new CountDownLatch(1);
@@ -58,6 +58,19 @@ final class GoHost implements Host {
         this.context = context;
         this.sink = sink;
     }
+
+    /** Nuovo destinatario degli eventi (plugin di un'Activity ricreata). */
+    void setSink(EventSink sink) {
+        this.sink = sink;
+    }
+
+    /*
+     * Regola per tutti i metodi chiamati dal core Go: non devono MAI lasciar
+     * uscire un'eccezione (nemmeno un Error, per questo catch Throwable). I
+     * binding di gomobile non la gestiscono per i metodi senza `error` nel
+     * risultato: resta pendente nel thread e la successiva chiamata JNI fa
+     * abortire l'intero processo.
+     */
 
     /** Avvia in background l'inizializzazione di youtubedl-android e ffmpeg. */
     void initYtDlpAsync() {
@@ -77,7 +90,7 @@ final class GoHost implements Host {
             YoutubeDL.getInstance().init(context);
             FFmpeg.getInstance().init(context);
             ready = true;
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.e(TAG, "inizializzazione di youtubedl-android fallita", e);
         }
         return ready;
@@ -93,7 +106,11 @@ final class GoHost implements Host {
 
     @Override
     public void emit(String event, String payloadJSON) {
-        sink.emit(event, payloadJSON);
+        try {
+            sink.emit(event, payloadJSON);
+        } catch (Throwable e) {
+            Log.e(TAG, "invio dell'evento " + event + " alla UI fallito", e);
+        }
     }
 
     @Override
@@ -121,7 +138,7 @@ final class GoHost implements Host {
             request.addCommands(args);
             YoutubeDLResponse response = YoutubeDL.getInstance().execute(request, null, null);
             return result(out, response.getOut(), response.getErr(), "");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             // Con exit code != 0 la libreria lancia un'eccezione il cui messaggio
             // è lo stderr di yt-dlp: il core ne estrae la riga "ERROR:".
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
@@ -138,7 +155,7 @@ final class GoHost implements Host {
         try {
             YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE);
             return "";
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return e.getMessage() != null ? e.getMessage() : e.toString();
         }
     }
@@ -165,7 +182,7 @@ final class GoHost implements Host {
             }
             launchInstaller(path);
             return "";
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.e(TAG, "apertura dell'installer fallita", e);
             return e.getMessage() != null ? e.getMessage() : e.toString();
         }
@@ -186,7 +203,7 @@ final class GoHost implements Host {
         }
         try {
             launchInstaller(path);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.e(TAG, "apertura dell'installer fallita", e);
         }
     }
