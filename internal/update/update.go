@@ -25,7 +25,7 @@ import (
 // Version è la versione di questa build. Va incrementata a ogni release: il tag
 // della release GitHub corrispondente deve essere "v" + Version (es. v1.1.0).
 // build-apk.ps1 la legge da qui per versionName/versionCode dell'APK.
-const Version = "3.0.2"
+const Version = "3.0.3"
 
 // Repo è il repository GitHub (pubblico) da cui arrivano le release.
 const Repo = "SimoxSpeed/RenameMusic"
