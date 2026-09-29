@@ -178,6 +178,25 @@ func installYtDlp(destPath, exeURL, sumsURL string, progress Progress) error {
 	return nil
 }
 
+// TempDirName è la sottocartella nascosta della cartella dei download in cui
+// yt-dlp scrive i file intermedi (i .part e l'audio originale prima della
+// conversione in mp3): nella cartella arriva solo l'mp3 finito. Così un
+// download interrotto (rete, errore di ffmpeg, app chiusa a metà) non lascia
+// accanto ai brani residui che la scansione, che elenca solo gli mp3, non
+// mostrerebbe mai, e la cartella non riceve la raffica di scritture
+// intermedie. Ogni video ha una sua sottocartella, eliminata a fine download.
+const TempDirName = ".renamemusic-download"
+
+// CleanTempDir elimina la cartella dei file intermedi di yt-dlp in folder,
+// con gli eventuali residui di un download interrotto. Va chiamata solo
+// quando in quella cartella non c'è un download in corso.
+func CleanTempDir(folder string) error {
+	if folder == "" {
+		return nil
+	}
+	return os.RemoveAll(filepath.Join(folder, TempDirName))
+}
+
 // Download scarica in mp3 tutti i video di una playlist YouTube: enumera gli
 // ID dei video (yt-dlp --flat-playlist --print id) e poi scarica ogni video
 // con concorrenza limitata a Options.Workers. A differenza dello script bat
@@ -189,6 +208,11 @@ func Download(opts Options) (Result, error) {
 	if opts.Runner == nil {
 		return Result{}, fmt.Errorf("yt-dlp non configurato")
 	}
+	// Si parte senza i residui di un download interrotto e, a fine download
+	// (anche annullato: i download avviati si attendono), non resta nulla.
+	_ = CleanTempDir(opts.Folder)
+	defer CleanTempDir(opts.Folder)
+
 	videos, err := listVideos(opts.Runner, opts.URL)
 	if err != nil {
 		return Result{}, err
@@ -302,14 +326,21 @@ func safeDownloadOne(r Runner, folder, videoID string) (err error) {
 }
 
 // downloadOne scarica ed estrae in mp3 un singolo video, con nome file basato
-// sul titolo (stesse opzioni dello script bat originale). In caso di errore
-// cattura lo stderr di yt-dlp e ne restituisce il messaggio più significativo.
+// sul titolo (stesse opzioni dello script bat originale). I file intermedi
+// stanno in una sottocartella del video dentro TempDirName (-P temp:), che si
+// elimina comunque vada; yt-dlp sposta in folder (-P home:) solo l'mp3 finito.
+// Il modello di -o deve restare relativo: uno assoluto farebbe ignorare a
+// yt-dlp la cartella temporanea. In caso di errore cattura lo stderr di
+// yt-dlp e ne restituisce il messaggio più significativo.
 func downloadOne(r Runner, folder, videoID string) error {
-	out := filepath.Join(folder, "%(title)s.%(ext)s")
+	temp := filepath.Join(folder, TempDirName, videoID)
+	defer os.RemoveAll(temp)
 	_, stderr, err := r.Run([]string{
 		"-x", "--audio-format", "mp3",
 		"--no-mtime", "--windows-filenames", "--trim-filenames", "200",
-		"-o", out,
+		"-P", "home:" + folder,
+		"-P", "temp:" + temp,
+		"-o", "%(title)s.%(ext)s",
 		"https://www.youtube.com/watch?v=" + videoID,
 	})
 	if err != nil {

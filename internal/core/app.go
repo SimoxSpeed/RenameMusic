@@ -451,6 +451,13 @@ func Start(a *App) {
 		a.mu.Unlock()
 	}
 
+	// File intermedi di yt-dlp lasciati da un download interrotto (app chiusa
+	// a metà): all'avvio nessun download è in corso.
+	a.mu.Lock()
+	startFolder := a.config.StartFolder
+	a.mu.Unlock()
+	_ = playlist.CleanTempDir(startFolder)
+
 	// Rileva presenza/versione di yt-dlp una volta all'avvio, così il primo
 	// GetState riporta già lo stato del "bin" senza attese in UI.
 	a.mu.Lock()

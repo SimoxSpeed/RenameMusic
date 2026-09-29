@@ -13,7 +13,7 @@ import (
 
 // fakeRunner simula yt-dlp: l'enumerazione restituisce i video di `titles`
 // (id -> titolo) e il download di un video crea il relativo mp3 nella cartella
-// indicata da -o, come farebbe yt-dlp.
+// indicata da -P home: col nome del modello -o, come farebbe yt-dlp.
 type fakeRunner struct {
 	titles map[string]string
 
@@ -29,10 +29,13 @@ func (r *fakeRunner) Run(args []string) ([]byte, []byte, error) {
 		}
 		return []byte(out.String()), nil, nil
 	}
-	var tmpl string
+	var home, tmpl string
 	for i, a := range args {
 		if a == "-o" {
 			tmpl = args[i+1]
+		}
+		if v, ok := strings.CutPrefix(a, "home:"); ok && i > 0 && args[i-1] == "-P" {
+			home = v
 		}
 	}
 	url := args[len(args)-1]
@@ -40,7 +43,7 @@ func (r *fakeRunner) Run(args []string) ([]byte, []byte, error) {
 	r.mu.Lock()
 	r.downloads++
 	r.mu.Unlock()
-	path := strings.NewReplacer("%(title)s", r.titles[id], "%(ext)s", "mp3").Replace(tmpl)
+	path := filepath.Join(home, strings.NewReplacer("%(title)s", r.titles[id], "%(ext)s", "mp3").Replace(tmpl))
 	return nil, nil, os.WriteFile(path, []byte("x"), 0o644)
 }
 
