@@ -439,8 +439,6 @@
         flex-wrap: wrap;
     }
 
-    /* Il percorso è avvolto dal Tooltip solo quando non è vuoto. */
-    .is-android .toolbar > .tip-grow,
     .is-android .toolbar > .folder-path {
         flex-basis: 100%;
     }
@@ -636,10 +634,6 @@
 
     .is-android .ytdlp-install {
         margin-left: auto;
-    }
-
-    .is-android .ytdlp-path {
-        white-space: normal;
     }
 
     /* Barra inferiore: due righe da tre bottoni (navigazione/annulla sopra,

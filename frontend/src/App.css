@@ -669,11 +669,6 @@ button.warn-solid:hover:not(:disabled) {
     display: inline-flex;
 }
 
-.tip-grow {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
 /* Mostra il tooltip su hover o su focus DA TASTIERA (:focus-visible). Usare
    :focus-within lo lasciava aperto dopo un click del mouse su un controllo
    interno (es. la checkbox "Solo da modificare"), che resta focalizzato: con
@@ -1481,6 +1476,32 @@ main.is-simple {
     gap: 10px;
 }
 
+/* Nome + stato + percorso: vanno a capo (il percorso scende sotto) quando non
+   c'è spazio, lasciando l'azione a destra sulla prima riga. */
+.ytdlp-head-info {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    min-width: 0;
+}
+
+/* Badge "Non presente" + tasto per scaricare: non si separano mai andando a capo. */
+.ytdlp-status {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Cosa indica il percorso (etichetta) + il percorso stesso. */
+.ytdlp-location {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+
 .ytdlp-title {
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
     font-weight: 700;
@@ -1512,21 +1533,6 @@ main.is-simple {
     justify-content: center;
     padding: 4px 7px;
     line-height: 0;
-}
-
-.ytdlp-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    min-height: 30px;
-}
-
-.ytdlp-label {
-    flex-shrink: 0;
-    width: 72px;
-    font-size: 12px;
-    color: var(--muted);
 }
 
 .ytdlp-badge {
@@ -1576,13 +1582,11 @@ main.is-simple {
     }
 }
 
-/* Percorso effettivo: monospace, tagliato con ellissi se troppo lungo (il
-   percorso completo resta nel title). */
+/* Percorso della copia gestita, accanto allo stato: monospace, sempre intero
+   (se è troppo lungo va a capo anche a metà). */
 .ytdlp-path {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
     font-size: 12px;
     color: var(--text);
@@ -1591,11 +1595,20 @@ main.is-simple {
 /* In modalità manuale la riga "Percorso" diventa editabile: input + Sfoglia
    occupano lo spazio della cella valore, unificando il percorso mostrato con
    quello impostato a mano. */
+/* Fuori dalla gestione autonoma: etichetta + campo + Sfoglia accanto allo
+   stato, sulla stessa riga; se lo spazio è meno di ~360px scendono sotto. */
 .ytdlp-path-edit {
     display: flex;
-    flex: 1;
+    flex: 1 1 360px;
+    align-items: center;
     gap: 8px;
     min-width: 0;
+}
+
+.ytdlp-path-edit .ytdlp-location-label {
+    flex: none;
+    font-size: 12px;
+    color: var(--muted);
 }
 
 .ytdlp-path-edit input {

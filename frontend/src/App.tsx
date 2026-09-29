@@ -292,12 +292,11 @@ function ShortcutsLegend({ simple, separateDest }: { simple: boolean; separateDe
 // stile del tooltip "i"/scorciatoie) su hover o focus. Essendo un wrapper, il
 // fumetto compare anche quando l'elemento interno è disabilitato (i bottoni
 // disabilitati non ricevono hover, ma il wrapper sì): utile per spiegare PERCHÉ
-// un'azione non è disponibile. `grow` fa espandere il wrapper nei contenitori
-// flex (es. il percorso cartella che deve riempire la toolbar).
-function Tooltip({ label, children, grow }: { label: string; children: ReactNode; grow?: boolean }) {
+// un'azione non è disponibile.
+function Tooltip({ label, children }: { label: string; children: ReactNode }) {
     if (!label) return <>{children}</>
     return (
-        <span className={'tip' + (grow ? ' tip-grow' : '')}>
+        <span className="tip">
             {children}
             <span className="info-tooltip" role="tooltip">{label}</span>
         </span>
@@ -2467,6 +2466,11 @@ function App() {
 
                         <div className="ytdlp-panel">
                             <div className="ytdlp-head">
+                                {/* Nome, stato e (in gestione autonoma) percorso della
+                                    copia gestita: se non c'è spazio il percorso va a
+                                    capo. Il tasto per scaricarlo resta sempre subito
+                                    a destra di "Non presente". */}
+                                <div className="ytdlp-head-info">
                                 <span className="ytdlp-title">yt-dlp</span>
                                 {ytDlpChecking ? (
                                     <span className="ytdlp-checking" role="status">
@@ -2478,57 +2482,38 @@ function App() {
                                         Presente{state?.ytDlpVersion ? ` · versione ${state.ytDlpVersion}` : ''}
                                     </span>
                                 ) : (
-                                    <span className="ytdlp-badge ytdlp-missing">
-                                        {isAndroid ? 'Non ancora pronto' : 'Non presente'}
+                                    <span className="ytdlp-status">
+                                        <span className="ytdlp-badge ytdlp-missing">
+                                            {isAndroid ? 'Non ancora pronto' : 'Non presente'}
+                                        </span>
+                                        {!isAndroid && (
+                                            <Tooltip label="Scarica yt-dlp">
+                                                <button
+                                                    className="ghost small ytdlp-install"
+                                                    onClick={() => setConfirmDownloadYtDlp(true)}
+                                                    disabled={busy}
+                                                    aria-label="Scarica yt-dlp"
+                                                >
+                                                    <DownloadIcon />
+                                                </button>
+                                            </Tooltip>
+                                        )}
                                     </span>
                                 )}
-                                {ytDlpChecking ? null : isAndroid ? (
-                                    <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
-                                        <button
-                                            className="ghost small with-icon ytdlp-install"
-                                            onClick={() => setConfirmDownloadYtDlp(true)}
-                                            disabled={busy}
-                                        >
-                                            <span className="btn-icon"><RefreshIcon /></span>
-                                            Aggiorna
-                                        </button>
-                                    </Tooltip>
-                                ) : !state?.ytDlpAvailable ? (
-                                    <Tooltip label="Scarica yt-dlp">
-                                        <button
-                                            className="ghost small ytdlp-install"
-                                            onClick={() => setConfirmDownloadYtDlp(true)}
-                                            disabled={busy}
-                                            aria-label="Scarica yt-dlp"
-                                        >
-                                            <DownloadIcon />
-                                        </button>
-                                    </Tooltip>
-                                ) : ytDlpManaged ? (
-                                    <Tooltip label="Rimuovi yt-dlp (elimina la copia gestita dall'app)">
-                                        <button
-                                            className="ghost small danger ytdlp-uninstall"
-                                            onClick={() => setConfirmUninstallYtDlp(true)}
-                                            disabled={busy}
-                                            aria-label="Rimuovi yt-dlp"
-                                        >
-                                            <RemoveIcon />
-                                        </button>
-                                    </Tooltip>
-                                ) : null}
-                            </div>
-
-                            <div className="ytdlp-row">
-                                {ytDlpManaged ? (
-                                    <Tooltip label={state?.ytDlpEffectivePath || ''} grow>
-                                        <code className="ytdlp-path">
-                                            {state?.ytDlpEffectivePath || '—'}
-                                        </code>
-                                    </Tooltip>
-                                ) : (
-                                    <>
-                                    <span className="ytdlp-label">Percorso</span>
+                                {ytDlpManaged && !ytDlpChecking && state?.ytDlpEffectivePath && (
+                                    <span className="ytdlp-location">
+                                        <span className="ytdlp-location-label">
+                                            {state?.ytDlpAvailable ? 'Copia gestita:' : 'Verrà scaricato in:'}
+                                        </span>{' '}
+                                        <code className="ytdlp-path">{state.ytDlpEffectivePath}</code>
+                                    </span>
+                                )}
+                                {/* Fuori dalla gestione autonoma il percorso si imposta
+                                    a mano, sulla stessa riga (scende sotto se non c'è
+                                    spazio). */}
+                                {!ytDlpManaged && (
                                     <div className="ytdlp-path-edit">
+                                        <span className="ytdlp-location-label">Percorso:</span>
                                         <input
                                             type="text"
                                             placeholder="Percorso a yt-dlp.exe"
@@ -2542,8 +2527,31 @@ function App() {
                                             Sfoglia
                                         </button>
                                     </div>
-                                    </>
                                 )}
+                                </div>
+                                {ytDlpChecking ? null : isAndroid ? (
+                                    <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
+                                        <button
+                                            className="ghost small with-icon ytdlp-install"
+                                            onClick={() => setConfirmDownloadYtDlp(true)}
+                                            disabled={busy}
+                                        >
+                                            <span className="btn-icon"><RefreshIcon /></span>
+                                            Aggiorna
+                                        </button>
+                                    </Tooltip>
+                                ) : state?.ytDlpAvailable && ytDlpManaged ? (
+                                    <Tooltip label="Rimuovi yt-dlp (elimina la copia gestita dall'app)">
+                                        <button
+                                            className="ghost small danger ytdlp-uninstall"
+                                            onClick={() => setConfirmUninstallYtDlp(true)}
+                                            disabled={busy}
+                                            aria-label="Rimuovi yt-dlp"
+                                        >
+                                            <RemoveIcon />
+                                        </button>
+                                    </Tooltip>
+                                ) : null}
                             </div>
 
                             {busy && installProgress?.tool === 'yt-dlp' && (
