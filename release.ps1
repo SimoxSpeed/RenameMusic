@@ -4,9 +4,11 @@
 
 .DESCRIPTION
     1. controlli: branch, tag libero (in locale e su origin), modifiche
-       pendenti e GitHub CLI. Con gh pronta apre nel Blocco note un file
-       temporaneo vuoto in cui scrivere le note di rilascio: letto il testo,
-       il file si elimina (le note restano solo in memoria)
+       pendenti e GitHub CLI. Se il tag esiste già chiede se ricrearlo
+       (sostituito solo al push, insieme a un'eventuale release GitHub
+       rimasta su quel tag) o annullare. Con gh pronta apre nel Blocco note un
+       file temporaneo vuoto in cui scrivere le note di rilascio: letto il
+       testo, il file si elimina (le note restano solo in memoria)
     2. incrementa la versione in internal/update/update.go (update.Version,
        unica fonte della versione: la usano il controllo aggiornamenti e l'APK)
     3. compila l'exe desktop (wails build)
@@ -37,7 +39,8 @@
     JDK 21 da passare a build-apk.ps1.
 
 .PARAMETER Yes
-    Non chiede conferma prima di commit e push.
+    Non chiede conferma prima di commit e push. Con -Yes un tag già
+    esistente interrompe la release (non viene mai ricreato senza chiedere).
 
 .EXAMPLE
     npm run release -- minor
@@ -255,6 +258,8 @@ $pushed = $false
 $assetsBackedUp = $false
 $ghReady = $false
 $tag = ''
+$retag = $false
+$oldLocalTag = ''
 
 # Annulla da solo quello che lo script ha fatto prima del commit (versione in
 # update.go, staging, exe e APK), così un annullamento o un errore riportano il
@@ -280,7 +285,14 @@ function Undo-Local {
 # Spiega cosa resta da sistemare a mano (tipicamente: push fallito).
 function Show-Recovery {
     $hints = @()
-    if ($tagged) {
+    if ($tagged -and $retag) {
+        $hints += "Il tag $tag è stato ricreato solo in locale. Riprova il push:  git push --atomic origin HEAD +refs/tags/${tag}:refs/tags/${tag}"
+        if ($oldLocalTag) {
+            $hints += "oppure rimetti quello di prima:  git tag -f $tag $oldLocalTag"
+        } else {
+            $hints += "oppure eliminalo:  git tag -d $tag"
+        }
+    } elseif ($tagged) {
         $hints += "Il tag $tag esiste solo in locale. Riprova il push:  git push --atomic origin HEAD $tag"
         $hints += "oppure eliminalo:  git tag -d $tag"
     }
@@ -372,13 +384,36 @@ try {
     if (-not $branch) { throw 'HEAD non è su un branch (detached): passa prima a un branch.' }
     Ok "Branch $branch"
 
-    git rev-parse -q --verify "refs/tags/$tag" | Out-Null
-    if ($LASTEXITCODE -eq 0) { throw "Il tag $tag esiste già in locale." }
+    $oldLocalTag = git rev-parse -q --verify "refs/tags/$tag"
+    if ($LASTEXITCODE -ne 0) { $oldLocalTag = '' }
     Detail 'Controllo dei tag su origin...'
     $remoteTag = git ls-remote --tags origin "refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { throw 'Impossibile contattare origin: sei connesso a Internet?' }
-    if ($remoteTag) { throw "Il tag $tag esiste già su origin." }
-    Ok "Tag $tag libero (in locale e su origin)"
+    if ($oldLocalTag -or $remoteTag) {
+        # Tipicamente una release precedente annullata a metà. Il tag esistente
+        # non si tocca qui: lo sostituiscono git tag -f e il push (atomico),
+        # quindi un annullamento o un errore prima del push lo lasciano com'è.
+        $where = @()
+        if ($oldLocalTag) { $where += 'in locale' }
+        if ($remoteTag) { $where += 'su origin' }
+        $where = $where -join ' e '
+        Warn "Il tag $tag esiste già $where"
+        if ($Yes) { throw "Il tag $tag esiste già $where (con -Yes non viene ricreato: rilancia senza -Yes o eliminalo a mano)." }
+        Write-Host '  ' -NoNewline
+        Badge '?' Black Magenta
+        Write-Host " Eliminarlo e ricrearlo sul nuovo commit di release? " -NoNewline -ForegroundColor White
+        Write-Host '[s = ricrea / N = annulla] ' -NoNewline -ForegroundColor Yellow
+        $answer = Read-Host
+        if ($answer -notmatch '^(s|si|sì|y|yes)$') {
+            Banner 'ANNULLATO' Black Yellow Yellow "Nessuna modifica: il tag $tag è rimasto com'era."
+            Write-Host ''
+            exit 1
+        }
+        $retag = $true
+        Ok "Il tag $tag verrà ricreato (quello attuale resta fino al push)"
+    } else {
+        Ok "Tag $tag libero (in locale e su origin)"
+    }
 
     git diff --cached --quiet
     $indexWasClean = $LASTEXITCODE -eq 0
@@ -466,7 +501,8 @@ try {
         Detail (git log --oneline -1)
     }
     Write-Host '  Tag            ' -NoNewline -ForegroundColor White
-    Write-Host $tag -ForegroundColor Green
+    Write-Host $tag -NoNewline -ForegroundColor Green
+    if ($retag) { Write-Host ' (ricreato: sostituisce quello esistente)' -ForegroundColor Yellow } else { Write-Host '' }
     Write-Host '  Push su        ' -NoNewline -ForegroundColor White
     Write-Host "origin/$branch" -ForegroundColor Green
     Write-Host '  Release GitHub ' -NoNewline -ForegroundColor White
@@ -505,12 +541,21 @@ try {
         Ok ("Commit {0}" -f (git log --oneline -1))
     }
 
-    Invoke-Quiet 'git tag' { git tag -a $tag -m "RenameMusic $Version" }
+    if ($retag) {
+        Invoke-Quiet 'git tag' { git tag -a -f $tag -m "RenameMusic $Version" }
+    } else {
+        Invoke-Quiet 'git tag' { git tag -a $tag -m "RenameMusic $Version" }
+    }
     $tagged = $true
     Ok "Tag $tag"
 
     Detail "Push su origin ($branch + $tag)..."
-    Invoke-Quiet 'git push' { git push --atomic origin HEAD $tag }
+    if ($retag) {
+        # Il + forza solo il tag (sostituisce quello su origin), non il branch.
+        Invoke-Quiet 'git push' { git push --atomic origin HEAD "+refs/tags/${tag}:refs/tags/${tag}" }
+    } else {
+        Invoke-Quiet 'git push' { git push --atomic origin HEAD $tag }
+    }
     # Da qui la versione è pubblicata: un errore successivo non deve più
     # annullare nulla in locale (versione, exe e APK sono quelli giusti).
     $pushed = $true
@@ -527,6 +572,17 @@ try {
     Step 6 'Release su GitHub'
     $assetPaths = @($allAssets | ForEach-Object { Join-Path $root $_ })
     $published = $false
+    if ($ghReady -and $retag) {
+        # Una release (anche bozza) rimasta sul vecchio tag farebbe fallire
+        # gh release create: si elimina, senza toccare il tag appena pushato.
+        gh release view $tag --repo $repoSlug *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Detail "Eliminazione della release $tag rimasta dal vecchio tag..."
+            gh release delete $tag --repo $repoSlug --yes
+            if ($LASTEXITCODE -eq 0) { Ok "Vecchia release $tag eliminata" }
+            else { Warn "Impossibile eliminare la vecchia release ${tag}: eliminala da $repoUrl/releases" }
+        }
+    }
     if ($ghReady) {
         Detail 'Creazione della release e caricamento di exe e APK...'
         # gh carica i file col loro nome (quelli esatti che cerca l'app) e
