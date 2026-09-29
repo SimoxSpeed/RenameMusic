@@ -1495,10 +1495,21 @@ function App() {
     // ossia le regole in editing (draft) differiscono da quelle salvate, oppure
     // l'elenco playlist in editing differisce da quello salvato. Il confronto usa
     // cloneConfig su entrambi i lati per normalizzare l'ordine dei campi.
-    const draftDirty =
-        !!draft && !!state?.config && JSON.stringify(cloneConfig(draft)) !== JSON.stringify(cloneConfig(state.config))
+    // Le sostituzioni lasciate del tutto vuote non contano: al salvataggio il
+    // core le scarta (e senza sostituzioni l'editor ne mostra comunque una).
+    const comparableConfig = (cfg: rules.Config) => {
+        const c = cloneConfig(cfg)
+        return JSON.stringify({
+            ...c,
+            replacements: (c.replacements ?? []).filter((r) => (r.from ?? '').trim() !== '' || (r.to ?? '').trim() !== ''),
+        })
+    }
+    const draftDirty = !!draft && !!state?.config && comparableConfig(draft) !== comparableConfig(state.config)
+    // Le righe lasciate del tutto vuote non contano: al salvataggio il core le
+    // scarta (e senza playlist l'editor ne mostra comunque una).
     const playlistsDirty =
-        JSON.stringify(playlistDraft) !== JSON.stringify(playlists.map((p) => ({ name: p.name, url: p.url })))
+        JSON.stringify(playlistDraft.filter((p) => p.name.trim() !== '' || p.url.trim() !== '')) !==
+        JSON.stringify(playlists.map((p) => ({ name: p.name, url: p.url })))
     const settingsDirty = draftDirty || playlistsDirty
     // Contatori nell'header: dopo un'elaborazione la lista `files` \u00e8 vuota
     // (i file sono stati rinominati/spostati), quindi mostreremmo "0 file".
@@ -1615,17 +1626,23 @@ function App() {
         setDraft({ ...draft, ftAlias: value } as rules.Config)
     }
 
+    // Senza sostituzioni l'editor mostra comunque una riga vuota (vedi render),
+    // come per le playlist: la prima modifica la crea davvero nella bozza, e
+    // "Aggiungi" ne aggiunge una seconda.
+    function replacementRows(): rules.Replacement[] {
+        const rows = draft?.replacements ?? []
+        return rows.length > 0 ? rows : [{ from: '', to: '' } as rules.Replacement]
+    }
+
     function updateReplacement(index: number, field: 'from' | 'to' | 'scope', value: string) {
         if (!draft) return
-        const replacements = (draft.replacements ?? []).map((r, i) =>
-            i === index ? { ...r, [field]: value } : r,
-        )
+        const replacements = replacementRows().map((r, i) => (i === index ? { ...r, [field]: value } : r))
         setDraft({ ...draft, replacements } as rules.Config)
     }
 
     function addReplacement() {
         if (!draft) return
-        const replacements = [...(draft.replacements ?? []), { from: '', to: '' } as rules.Replacement]
+        const replacements = [...replacementRows(), { from: '', to: '' } as rules.Replacement]
         setDraft({ ...draft, replacements } as rules.Config)
     }
 
@@ -1638,12 +1655,19 @@ function App() {
     // Playlist YouTube (Impostazioni): stessa logica di editing delle
     // sostituzioni Da→A, ma su un elenco a parte (playlistDraft) salvato con
     // SetPlaylists, non con SetConfig.
+    // Senza playlist l'editor mostra comunque una riga vuota (vedi render): la
+    // prima modifica la crea davvero nella bozza.
     function updatePlaylistDraft(index: number, field: 'name' | 'url', value: string) {
-        setPlaylistDraft((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
+        setPlaylistDraft((prev) => {
+            const rows = prev.length === 0 ? [{ name: '', url: '' }] : prev
+            return rows.map((p, i) => (i === index ? { ...p, [field]: value } : p))
+        })
     }
 
+    // Con l'elenco vuoto la riga mostrata è già una: "Aggiungi" ne aggiunge una
+    // seconda, come si aspetta chi la vede.
     function addPlaylistDraft() {
-        setPlaylistDraft((prev) => [...prev, { name: '', url: '' }])
+        setPlaylistDraft((prev) => [...(prev.length === 0 ? [{ name: '', url: '' }] : prev), { name: '', url: '' }])
     }
 
     function removePlaylistDraft(index: number) {
@@ -2603,7 +2627,9 @@ function App() {
                                     + Aggiungi
                                 </button>
                             </div>
-                            {playlistDraft.map((p, i) => (
+                            {/* Senza playlist una riga vuota è già pronta da compilare,
+                                senza dover premere prima "Aggiungi". */}
+                            {(playlistDraft.length > 0 ? playlistDraft : [{ name: '', url: '' }]).map((p, i) => (
                                 <div className="replacement-row" key={i}>
                                     <input
                                         type="text"
@@ -2623,7 +2649,7 @@ function App() {
                                     <button
                                         className="ghost small danger"
                                         onClick={() => removePlaylistDraft(i)}
-                                        disabled={busy}
+                                        disabled={busy || playlistDraft.length <= 1}
                                     >
                                         ✕
                                     </button>
@@ -2700,7 +2726,7 @@ function App() {
                                     + Aggiungi
                                 </button>
                             </div>
-                            {(draft.replacements ?? []).map((r, i) => (
+                            {replacementRows().map((r, i) => (
                                 <div className="replacement-row" key={i}>
                                     <input
                                         type="text"
@@ -2733,7 +2759,7 @@ function App() {
                                     <button
                                         className="ghost small danger"
                                         onClick={() => removeReplacement(i)}
-                                        disabled={busy}
+                                        disabled={busy || (draft.replacements ?? []).length <= 1}
                                     >
                                         ✕
                                     </button>
