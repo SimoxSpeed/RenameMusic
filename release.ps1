@@ -14,7 +14,8 @@
     6. apre su GitHub la pagina della nuova release, a cui allegare i file
 
     Se qualcosa fallisce, o alla conferma rispondi no, non viene committato
-    nulla e lo script annulla da solo le sue modifiche (versione, staging).
+    nulla e lo script annulla da solo le sue modifiche (versione, staging,
+    exe e APK in build\bin, che tornano quelli di prima delle build).
     Se fallisce il push spiega come riprovare o tornare indietro.
 
 .PARAMETER Bump
@@ -64,6 +65,10 @@ $versionFileRel = 'internal\update\update.go'
 $repoUrl = 'https://github.com/SimoxSpeed/RenameMusic'
 $desktopAsset = 'build\bin\RenameMusic.exe'
 $apkAssets = @('build\bin\RenameMusic-arm64-v8a.apk', 'build\bin\RenameMusic-x86_64.apk')
+$allAssets = @($desktopAsset) + $apkAssets
+# Copia di exe e APK di prima delle build, da rimettere a posto se la release
+# non va in porto (build\bin è ignorata da git).
+$backupDir = Join-Path $root 'build\bin\.release-backup'
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $steps = 6
 $width = 68
@@ -174,6 +179,35 @@ function Show-Asset([string]$rel) {
     }
 }
 
+# Sposta da parte exe e APK attuali prima delle build: se la release non va in
+# porto Restore-Assets li rimette al loro posto, così in build\bin non restano
+# file compilati con una versione mai pubblicata (che crederebbero di essere
+# più nuovi dell'ultima release e non vedrebbero gli aggiornamenti).
+function Backup-Assets {
+    if (Test-Path -LiteralPath $backupDir) { Remove-Item -LiteralPath $backupDir -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+    foreach ($a in $allAssets) {
+        $path = Join-Path $root $a
+        if (Test-Path -LiteralPath $path) { Move-Item -LiteralPath $path -Destination $backupDir }
+    }
+    $script:assetsBackedUp = $true
+}
+
+function Restore-Assets {
+    foreach ($a in $allAssets) {
+        $path = Join-Path $root $a
+        $saved = Join-Path $backupDir (Split-Path $a -Leaf)
+        if (Test-Path -LiteralPath $saved) {
+            Move-Item -LiteralPath $saved -Destination $path -Force
+        } elseif (Test-Path -LiteralPath $path) {
+            # Non c'era prima delle build: è solo della versione non pubblicata.
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+    Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+    $script:assetsBackedUp = $false
+}
+
 # ---- Stato, per spiegare come tornare indietro se qualcosa va storto ---------------
 
 $versionWritten = $false
@@ -182,13 +216,19 @@ $built = $false
 $staged = $false
 $committed = $false
 $tagged = $false
+$pushed = $false
+$assetsBackedUp = $false
 $tag = ''
 
 # Annulla da solo quello che lo script ha fatto prima del commit (versione in
-# update.go, staging), così un annullamento o un errore riportano il
+# update.go, staging, exe e APK), così un annullamento o un errore riportano il
 # repository com'era. Dopo il commit non tocca nulla: ci pensa Show-Recovery.
 function Undo-Local {
-    if ($committed) { return }
+    if ($committed -or $pushed) { return }
+    if ($assetsBackedUp) {
+        Restore-Assets
+        Ok 'Exe e APK in build\bin ripristinati a quelli di prima delle build'
+    }
     if ($staged -and $indexWasClean) {
         git reset -q
         $script:staged = $false
@@ -210,12 +250,15 @@ function Show-Recovery {
     }
     if ($committed) {
         $hints += 'Il commit di release esiste solo in locale. Per annullarlo:  git reset --soft HEAD~1'
+        if ($assetsBackedUp) {
+            $hints += "In quel caso exe e APK di prima delle build sono in $backupDir"
+        }
     } elseif ($staged) {
         $hints += 'Le modifiche sono in staging insieme a quelle che c''erano già. Per toglierle:  git reset'
     }
     Write-Host ''
     if ($hints.Count -eq 0) {
-        $note = if ($built) { ' (a parte i file rigenerati dalle build)' } else { '' }
+        $note = if ($built) { ' (a parte i file intermedi rigenerati dalle build)' } else { '' }
         Write-Host "  Il repository è com'era prima della release$note." -ForegroundColor Gray
         return
     }
@@ -311,6 +354,12 @@ try {
         Ok 'Working tree pulito'
     }
 
+    # wails dev ricompila l'app di sviluppo a ogni modifica di update.go: resta
+    # con la versione nuova anche se la release poi si annulla.
+    if (Get-Process 'RenameMusic-dev' -ErrorAction SilentlyContinue) {
+        Warn 'wails dev è in esecuzione: l''app di sviluppo prenderà la versione nuova; se la release si annulla riavvialo'
+    }
+
     # ---- 2. Versione --------------------------------------------------------------
 
     Step 2 'Versione'
@@ -332,6 +381,7 @@ try {
     } else {
         $env:PATH = "$env:USERPROFILE\go\bin;$env:PATH"
         $built = $true
+        Backup-Assets
 
         Step 3 'Build desktop (wails build)'
         Invoke-Checked 'wails build' { wails build }
@@ -403,8 +453,15 @@ try {
 
     Detail "Push su origin ($branch + $tag)..."
     Invoke-Quiet 'git push' { git push --atomic origin HEAD $tag }
+    # Da qui la versione è pubblicata: un errore successivo non deve più
+    # annullare nulla in locale (versione, exe e APK sono quelli giusti).
+    $pushed = $true
     $tagged = $false
     $committed = $false
+    if ($assetsBackedUp) {
+        Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+        $assetsBackedUp = $false
+    }
     Ok "Push di $branch e $tag su origin"
 
     # ---- 6. Release su GitHub -----------------------------------------------------
