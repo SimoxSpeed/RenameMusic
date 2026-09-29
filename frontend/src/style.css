@@ -71,12 +71,10 @@ body {
     padding: 0;
 }
 
+/* La pagina non scorre: scorre solo il contenuto sotto l'header (.app-scroll
+   in App.css), così la scrollbar parte da sotto l'header. */
 html {
-    /* Riserva sempre lo spazio della scrollbar verticale: evita il layout shift
-       (flicker orizzontale) quando la tabella cambia dimensione e la scrollbar
-       compare/scompare durante Scan/Refresh. */
-    scrollbar-gutter: stable;
-    overflow-y: scroll;
+    overflow: hidden;
 }
 
 body {

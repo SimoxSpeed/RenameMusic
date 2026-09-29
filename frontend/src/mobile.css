@@ -7,6 +7,13 @@
 
 /* ---- Touch: niente effetti legati all'hover -------------------------------- */
 
+/* Niente riquadro del tocco della WebView: è rettangolare e stona su bottoni e
+   pillole arrotondati. Il riscontro del tap lo danno già :active e lo stato
+   attivo dei controlli. */
+.is-android {
+    -webkit-tap-highlight-color: transparent;
+}
+
 /* Le icone dei bottoni su desktop compaiono all'hover: su touch l'hover "resta
    attaccato" dopo il tap e farebbe saltare la larghezza dei bottoni. Le
    mostriamo sempre. */
@@ -176,19 +183,14 @@
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
-/* Impostazioni: la barra in alto scorre via col contenuto e restano ferme in
-   cima (sotto la status bar) le schede, come pillole orizzontali scorrevoli
-   invece delle tab del desktop. */
-.is-android .settings-header {
-    position: static;
-}
-
-.is-android .settings-layout {
-    gap: 12px;
+/* Impostazioni: sotto la barra in alto (Indietro e predefiniti) la fascia
+   ferma delle schede (vedi App.css), qui come pillole orizzontali scorrevoli
+   invece delle tab del desktop, con attorno il colore dello sfondo. */
+.is-android .settings-tabs-bar {
+    padding: 12px 24px 10px;
 }
 
 .is-android .settings-tabs {
-    top: env(safe-area-inset-top, 0px);
     margin: 0;
     padding: 6px;
     overflow-x: auto;
@@ -379,12 +381,7 @@
 
 @media (max-width: 760px) {
     /* Header: titolo e ingranaggio sulla prima riga, aggiornamento automatico
-       e contatori sulla seconda. Non resta fisso in cima: su un telefono
-       occuperebbe troppo spazio verticale durante lo scorrimento. */
-    .is-android header {
-        position: static;
-    }
-
+       e contatori sulla seconda. */
     .is-android .header-inner {
         flex-wrap: wrap;
         gap: 8px 10px;
@@ -632,6 +629,16 @@
 
     .is-android .settings {
         padding: 14px 12px;
+    }
+
+    /* Fascia delle schede con i margini laterali del main di questo layout;
+       sotto, il contenuto parte quasi subito (lo spazio lo dà la fascia). */
+    .is-android .settings-tabs-bar {
+        padding: 12px 12px 10px;
+    }
+
+    .is-android main.is-settings {
+        padding-top: 4px;
     }
 
     /* Senza il rientro sotto la freccia: su schermo stretto serve spazio. */

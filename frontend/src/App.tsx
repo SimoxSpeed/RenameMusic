@@ -872,6 +872,8 @@ function App() {
     draftRef.current = draft
     const playlistDraftRef = useRef(playlistDraft)
     playlistDraftRef.current = playlistDraft
+    // Contenitore che scorre sotto l'header (vedi .app-scroll in App.css).
+    const scrollRef = useRef<HTMLDivElement>(null)
 
     function absorb(resp: core.ActionResponse, resetDrafts = false) {
         absorbState(resp.state, resetDrafts)
@@ -1471,7 +1473,7 @@ function App() {
     // Cambio di scheda: il contenuto riparte dall'alto.
     function selectSettingsTab(tab: SettingsTab) {
         setSettingsTab(tab)
-        window.scrollTo({ top: 0 })
+        scrollRef.current?.scrollTo({ top: 0 })
     }
 
     // leaveSettings esce dalle Impostazioni dopo aver salvato le modifiche in
@@ -2320,7 +2322,34 @@ function App() {
             </header>
             )}
 
-            <main className={!showSettings && simpleMode ? 'is-simple' : ''}>
+            {/* Schede delle Impostazioni: tab orizzontali su desktop, pillole
+                scorrevoli su Android (mobile.css). Stanno fuori dall'area che
+                scorre, ferme sotto l'header: la scrollbar parte sotto di loro. */}
+            {showSettings && draft && (
+                <div className="settings-tabs-bar">
+                    <nav className="settings-tabs" aria-label="Sezioni delle impostazioni">
+                        {SETTINGS_TABS.map((t) => (
+                            <button
+                                key={t.id}
+                                type="button"
+                                className={'settings-tab' + (settingsTab === t.id ? ' is-active' : '')}
+                                aria-current={settingsTab === t.id ? 'page' : undefined}
+                                onClick={() => selectSettingsTab(t.id)}
+                            >
+                                {t.icon}
+                                <span>{t.label}</span>
+                                {t.id === 'info' && state?.update && <span className="update-dot" aria-hidden="true" />}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+            )}
+
+            {/* Scorre solo il contenuto sotto l'header (e sotto le schede delle
+                Impostazioni): la scrollbar parte da qui e non dalla cima della
+                finestra. */}
+            <div className="app-scroll" ref={scrollRef}>
+            <main className={showSettings ? 'is-settings' : simpleMode ? 'is-simple' : ''}>
                 <div
                     className={'busy-bar' + (busy ? ' is-active' : '')}
                     role="progressbar"
@@ -2546,24 +2575,6 @@ function App() {
 
                 {showSettings && draft && (
                     <div className="settings-layout">
-                        {/* Schede: tab orizzontali in cima su desktop, pillole
-                            scorrevoli su Android (mobile.css). */}
-                        <nav className="settings-tabs" aria-label="Sezioni delle impostazioni">
-                            {SETTINGS_TABS.map((t) => (
-                                <button
-                                    key={t.id}
-                                    type="button"
-                                    className={'settings-tab' + (settingsTab === t.id ? ' is-active' : '')}
-                                    aria-current={settingsTab === t.id ? 'page' : undefined}
-                                    onClick={() => selectSettingsTab(t.id)}
-                                >
-                                    {t.icon}
-                                    <span>{t.label}</span>
-                                    {t.id === 'info' && state?.update && <span className="update-dot" aria-hidden="true" />}
-                                </button>
-                            ))}
-                        </nav>
-
                         <div className="settings-panel">
                             {settingsTab === 'general' && (
                                 <section className="settings">
@@ -3191,6 +3202,7 @@ function App() {
                     </section>
                 )}
             </main>
+            </div>
 
             {folderPicker && (
                 <FolderPicker

@@ -1,19 +1,39 @@
+/* La finestra è una colonna alta quanto il viewport: header fermo in cima e
+   sotto il contenuto, l'unico che scorre (.app-scroll). */
 .app {
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
 }
 
-/* Header fisso in cima: resta visibile durante lo scorrimento dei contenuti.
-   La scrollbar vive sull'elemento <html> (overflow-y: scroll), quindi sticky
-   qui ancora l'header al viewport. La leggera ombra lo stacca dal contenuto. */
+/* Header fisso in cima. La leggera ombra lo stacca dal contenuto;
+   position + z-index la tengono sopra .app-scroll. */
 header {
-    position: sticky;
-    top: 0;
+    position: relative;
+    flex: none;
     z-index: 40;
     background: var(--header-bg);
     color: var(--header-text);
     box-shadow: 0 2px 12px rgba(15, 23, 42, 0.18);
+}
+
+/* Contenuto sotto l'header: scorre qui, quindi la scrollbar parte da sotto
+   l'header. Lo spazio della scrollbar è sempre riservato: evita il layout
+   shift (flicker orizzontale) quando la tabella cambia dimensione e la
+   scrollbar compare/scompare durante Scan/Refresh. È una colonna flex perché
+   il main della modalità semplificata occupi tutta l'altezza. */
+.app-scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+}
+
+.app-scroll > main {
+    flex-shrink: 0;
 }
 
 /* Il contenuto dell'header (titolo + azioni) è allineato allo stesso contenitore
@@ -261,7 +281,7 @@ button:focus-visible {
     top: 0;
     left: 0;
     right: 0;
-    /* Sopra la riga delle schede delle Impostazioni (z 30), sotto l'header. */
+    /* Sopra il contenuto del main. */
     z-index: 31;
     height: 3px;
     background: transparent;
@@ -925,33 +945,44 @@ tr.changed td {
     color: #b7e5c4;
 }
 
-/* Vista Impostazioni: schede orizzontali ravvicinate in cima, ferme sotto la
-   barra (alta 70px) mentre si scorre; sotto, il contenuto della scheda. I
-   margini negativi portano lo sfondo della riga fino ai bordi del main, così il
-   contenuto che scorre non si vede ai lati. */
 .settings-layout {
     display: flex;
     flex-direction: column;
     gap: 16px;
 }
 
-.settings-tabs {
-    position: sticky;
-    top: 70px;
+/* Vista Impostazioni: schede orizzontali ravvicinate in una fascia ferma tra
+   l'header e l'area che scorre (.app-scroll), così la scrollbar parte sotto
+   di loro. Sotto le schede 10px del colore dello sfondo chiusi dalla linea
+   grigia, poi un'ombra che stacca la fascia dal contenuto. La riga è
+   allineata al main (stessa max-width e stesso padding orizzontale).
+   position + z-index tengono l'ombra sopra .app-scroll. */
+.settings-tabs-bar {
+    position: relative;
+    flex: none;
     z-index: 30;
+    background: var(--bg);
+    box-shadow: 0 6px 14px -4px rgba(0, 0, 0, 0.3);
+}
+
+.settings-tabs {
     display: flex;
     gap: 2px;
-    margin: -20px -24px 0;
-    padding: 12px 24px 0;
-    background: var(--bg);
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 10px 24px;
     border-bottom: 1px solid var(--line);
+}
+
+/* Sotto le schede il contenuto parte a una distanza più corta del solito. */
+main.is-settings {
+    padding-top: 16px;
 }
 
 .settings-tab {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: -1px;
     padding: 8px 14px;
     border: 0;
     border-bottom: 2px solid transparent;
@@ -1419,10 +1450,10 @@ button.folder-missing:disabled {
 
 /* ---- Modalità semplificata ------------------------------------------------ */
 
-/* Il <main> occupa tutto lo spazio sotto l'header (.app è una colonna flex alta
-   quanto la finestra), così il "palco" della card può centrarla anche in
-   verticale. Dopo una conversione il palco torna alto quanto la card e la
-   tabella dei risultati le sta sotto. */
+/* Il <main> occupa tutto lo spazio sotto l'header (.app-scroll è una colonna
+   flex alta quanto il resto della finestra), così il "palco" della card può
+   centrarla anche in verticale. Dopo una conversione il palco torna alto
+   quanto la card e la tabella dei risultati le sta sotto. */
 main.is-simple {
     flex: 1;
     display: flex;
