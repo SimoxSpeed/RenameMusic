@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -17,12 +18,15 @@ import (
 type fakeRunner struct {
 	titles map[string]string
 
+	listArgs []string // argomenti dell'ultima enumerazione
+
 	mu        sync.Mutex
 	downloads int
 }
 
 func (r *fakeRunner) Run(args []string) ([]byte, []byte, error) {
 	if args[0] == "--flat-playlist" {
+		r.listArgs = args
 		var out strings.Builder
 		for id, title := range r.titles {
 			out.WriteString(id + "\t" + title + "\n")
@@ -144,5 +148,42 @@ func TestDownloadAndProcessChecksDestinationFirst(t *testing.T) {
 	}
 	if runner.downloads != 0 {
 		t.Fatalf("nessun download atteso, eseguiti %d", runner.downloads)
+	}
+}
+
+// TestDownloadLinkAndProcess verifica il download da un link incollato: si
+// scarica solo il video del link (--no-playlist) e lo si converte subito.
+func TestDownloadLinkAndProcess(t *testing.T) {
+	runner := &fakeRunner{titles: map[string]string{"v1": "Artista - Titolo (Official Video)"}}
+	app, musicDir := newSimpleApp(t, runner, nil)
+
+	resp := app.DownloadLinkAndProcess("  https://www.youtube.com/watch?v=v1&list=PL1  ")
+	if !resp.OK {
+		t.Fatalf("DownloadLinkAndProcess non ok: %s", resp.Message)
+	}
+	if !slices.Contains(runner.listArgs, "--no-playlist") {
+		t.Fatalf("atteso --no-playlist nell'enumerazione, argomenti %v", runner.listArgs)
+	}
+	if got := runner.listArgs[len(runner.listArgs)-1]; got != "https://www.youtube.com/watch?v=v1&list=PL1" {
+		t.Fatalf("link passato a yt-dlp inatteso: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(musicDir, "Artista - Titolo.mp3")); err != nil {
+		t.Fatalf("file convertito assente: %v", err)
+	}
+}
+
+// TestDownloadLinkRejectsInvalid verifica che un link vuoto o non http(s)
+// (es. un'opzione di yt-dlp) venga rifiutato senza avviare yt-dlp.
+func TestDownloadLinkRejectsInvalid(t *testing.T) {
+	runner := &fakeRunner{titles: map[string]string{"v1": "Artista - Titolo"}}
+	app, _ := newSimpleApp(t, runner, nil)
+
+	for _, link := range []string{"", "   ", "--exec calc", "youtube.com/watch?v=v1", "file:///etc/passwd"} {
+		if resp := app.DownloadLink(link); resp.OK {
+			t.Fatalf("link %q accettato", link)
+		}
+	}
+	if runner.listArgs != nil || runner.downloads != 0 {
+		t.Fatalf("yt-dlp non doveva partire: enumerazione %v, download %d", runner.listArgs, runner.downloads)
 	}
 }

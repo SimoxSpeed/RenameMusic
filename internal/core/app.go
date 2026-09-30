@@ -8,6 +8,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1075,6 +1076,19 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 	return resp
 }
 
+// DownloadLink è DownloadPlaylist per un link incollato dall'utente (di
+// solito un singolo video) invece di una playlist salvata.
+func (a *App) DownloadLink(link string) ActionResponse {
+	src, msg := linkSource(link)
+	if msg != "" {
+		return ActionResponse{OK: false, Message: msg, State: a.snapshotLocked()}
+	}
+	opCtx, endOp := a.beginCancelable()
+	defer endOp()
+	resp, _ := a.download(opCtx, src)
+	return resp
+}
+
 // DownloadAndProcess è l'azione della modalità semplificata: scarica la
 // playlist `name` come DownloadPlaylist e poi converte subito tutti i file della
 // cartella come ProcessAll, senza passare dall'anteprima. È un'unica operazione
@@ -1083,6 +1097,26 @@ func (a *App) DownloadPlaylist(name string) ActionResponse {
 // confermare) con in più i video non scaricati; se il download non va a buon
 // fine (o viene annullato) è quella del download.
 func (a *App) DownloadAndProcess(name string) ActionResponse {
+	return a.downloadAndProcess(func(opCtx context.Context) (ActionResponse, bool) {
+		return a.downloadPlaylist(opCtx, name)
+	})
+}
+
+// DownloadLinkAndProcess è DownloadAndProcess per un link incollato
+// dall'utente (vedi DownloadLink).
+func (a *App) DownloadLinkAndProcess(link string) ActionResponse {
+	src, msg := linkSource(link)
+	if msg != "" {
+		return ActionResponse{OK: false, Message: msg, State: a.snapshotLocked()}
+	}
+	return a.downloadAndProcess(func(opCtx context.Context) (ActionResponse, bool) {
+		return a.download(opCtx, src)
+	})
+}
+
+// downloadAndProcess esegue il download `dl` e poi la conversione, come
+// descritto in DownloadAndProcess.
+func (a *App) downloadAndProcess(dl func(context.Context) (ActionResponse, bool)) ActionResponse {
 	// La destinazione si valida prima di scaricare: scoprire solo a download
 	// finito che la conversione non può partire sarebbe una perdita di tempo.
 	a.mu.Lock()
@@ -1095,34 +1129,59 @@ func (a *App) DownloadAndProcess(name string) ActionResponse {
 	opCtx, endOp := a.beginCancelable()
 	defer endOp()
 
-	dl, downloaded := a.downloadPlaylist(opCtx, name)
+	dlResp, downloaded := dl(opCtx)
 	if !downloaded {
-		return dl
+		return dlResp
 	}
 
 	resp := a.processAll(opCtx, nil)
-	resp.DownloadErrors = dl.DownloadErrors
-	if n := len(dl.DownloadErrors); n > 0 {
+	resp.DownloadErrors = dlResp.DownloadErrors
+	if n := len(dlResp.DownloadErrors); n > 0 {
 		resp.OK = false
 		resp.Message = fmt.Sprintf("%s %d download non riusciti.", resp.Message, n)
 	}
 	return resp
 }
 
+// downloadSource è ciò che si scarica: una playlist salvata (playlist è il suo
+// nome) o un link incollato dall'utente (playlist vuoto).
+type downloadSource struct {
+	url      string
+	playlist string
+}
+
+// what descrive la sorgente nei log, es. `playlist "Preferiti"` o "dal link".
+func (s downloadSource) what() string {
+	if s.playlist != "" {
+		return fmt.Sprintf("playlist %q", s.playlist)
+	}
+	return "dal link"
+}
+
+// linkSource valida il link incollato dall'utente: deve essere un indirizzo
+// http(s) (yt-dlp riceverebbe altrimenti come opzione un testo che inizia con
+// "-"). Restituisce il messaggio d'errore per la UI se non è valido.
+func linkSource(link string) (downloadSource, string) {
+	link = strings.TrimSpace(link)
+	if link == "" {
+		return downloadSource{}, "Inserisci il link da scaricare."
+	}
+	u, err := url.Parse(link)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return downloadSource{}, "Link non valido: deve iniziare con http:// o https://."
+	}
+	return downloadSource{url: link}, ""
+}
+
 // downloadPlaylist esegue il download di DownloadPlaylist (vedi) sotto il
-// context dell'operazione in corso. downloaded è true se il download si è
-// concluso (anche con errori su singoli video) senza essere annullato e la
-// scansione successiva è riuscita: è la condizione perché DownloadAndProcess
-// prosegua con la conversione.
+// context dell'operazione in corso: vedi download.
 func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionResponse, downloaded bool) {
 	a.mu.Lock()
-	folder := a.config.StartFolder
-	ytdlp := a.ytDlpEffectivePath()
-	var url string
+	src := downloadSource{playlist: name}
 	found := false
 	for _, p := range a.playlists {
 		if p.Name == name {
-			url = p.URL
+			src.url = p.URL
 			found = true
 			break
 		}
@@ -1132,6 +1191,20 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 	if !found {
 		return ActionResponse{OK: false, Message: "Playlist non trovata.", State: a.snapshotLocked()}, false
 	}
+	return a.download(opCtx, src)
+}
+
+// download scarica in mp3 nella cartella di partenza i video di `src`, sotto
+// il context dell'operazione in corso, poi riscansiona la cartella.
+// downloaded è true se il download si è concluso (anche con errori su singoli
+// video) senza essere annullato e la scansione successiva è riuscita: è la
+// condizione perché downloadAndProcess prosegua con la conversione.
+func (a *App) download(opCtx context.Context, src downloadSource) (resp ActionResponse, downloaded bool) {
+	a.mu.Lock()
+	folder := a.config.StartFolder
+	ytdlp := a.ytDlpEffectivePath()
+	a.mu.Unlock()
+
 	// Anche la destinazione: dopo il download la scansione (e, in modalità
 	// semplificata, la conversione) la richiede, meglio non scaricare invano.
 	if msg := a.foldersError(); msg != "" {
@@ -1151,7 +1224,7 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 	// ripartire scansioni a metà download. Il watcher viene riabilitato dalla
 	// performScan finale (che azzera watchPaused) una volta scaricato tutto.
 	a.watchPaused = true
-	a.addLogLocked(LogInfo, fmt.Sprintf("Avvio download playlist %q...", name))
+	a.addLogLocked(LogInfo, fmt.Sprintf("Avvio download %s...", src.what()))
 	a.mu.Unlock()
 
 	// Se l'aggiornamento automatico sta sostituendo yt-dlp, si parte appena ha
@@ -1168,8 +1241,9 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 		defer a.ytDlpMu.Unlock()
 		return playlist.Download(playlist.Options{
 			Runner:  a.yt().Runner(ytdlp),
-			URL:     url,
+			URL:     src.url,
 			Folder:  folder,
+			Single:  src.playlist == "",
 			Workers: a.yt().Workers(),
 			OnProgress: func(done, total int) {
 				a.emit(EventProcessProgress, ProgressEvent{Done: done, Total: total, Phase: PhaseDownload})
@@ -1182,7 +1256,7 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 	if err != nil {
 		a.mu.Lock()
 		a.watchPaused = false // download fallito senza rescan: riabilita l'aggiornamento automatico
-		a.addLogLocked(LogError, "Download playlist fallito: "+err.Error())
+		a.addLogLocked(LogError, fmt.Sprintf("Download %s fallito: %s", src.what(), err.Error()))
 		state := a.snapshot()
 		a.mu.Unlock()
 		return ActionResponse{OK: false, Message: "Download fallito: " + err.Error(), State: state}, false
@@ -1192,10 +1266,14 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 	switch {
 	case canceled:
 		a.addLogLocked(LogInfo, fmt.Sprintf("Download annullato: %d completati, %d falliti.", result.Downloaded, result.Failed))
+	case result.Failed > 0 && src.playlist != "":
+		a.addLogLocked(LogError, fmt.Sprintf("Playlist %q: %d file scaricati, %d falliti.", src.playlist, result.Downloaded, result.Failed))
 	case result.Failed > 0:
-		a.addLogLocked(LogError, fmt.Sprintf("Playlist %q: %d file scaricati, %d falliti.", name, result.Downloaded, result.Failed))
+		a.addLogLocked(LogError, fmt.Sprintf("Download dal link: %d file scaricati, %d falliti.", result.Downloaded, result.Failed))
+	case src.playlist != "":
+		a.addLogLocked(LogSuccess, fmt.Sprintf("Playlist %q scaricata: %d file.", src.playlist, result.Downloaded))
 	default:
-		a.addLogLocked(LogSuccess, fmt.Sprintf("Playlist %q scaricata: %d file.", name, result.Downloaded))
+		a.addLogLocked(LogSuccess, fmt.Sprintf("Download dal link completato: %d file.", result.Downloaded))
 	}
 	a.mu.Unlock()
 

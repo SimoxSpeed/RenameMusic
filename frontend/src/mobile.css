@@ -537,7 +537,10 @@
     .is-android .download-controls {
         flex-wrap: wrap;
     }
-    .is-android .download-controls > .tip:first-child {
+    /* La playlist occupa lo spazio accanto a "Scarica"; con un link si chiude
+       (vedi Collapse in App.tsx) e "Scarica" ne prende il posto (App.css). */
+    .is-android .download-controls > .playlist-pick,
+    .is-android .download-controls > .playlist-pick > .tip {
         flex: 1 1 auto;
         min-width: 0;
     }

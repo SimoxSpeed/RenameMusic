@@ -31,8 +31,14 @@ const (
 // Options controlla un'esecuzione di Download.
 type Options struct {
 	Runner Runner // esecutore di yt-dlp (processo esterno su desktop, libreria su Android)
-	URL    string // link della playlist YouTube
+	URL    string // link della playlist YouTube (o, con Single, di un singolo video)
 	Folder string // cartella di destinazione degli mp3
+
+	// Single indica un link incollato dall'utente invece di una playlist
+	// salvata: se punta a un video aperto dentro una playlist
+	// (watch?v=...&list=...) si scarica solo quel video (--no-playlist). Un
+	// link a una playlist vera e propria la scarica comunque tutta.
+	Single bool
 
 	// Workers limita quanti download avvengono in parallelo. <= 0 usa il
 	// default (8): a differenza dello script bat originale (che li lanciava
@@ -213,12 +219,15 @@ func Download(opts Options) (Result, error) {
 	_ = CleanTempDir(opts.Folder)
 	defer CleanTempDir(opts.Folder)
 
-	videos, err := listVideos(opts.Runner, opts.URL)
+	videos, err := listVideos(opts.Runner, opts.URL, opts.Single)
 	if err != nil {
 		return Result{}, err
 	}
 	total := len(videos)
 	if total == 0 {
+		if opts.Single {
+			return Result{}, fmt.Errorf("nessun video trovato al link")
+		}
 		return Result{}, fmt.Errorf("nessun video trovato nella playlist")
 	}
 
@@ -287,13 +296,21 @@ type videoInfo struct {
 // listVideos enumera i video di una playlist senza scaricare nulla
 // (--flat-playlist), stampando ID e titolo separati da un tab: una riga per
 // video. Il titolo serve solo a rendere leggibile l'eventuale elenco di errori.
-func listVideos(r Runner, url string) ([]videoInfo, error) {
-	out, stderr, err := r.Run([]string{"--flat-playlist", "--print", "%(id)s\t%(title)s", url})
+// Con single (link di un video) l'enumerazione restituisce solo quel video,
+// anche se il link lo apre dentro una playlist.
+func listVideos(r Runner, url string, single bool) ([]videoInfo, error) {
+	args := []string{"--flat-playlist", "--print", "%(id)s\t%(title)s", url}
+	what := "estrazione playlist fallita"
+	if single {
+		args = append([]string{args[0], "--no-playlist"}, args[1:]...)
+		what = "lettura del link fallita"
+	}
+	out, stderr, err := r.Run(args)
 	if err != nil {
 		if msg := extractYtDlpError(string(stderr)); msg != "" {
-			return nil, fmt.Errorf("estrazione playlist fallita: %s", msg)
+			return nil, fmt.Errorf("%s: %s", what, msg)
 		}
-		return nil, fmt.Errorf("estrazione playlist fallita: %w", err)
+		return nil, fmt.Errorf("%s: %w", what, err)
 	}
 
 	var videos []videoInfo

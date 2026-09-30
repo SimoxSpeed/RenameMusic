@@ -30,6 +30,14 @@ export function DownloadAndProcess(arg1) {
   return window['go']['core']['App']['DownloadAndProcess'](arg1);
 }
 
+export function DownloadLink(arg1) {
+  return window['go']['core']['App']['DownloadLink'](arg1);
+}
+
+export function DownloadLinkAndProcess(arg1) {
+  return window['go']['core']['App']['DownloadLinkAndProcess'](arg1);
+}
+
 export function DownloadPlaylist(arg1) {
   return window['go']['core']['App']['DownloadPlaylist'](arg1);
 }

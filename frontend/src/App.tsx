@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import './App.css'
 import './mobile.css'
@@ -22,6 +22,8 @@ import {
     SetPlaylists,
     DownloadPlaylist,
     DownloadAndProcess,
+    DownloadLink,
+    DownloadLinkAndProcess,
     InstallYtDlp,
     InstallFFmpeg,
     UninstallYtDlp,
@@ -33,6 +35,7 @@ import {
     MarkUpdateSeen,
     InstallUpdate,
     isAndroid,
+    onClipboardLink,
     onEvent,
     onResume,
     openURL,
@@ -64,6 +67,7 @@ import {
     FolderOutIcon,
     InfoCircleIcon,
     KeyboardIcon,
+    LinkIcon,
     PlusIcon,
     RefreshIcon,
     RemoveIcon,
@@ -552,6 +556,141 @@ function PlaylistSelect({
     )
 }
 
+// Collapse: contenitore che con `collapsed` si chiude fino a sparire (poi resta
+// display: none) e si riapre, animato lungo la direzione della riga flex che lo
+// contiene: in larghezza se i comandi sono affiancati, in altezza se sono
+// impilati. Si anima una misura esplicita, presa dall'elemento vero, più il
+// margine che si mangia il gap: così il fratello che ne prende il posto (regole
+// con [data-away] nel CSS) cresce in modo continuo, senza scatti. data-away c'è
+// finché l'elemento è chiuso o in movimento. Stili e attributo si impostano a
+// mano sul nodo, fuori da React, perché cambiano a ogni frame. onSettled avvisa
+// quando l'elemento è fermo (aperto o chiuso).
+function Collapse({
+    collapsed,
+    className,
+    onSettled,
+    children,
+}: {
+    collapsed: boolean
+    className: string
+    onSettled?: () => void
+    children: ReactNode
+}) {
+    const ref = useRef<HTMLDivElement>(null)
+    const first = useRef(true)
+    const onSettledRef = useRef(onSettled)
+    onSettledRef.current = onSettled
+    useLayoutEffect(() => {
+        const el = ref.current
+        if (!el) return
+        const initial = first.current
+        first.current = false
+        const settle = () => {
+            el.style.flex = ''
+            el.style.overflow = ''
+            if (collapsed) el.style.display = 'none'
+            else delete el.dataset.away
+            onSettledRef.current?.()
+        }
+        if (initial || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            el.getAnimations().forEach((a) => a.cancel())
+            if (collapsed) el.dataset.away = ''
+            else el.style.display = ''
+            settle()
+            return
+        }
+
+        const row = el.parentElement ? getComputedStyle(el.parentElement) : null
+        const vertical = !!row && row.flexDirection.startsWith('column')
+        const size = vertical ? 'height' : 'width'
+        const margin = vertical ? 'marginBottom' : 'marginRight'
+        const gap = (row && parseFloat(vertical ? row.rowGap : row.columnGap)) || 0
+
+        // Da dove si parte: anche da metà di un'animazione nel verso opposto.
+        const gone = el.style.display === 'none'
+        const style = getComputedStyle(el)
+        const from = gone
+            ? { size: 0, margin: -gap, opacity: 0 }
+            : { size: el.getBoundingClientRect()[size], margin: parseFloat(style[margin]) || 0, opacity: parseFloat(style.opacity) }
+        el.getAnimations().forEach((a) => a.cancel())
+
+        // Dove si arriva: da aperto è la misura naturale, senza gli stili
+        // dell'animazione e senza che il fratello si allarghi.
+        let to = 0
+        if (!collapsed) {
+            el.style.display = ''
+            el.style.flex = ''
+            el.style.overflow = ''
+            delete el.dataset.away
+            to = el.getBoundingClientRect()[size]
+        }
+        el.dataset.away = ''
+        el.style.display = ''
+        el.style.flex = '0 0 auto'
+        el.style.overflow = 'hidden'
+        // Chiudendo il contenuto svanisce presto; riaprendo compare quando c'è
+        // già un po' di spazio.
+        const fade = collapsed ? { opacity: 0, offset: 0.6 } : { opacity: from.opacity, offset: 0.35 }
+        const anim = el.animate(
+            [
+                { [size]: from.size + 'px', [margin]: from.margin + 'px', opacity: from.opacity },
+                fade,
+                { [size]: to + 'px', [margin]: (collapsed ? -gap : 0) + 'px', opacity: collapsed ? 0 : 1 },
+            ],
+            { duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
+        )
+        anim.onfinish = settle
+    }, [collapsed])
+    return (
+        <div ref={ref} className={className} aria-hidden={collapsed || undefined}>
+            {children}
+        </div>
+    )
+}
+
+// LinkField: campo per il link da scaricare (di solito un singolo video), sopra
+// la scelta della playlist, con il tasto per svuotarlo. Invio avvia il download.
+function LinkField({
+    value,
+    onChange,
+    onSubmit,
+    disabled,
+}: {
+    value: string
+    onChange: (value: string) => void
+    onSubmit: () => void
+    disabled?: boolean
+}) {
+    return (
+        <div className="link-field">
+            <span className="link-field-icon" aria-hidden="true">
+                <LinkIcon />
+            </span>
+            <input
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+                value={value}
+                placeholder="Incolla il link di un video"
+                aria-label="Link da scaricare"
+                onChange={(e) => onChange(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    onSubmit()
+                }}
+                disabled={disabled}
+            />
+            {value !== '' && !disabled && (
+                <button type="button" className="link-field-clear" onClick={() => onChange('')} aria-label="Svuota il link">
+                    <CloseIcon />
+                </button>
+            )}
+        </div>
+    )
+}
+
 // splitName separa il nome file dalla sua estensione (parte dopo l'ultimo punto).
 // Restituisce base senza estensione ed estensione senza punto. Usato per NON
 // mostrare mai l'estensione nei nomi file: quella viaggia in un chip a parte.
@@ -849,6 +988,10 @@ function App() {
     const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | null>(null)
     // selectedPlaylist: nome scelto nel select accanto al bottone "Scarica".
     const [selectedPlaylist, setSelectedPlaylist] = useState('')
+    // downloadLink: link incollato (di solito un singolo video). Se c'è, il
+    // tasto di download scarica lui al posto della playlist selezionata. Su
+    // Android si riempie da solo con un link di YouTube appena copiato.
+    const [downloadLink, setDownloadLink] = useState('')
     const [results, setResults] = useState<core.ResultView[] | null>(null)
     const [confirmDefault, setConfirmDefault] = useState(false)
     // defaultsMenu: pannello dei predefiniti aperto (solo Android, DefaultsMenu).
@@ -958,6 +1101,30 @@ function App() {
     playlistDraftRef.current = playlistDraft
     // Contenitore che scorre sotto l'header (vedi .app-scroll in App.css).
     const scrollRef = useRef<HTMLDivElement>(null)
+
+    // downloadRowWidth: larghezza della riga playlist + "Scarica" della
+    // schermata normale su desktop, misurata con la playlist aperta e ferma. Il
+    // campo del link non la supera e, con la playlist chiusa, "Scarica" si
+    // allarga fino a lei (--download-row-width in App.css). Su Android la riga
+    // occupa già tutta la larghezza.
+    const downloadRowRef = useRef<HTMLDivElement>(null)
+    const [downloadRowWidth, setDownloadRowWidth] = useState(0)
+    function measureDownloadRow() {
+        const row = downloadRowRef.current
+        if (isAndroid || !row || row.querySelector(':scope > [data-away]')) return
+        const last = row.lastElementChild
+        if (!last) return
+        const width = Math.ceil(last.getBoundingClientRect().right - row.getBoundingClientRect().left)
+        setDownloadRowWidth((prev) => (prev === width ? prev : width))
+    }
+
+    // A ogni render (playlist scelta, errori di download, ...) e quando i font
+    // sono pronti, che cambiano la larghezza del testo.
+    useLayoutEffect(measureDownloadRow)
+    useEffect(() => {
+        document.fonts?.ready.then(measureDownloadRow)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     function absorb(resp: core.ActionResponse, resetDrafts = false) {
         absorbState(resp.state, resetDrafts)
@@ -1100,6 +1267,10 @@ function App() {
         })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // Android: un link di YouTube copiato negli appunti (letto quando l'app
+    // riprende il focus) finisce nel campo del link, pronto da scaricare.
+    useEffect(() => onClipboardLink((url) => setDownloadLink(url)), [])
 
     // Chiede l'accesso a tutti i file (Android 11+: apre le impostazioni di
     // sistema; lo stato si aggiorna al ritorno nell'app, vedi onResume).
@@ -1618,6 +1789,11 @@ function App() {
     const files = state?.files ?? []
     const logs = state?.logs ?? []
     const playlists = state?.playlists ?? []
+    // Cosa scarica il tasto di download: il link, se inserito, altrimenti la
+    // playlist selezionata (che intanto si disattiva).
+    const link = downloadLink.trim()
+    const canDownloadSource = link !== '' || selectedPlaylist !== ''
+    const downloadWhat = link ? 'del link' : 'della playlist'
     // Contatori nell'header: dopo un'elaborazione la lista `files` \u00e8 vuota
     // (i file sono stati rinominati/spostati), quindi mostreremmo "0 file".
     // Quando ci sono `results` calcoliamo i contatori da quelli, cos\u00ec l'utente
@@ -1777,7 +1953,8 @@ function App() {
         setPlaylistDraft((prev) => prev.filter((_, i) => i !== index))
     }
 
-    // Avvia il download della playlist selezionata. Se yt-dlp non è presente
+    // Avvia il download del link inserito o, se il campo è vuoto, della
+    // playlist selezionata. Se yt-dlp non è presente
     // chiede prima conferma con un popup: se la gestione automatica è attiva
     // propone solo di scaricarlo, altrimenti propone di attivarla e procedere
     // (in entrambi i casi lo scarica, insieme a ffmpeg se manca, e poi prosegue).
@@ -1785,7 +1962,7 @@ function App() {
     // sono entrambi, scarica direttamente nella cartella di partenza (la
     // scansione riparte automaticamente lato backend).
     function downloadPlaylist() {
-        if (!selectedPlaylist) return
+        if (!canDownloadSource) return
         // In modalità semplificata la conversione segue il download: la
         // destinazione deve esserci già (il core la ricontrolla comunque).
         if (simpleMode && !destReady) {
@@ -1822,14 +1999,19 @@ function App() {
         })
     }
 
-    // playlistStep scarica la playlist selezionata e ne assorbe l'esito. In
-    // modalità semplificata (DownloadAndProcess) il core converte anche subito i
-    // brani: mostriamo i risultati e le tracce da confermare come dopo
-    // "Converti nomi e scrivi tag".
+    // playlistStep scarica il link inserito (o la playlist selezionata) e ne
+    // assorbe l'esito. In modalità semplificata (DownloadAndProcess) il core
+    // converte anche subito i brani: mostriamo i risultati e le tracce da
+    // confermare come dopo "Converti nomi e scrivi tag". Un link scaricato senza
+    // errori si toglie dal campo, a meno che nel frattempo non ne sia arrivato
+    // un altro dagli appunti.
     async function playlistStep() {
-        const resp = simpleMode ? await DownloadAndProcess(selectedPlaylist) : await DownloadPlaylist(selectedPlaylist)
+        const resp = link
+            ? await (simpleMode ? DownloadLinkAndProcess(link) : DownloadLink(link))
+            : await (simpleMode ? DownloadAndProcess(selectedPlaylist) : DownloadPlaylist(selectedPlaylist))
         setCancellable(false)
         absorb(resp)
+        if (link && resp.ok) setDownloadLink((prev) => (prev.trim() === link ? '' : prev))
         setDownloadErrors(resp.downloadErrors ?? [])
         notify(resp.ok, resp.message ?? '')
         if (simpleMode) {
@@ -2125,7 +2307,7 @@ function App() {
             case 'enter': // Converti (o, nella vista risultati, nuova scansione); in modalità semplificata "Scarica e converti"
                 e.preventDefault()
                 if (simpleMode) {
-                    if (!busy && !showSettings && selectedPlaylist && foldersOk) downloadPlaylist()
+                    if (!busy && !showSettings && canDownloadSource && foldersOk) downloadPlaylist()
                 } else if (results) {
                     if (!busy && foldersOk) refresh()
                 } else if (canProcess) {
@@ -2484,20 +2666,36 @@ function App() {
                         <div className="folder-summary">{folderSummary}</div>
 
                         <div className="actions">
-                            <div className="download-controls">
-                                <Tooltip label={playlists.length === 0 ? 'Nessuna playlist salvata: aggiungine una dalle Impostazioni' : 'Playlist da scaricare'}>
-                                    <PlaylistSelect
-                                        value={selectedPlaylist}
-                                        options={playlists}
-                                        onChange={setSelectedPlaylist}
-                                        disabled={busy || playlists.length === 0}
-                                    />
-                                </Tooltip>
-                                <Tooltip label={foldersHint || 'Scarica la playlist selezionata'}>
+                            {/* Link sopra la riga playlist + "Scarica", su una riga
+                                propria e largo quanto lei. Il link, se inserito, ha
+                                la precedenza: la playlist si chiude (animata) e
+                                "Scarica" ne prende il posto. */}
+                            <div
+                                className="download-box"
+                                style={downloadRowWidth ? ({ '--download-row-width': downloadRowWidth + 'px' } as CSSProperties) : undefined}
+                            >
+                            <LinkField
+                                value={downloadLink}
+                                onChange={setDownloadLink}
+                                onSubmit={() => foldersOk && downloadPlaylist()}
+                                disabled={busy}
+                            />
+                            <div className="download-controls" ref={downloadRowRef}>
+                                <Collapse className="playlist-pick" collapsed={link !== ''} onSettled={measureDownloadRow}>
+                                    <Tooltip label={playlists.length === 0 ? 'Nessuna playlist salvata: aggiungine una dalle Impostazioni' : 'Playlist da scaricare'}>
+                                        <PlaylistSelect
+                                            value={selectedPlaylist}
+                                            options={playlists}
+                                            onChange={setSelectedPlaylist}
+                                            disabled={busy || playlists.length === 0 || link !== ''}
+                                        />
+                                    </Tooltip>
+                                </Collapse>
+                                <Tooltip label={foldersHint || (link ? 'Scarica il link inserito' : 'Scarica la playlist selezionata')}>
                                     <button
                                         className="accent with-icon"
                                         onClick={downloadPlaylist}
-                                        disabled={busy || !selectedPlaylist || !foldersOk}
+                                        disabled={busy || !canDownloadSource || !foldersOk}
                                     >
                                         <span className="btn-icon"><DownloadIcon /></span>
                                         Scarica
@@ -2516,6 +2714,7 @@ function App() {
                                         </button>
                                     </Tooltip>
                                 )}
+                            </div>
                             </div>
                             {results ? (
                                 <button className="accent with-icon" onClick={refresh} disabled={busy || !foldersOk}>
@@ -2595,56 +2794,69 @@ function App() {
                             <div className="simple-hero-badge" aria-hidden="true">
                                 <DownloadIcon />
                             </div>
-                            <h2 className="simple-hero-title">Scarica una playlist</h2>
+                            <h2 className="simple-hero-title">Scarica la tua musica</h2>
                             <p className="simple-hero-sub">
                                 {playlists.length === 0
-                                    ? 'Non hai ancora playlist salvate: aggiungine una nelle Impostazioni.'
-                                    : 'I brani vengono scaricati e subito rinominati, con titolo e artista scritti nei tag.'}
+                                    ? 'Incolla il link di un video, oppure aggiungi una playlist nelle Impostazioni.'
+                                    : 'Incolla il link di un video o scegli una playlist: i brani vengono scaricati e subito rinominati, con titolo e artista scritti nei tag.'}
                             </p>
 
-                            <div className="simple-hero-controls">
-                                {/* Select + "+" restano affiancati anche quando, su
-                                    schermi stretti, i comandi si impilano. Il "+"
-                                    compare solo finché non c'è nessuna playlist. */}
-                                <div className="simple-hero-pick">
-                                    <PlaylistSelect
-                                        value={selectedPlaylist}
-                                        options={playlists}
-                                        onChange={setSelectedPlaylist}
-                                        disabled={busy}
-                                    />
-                                    {playlists.length === 0 && (
-                                    <Tooltip label="Aggiungi una playlist nelle Impostazioni">
-                                        <button
-                                            className="ghost simple-hero-add"
-                                            onClick={() => openSettings('download')}
-                                            disabled={busy}
-                                            aria-label="Aggiungi una playlist nelle Impostazioni"
-                                        >
-                                            <PlusIcon />
+                            {/* Link sopra playlist e azione, largo quanto loro: un
+                                blocco unico, largo al massimo 526 px. Il link, se
+                                inserito, ha la precedenza sulla playlist. */}
+                            <div className="simple-hero-download">
+                                <LinkField
+                                    value={downloadLink}
+                                    onChange={setDownloadLink}
+                                    onSubmit={() => foldersOk && downloadPlaylist()}
+                                    disabled={busy}
+                                />
+
+                                <div className="simple-hero-controls">
+                                    {/* Select + "+" restano affiancati anche quando, su
+                                        schermi stretti, i comandi si impilano. Il "+"
+                                        compare solo finché non c'è nessuna playlist. Con un link
+                                        inserito si chiudono (animati) e resta solo l'azione. */}
+                                    <Collapse className="simple-hero-pick" collapsed={link !== ''}>
+                                        <PlaylistSelect
+                                            value={selectedPlaylist}
+                                            options={playlists}
+                                            onChange={setSelectedPlaylist}
+                                            disabled={busy || link !== ''}
+                                        />
+                                        {playlists.length === 0 && (
+                                        <Tooltip label="Aggiungi una playlist nelle Impostazioni">
+                                            <button
+                                                className="ghost simple-hero-add"
+                                                onClick={() => openSettings('download')}
+                                                disabled={busy || link !== ''}
+                                                aria-label="Aggiungi una playlist nelle Impostazioni"
+                                            >
+                                                <PlusIcon />
+                                            </button>
+                                        </Tooltip>
+                                        )}
+                                    </Collapse>
+                                    {/* Durante l'operazione il pulsante principale
+                                        diventa "Annulla": una sola azione alla volta. */}
+                                    {busy && cancellable ? (
+                                        <button className="danger-solid simple-hero-action" onClick={cancelOp}>
+                                            <CloseIcon />
+                                            Annulla
                                         </button>
-                                    </Tooltip>
+                                    ) : (
+                                        <Tooltip label={!folder ? 'Scegli prima la cartella di partenza nelle Impostazioni' : foldersHint}>
+                                            <button
+                                                className="accent simple-hero-action"
+                                                onClick={downloadPlaylist}
+                                                disabled={busy || !canDownloadSource || !foldersOk}
+                                            >
+                                                <DownloadIcon />
+                                                Scarica e converti
+                                            </button>
+                                        </Tooltip>
                                     )}
                                 </div>
-                                {/* Durante l'operazione il pulsante principale
-                                    diventa "Annulla": una sola azione alla volta. */}
-                                {busy && cancellable ? (
-                                    <button className="danger-solid simple-hero-action" onClick={cancelOp}>
-                                        <CloseIcon />
-                                        Annulla
-                                    </button>
-                                ) : (
-                                    <Tooltip label={!folder ? 'Scegli prima la cartella di partenza nelle Impostazioni' : foldersHint}>
-                                        <button
-                                            className="accent simple-hero-action"
-                                            onClick={downloadPlaylist}
-                                            disabled={busy || !selectedPlaylist || !foldersOk}
-                                        >
-                                            <DownloadIcon />
-                                            Scarica e converti
-                                        </button>
-                                    </Tooltip>
-                                )}
                             </div>
 
                             {opProgress}
@@ -2685,7 +2897,7 @@ function App() {
                                 <section className="settings">
                                     <CheckOption
                                         label="Modalità semplificata"
-                                        info="Quando attiva, la schermata principale mostra solo la scelta della playlist: «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima."
+                                        info="Quando attiva, la schermata principale mostra solo il download (da un link o da una playlist): «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima."
                                         checked={!!draft.simpleMode}
                                         onChange={(checked) => setDraft({ ...draft, simpleMode: checked } as rules.Config)}
                                         disabled={busy}
@@ -3399,7 +3611,7 @@ function App() {
                     <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
                         <h3>Download non riusciti</h3>
                         <p>
-                            Questi {downloadErrors.length} video della playlist non sono stati
+                            Questi {downloadErrors.length} video non sono stati
                             scaricati. Puoi riprovare più tardi: i file già scaricati non vengono
                             riscaricati.
                         </p>
@@ -3472,7 +3684,7 @@ function App() {
                                 <p>
                                     L'app lo sta ancora preparando (al primo avvio richiede qualche
                                     secondo) oppure la preparazione non è riuscita. Vuoi scaricarne
-                                    l'ultima versione e avviare subito il download della playlist?
+                                    l'ultima versione e avviare subito il download {downloadWhat}?
                                 </p>
                             </>
                         ) : ytDlpManaged ? (
@@ -3482,7 +3694,7 @@ function App() {
                                     yt-dlp non è presente. L'app lo scaricherà
                                     {!state?.ffmpegAvailable && <> insieme a ffmpeg (circa 200 MB)</>} in{' '}
                                     <code>%AppData%\RenameMusic</code> e avvierà subito il download
-                                    della playlist.
+                                    {downloadWhat}.
                                 </p>
                             </>
                         ) : (
@@ -3493,7 +3705,7 @@ function App() {
                                     non è disponibile. Vuoi attivarlo e procedere? L'app scaricherà la
                                     propria copia{!state?.ffmpegAvailable && <> (con ffmpeg, circa 200 MB)</>} in{' '}
                                     <code>%AppData%\RenameMusic</code> e avvierà
-                                    subito il download della playlist.
+                                    subito il download {downloadWhat}.
                                 </p>
                             </>
                         )}
@@ -3609,7 +3821,7 @@ function App() {
                             Verrà scaricata l'ultima build ufficiale di <strong>ffmpeg</strong> per
                             yt-dlp da Internet (GitHub, circa 200 MB) in{' '}
                             <code>%AppData%\RenameMusic\ffmpeg</code>
-                            {confirmFFmpeg === 'playlist' && <>, poi partirà il download della playlist</>}.
+                            {confirmFFmpeg === 'playlist' && <>, poi partirà il download {downloadWhat}</>}.
                         </p>
                         <div className="modal-actions">
                             <button onClick={() => setConfirmFFmpeg(null)} disabled={busy}>

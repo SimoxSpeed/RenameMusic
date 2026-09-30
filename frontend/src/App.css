@@ -1426,8 +1426,9 @@ button.folder-missing:disabled {
 }
 
 /* Controlli di download playlist (select + "+" + "Scarica"): stanno sotto il
-   divisore, su una riga propria (flex-basis 100% dentro il contenitore
-   flex-wrap .actions), subito sopra i bottoni di conversione/tag. */
+   divisore, con il campo del link sopra (.download-box, su una riga propria
+   del contenitore flex-wrap .actions), subito sopra i bottoni di
+   conversione/tag. */
 .download-controls {
     display: flex;
     align-items: center;
@@ -1435,21 +1436,107 @@ button.folder-missing:disabled {
     flex-basis: 100%;
 }
 
+/* Scelta della playlist: con un link inserito si chiude e sparisce (vedi
+   Collapse in App.tsx). Il contenitore non cambia le misure del select. */
+.playlist-pick {
+    display: inline-flex;
+    min-width: 0;
+}
+
+/* Campo del link e riga playlist + "Scarica" hanno la stessa larghezza, quella
+   della riga con la playlist aperta (--download-row-width, misurata in
+   App.tsx; senza misura restano a tutta larghezza). Con la playlist chiusa
+   "Scarica" si allarga fino a lì, mentre l'altra si stringe. */
+.download-box {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 100%;
+    gap: 10px;
+    min-width: 0;
+}
+
+.download-box > .link-field,
+.download-box > .download-controls {
+    flex: none;
+}
+
+.download-box > .link-field {
+    max-width: var(--download-row-width, none);
+}
+
+.download-controls:has(> .playlist-pick[data-away]) {
+    max-width: var(--download-row-width, none);
+}
+
+.download-controls:has(> .playlist-pick[data-away]) > .playlist-pick + .tip {
+    flex-grow: 1;
+}
+
+.download-controls:has(> .playlist-pick[data-away]) > .playlist-pick + .tip > button {
+    flex: 1 1 auto;
+    justify-content: center;
+}
+
 /* Il select della playlist sta sul bordo sinistro: il suo tooltip si allinea a
    sinistra invece di centrarsi, così non esce dalla finestra. */
-.download-controls > .tip:first-child > .info-tooltip {
+.playlist-pick > .tip > .info-tooltip {
     left: 0;
     transform: translateY(-4px);
 }
 
-.download-controls > .tip:first-child:hover > .info-tooltip,
-.download-controls > .tip:first-child:has(:focus-visible) > .info-tooltip {
+.playlist-pick > .tip:hover > .info-tooltip,
+.playlist-pick > .tip:has(:focus-visible) > .info-tooltip {
     transform: translateY(0);
 }
 
-.download-controls > .tip:first-child > .info-tooltip::before {
+.playlist-pick > .tip > .info-tooltip::before {
     left: 16px;
     transform: none;
+}
+
+/* Campo del link da scaricare (sopra la scelta della playlist): icona a
+   sinistra e tasto per svuotarlo a destra, dentro il campo. */
+.link-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.link-field input {
+    padding-left: 34px;
+    padding-right: 38px;
+    text-overflow: ellipsis;
+}
+
+.link-field-icon {
+    position: absolute;
+    left: 11px;
+    display: inline-flex;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+.link-field-clear {
+    position: absolute;
+    right: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+}
+
+.link-field-clear:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--panel-alt);
 }
 
 /* ---- Modalità semplificata ------------------------------------------------ */
@@ -1542,6 +1629,13 @@ main.is-simple {
     min-width: 0;
 }
 
+/* Con un link la playlist si chiude (vedi Collapse in App.tsx) e l'azione ne
+   prende il posto, allargandosi mentre l'altra si stringe. */
+.simple-hero-controls:has(> .simple-hero-pick[data-away]) > .simple-hero-action,
+.simple-hero-controls:has(> .simple-hero-pick[data-away]) > .tip {
+    flex-grow: 1;
+}
+
 /* Tasto "+" (porta alle Impostazioni): quadrato, alto come select e azione. */
 .simple-hero-add {
     display: inline-flex;
@@ -1579,6 +1673,38 @@ main.is-simple {
 /* Con il Tooltip (cartella mancante) il bottone è dentro il suo wrapper. */
 .simple-hero-controls .tip > .simple-hero-action {
     flex: 1;
+    min-width: 0;
+}
+
+/* Link sopra playlist e azione, alto come loro e largo quanto la loro riga:
+   un blocco unico, largo al massimo come la riga playlist + azione della 3.0.4
+   (526 px, tutto lo spazio interno della card; sul telefono è comunque a tutta
+   larghezza). */
+.simple-hero-download {
+    max-width: 526px;
+    margin: 26px auto 0;
+}
+
+.simple-hero .link-field {
+    text-align: left;
+}
+
+.simple-hero .link-field input {
+    min-height: 48px;
+    padding-left: 38px;
+    font-size: 15px;
+}
+
+.simple-hero .link-field-icon {
+    left: 14px;
+}
+
+.simple-hero .link-field-clear {
+    right: 9px;
+}
+
+.simple-hero .link-field + .simple-hero-controls {
+    margin-top: 10px;
 }
 
 .simple-hero .op-progress {
@@ -1641,6 +1767,7 @@ main.is-simple {
         white-space: normal;
     }
 }
+
 
 /* Cartelle e opzioni nelle Impostazioni (in qualunque modalità). */
 .settings-folders {

@@ -18,6 +18,10 @@ export function ClearTags():Promise<core.ActionResponse>;
 
 export function DownloadAndProcess(arg1:string):Promise<core.ActionResponse>;
 
+export function DownloadLink(arg1:string):Promise<core.ActionResponse>;
+
+export function DownloadLinkAndProcess(arg1:string):Promise<core.ActionResponse>;
+
 export function DownloadPlaylist(arg1:string):Promise<core.ActionResponse>;
 
 export function GetConfig():Promise<core.ActionResponse>;

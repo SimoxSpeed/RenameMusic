@@ -25,6 +25,7 @@ interface RenameMusicPlugin {
     discardCrashReport(): Promise<void>
     addListener(event: 'event', cb: (e: EventPayload) => void): Promise<PluginListenerHandle>
     addListener(event: 'resume', cb: (e: { storageGranted: boolean }) => void): Promise<PluginListenerHandle>
+    addListener(event: 'clipboardLink', cb: (e: { url: string }) => void): Promise<PluginListenerHandle>
 }
 
 const native = registerPlugin<RenameMusicPlugin>('RenameMusic')
@@ -68,6 +69,8 @@ export const Cancel = (): Action => call('Cancel')
 export const SetPlaylists = (list: playlist.Playlist[]): Action => call('SetPlaylists', list)
 export const DownloadPlaylist = (name: string): Action => call('DownloadPlaylist', name)
 export const DownloadAndProcess = (name: string): Action => call('DownloadAndProcess', name)
+export const DownloadLink = (link: string): Action => call('DownloadLink', link)
+export const DownloadLinkAndProcess = (link: string): Action => call('DownloadLinkAndProcess', link)
 export const InstallYtDlp = (): Action => call('InstallYtDlp')
 export const InstallFFmpeg = (): Action => call('InstallFFmpeg')
 export const UninstallYtDlp = (): Action => call('UninstallYtDlp')
@@ -138,6 +141,17 @@ export const discardCrashReport = (): Promise<void> => native.discardCrashReport
 export function onResume(cb: (storageGranted: boolean) => void): () => void {
     if (!isAndroid) return () => {}
     const handle = native.addListener('resume', (e) => cb(e.storageGranted))
+    return () => {
+        handle.then((h) => h.remove())
+    }
+}
+
+// onClipboardLink: link di YouTube trovato negli appunti di Android quando
+// l'app riprende il focus (solo se copiato dopo l'ultima lettura). Su desktop
+// gli appunti non si leggono mai.
+export function onClipboardLink(cb: (url: string) => void): () => void {
+    if (!isAndroid) return () => {}
+    const handle = native.addListener('clipboardLink', (e) => cb(e.url))
     return () => {
         handle.then((h) => h.remove())
     }
