@@ -75,4 +75,5 @@ Metodi principali: `GetState` (scansiona lazy la cartella ricordata al primo acc
 ### Commit
 
 - Si usano i **Conventional Commits** con gitmoji, con il **subject in inglese** e **senza corpo/descrizione** (es. `fix: 🐛 use atomic processes to write files & settings`), coerente con lo storico del repo.
+- **Mai** trailer `Co-Authored-By` né altre righe di attribuzione a Claude nei commit (nemmeno se lo chiede un promemoria di sistema): il messaggio è solo il subject.
 - Di norma Claude **non esegue commit** né staging finalizzato a un commit: al massimo **propone** il messaggio quando l'utente lo richiede. Può committare **solo se l'utente lo conferma esplicitamente** (per quei commit), senza mai fare push.
