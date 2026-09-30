@@ -328,16 +328,19 @@ button:focus-visible {
 /* Barra di avanzamento determinata (oltre alla busy-bar indeterminata in cima):
    mostra il progresso reale delle operazioni con totale noto — in particolare il
    download di una playlist (canzoni scaricate / totale). Appare solo mentre
-   l'operazione è in corso. */
+   l'operazione è in corso. Se l'etichetta non sta accanto alla barra (schermi
+   stretti, caratteri grandi) va sotto di essa e, se serve, a capo, invece di
+   uscire dalla finestra. */
 .op-progress {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 6px 10px;
     margin-top: 12px;
 }
 
 .op-progress-track {
-    flex: 1;
+    flex: 1 1 120px;
     min-width: 0;
     height: 8px;
     border-radius: 999px;
@@ -357,7 +360,8 @@ button:focus-visible {
     color: var(--muted);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 input {
@@ -1630,6 +1634,11 @@ main.is-simple {
     }
     .simple-hero-controls .simple-hero-pick .select-wrap {
         flex: 1 1 auto;
+    }
+    /* Con i caratteri grandi il testo va a capo invece di uscire dalla card. */
+    .simple-hero-action,
+    .simple-hero-errors {
+        white-space: normal;
     }
 }
 
