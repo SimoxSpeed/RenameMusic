@@ -118,10 +118,29 @@ final class GoHost implements Host {
         return ready;
     }
 
+    /*
+     * Il core Go richiama questi metodi da thread nativi agganciati alla JVM da
+     * gomobile, che su Android non hanno un context class loader (null).
+     * commons-io 2.5, usata da youtubedl-android (per esempio nell'aggiornamento
+     * di yt-dlp), lo usa nell'inizializzazione statica di Java7Support: con null
+     * fallisce e la classe resta inutilizzabile fino al riavvio dell'app
+     * ("NoClassDefFoundError: org.apache.commons.io.Java7Support"). Per la
+     * durata della chiamata si imposta quindi quello dell'app.
+     */
+    private static ClassLoader useAppClassLoader() {
+        Thread thread = Thread.currentThread();
+        ClassLoader previous = thread.getContextClassLoader();
+        if (previous == null) {
+            thread.setContextClassLoader(GoHost.class.getClassLoader());
+        }
+        return previous;
+    }
+
     @Override
     public String ytDlpRun(String argsJSON) {
         awaitInit();
         JSONObject out = new JSONObject();
+        ClassLoader previousLoader = useAppClassLoader();
         try {
             if (!ready && !initYtDlp()) {
                 return result(out, "", "", "yt-dlp non inizializzato");
@@ -143,6 +162,8 @@ final class GoHost implements Host {
             // è lo stderr di yt-dlp: il core ne estrae la riga "ERROR:".
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
             return result(out, "", msg, "yt-dlp terminato con errore");
+        } finally {
+            Thread.currentThread().setContextClassLoader(previousLoader);
         }
     }
 
@@ -152,11 +173,14 @@ final class GoHost implements Host {
         if (!ready && !initYtDlp()) {
             return "impossibile inizializzare yt-dlp";
         }
+        ClassLoader previousLoader = useAppClassLoader();
         try {
             YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE);
             return "";
         } catch (Throwable e) {
             return e.getMessage() != null ? e.getMessage() : e.toString();
+        } finally {
+            Thread.currentThread().setContextClassLoader(previousLoader);
         }
     }
 
