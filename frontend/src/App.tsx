@@ -2182,19 +2182,12 @@ function App() {
     // Playlist YouTube (Impostazioni): stessa logica di editing delle
     // sostituzioni Da→A, ma su un elenco a parte (playlistDraft) salvato con
     // SetPlaylists, non con SetConfig.
-    // Senza playlist l'editor mostra comunque una riga vuota (vedi render): la
-    // prima modifica la crea davvero nella bozza.
     function updatePlaylistDraft(index: number, field: 'name' | 'url', value: string) {
-        setPlaylistDraft((prev) => {
-            const rows = prev.length === 0 ? [{ name: '', url: '' }] : prev
-            return rows.map((p, i) => (i === index ? { ...p, [field]: value } : p))
-        })
+        setPlaylistDraft((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
     }
 
-    // Con l'elenco vuoto la riga mostrata è già una: "Aggiungi" ne aggiunge una
-    // seconda, come si aspetta chi la vede.
     function addPlaylistDraft() {
-        setPlaylistDraft((prev) => [...(prev.length === 0 ? [{ name: '', url: '' }] : prev), { name: '', url: '' }])
+        setPlaylistDraft((prev) => [...prev, { name: '', url: '' }])
     }
 
     function removePlaylistDraft(index: number) {
@@ -3621,9 +3614,10 @@ function App() {
                                                 </button>
                                             </span>
                                         </div>
-                                        {/* Senza playlist una riga vuota è già pronta da compilare,
-                                            senza dover premere prima "Aggiungi". */}
-                                        {(playlistDraft.length > 0 ? playlistDraft : [{ name: '', url: '' }]).map((p, i) => (
+                                        {/* Anche l'ultima riga si toglie con la ✕: senza playlist
+                                            resta solo l'avviso, e "Aggiungi" ne crea una. */}
+                                        {playlistDraft.length === 0 && <p className="rule-empty">Nessuna playlist salvata.</p>}
+                                        {playlistDraft.map((p, i) => (
                                             <div className="replacement-row playlist-row" key={i}>
                                                 <input
                                                     type="text"
@@ -3650,7 +3644,8 @@ function App() {
                                                 <button
                                                     className="ghost small danger"
                                                     onClick={() => removePlaylistDraft(i)}
-                                                    disabled={busy || playlistDraft.length <= 1}
+                                                    disabled={busy}
+                                                    aria-label="Rimuovi playlist"
                                                 >
                                                     ✕
                                                 </button>
