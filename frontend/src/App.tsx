@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import './App.css'
 import './mobile.css'
@@ -61,22 +61,12 @@ import {
 } from './api'
 import FolderPicker from './FolderPicker'
 import {
-    AlertIcon,
-    CheckIcon,
-    CloseIcon,
-    ConvertIcon,
-    DownloadIcon,
-    EyeIcon,
-    PlusIcon,
     RefreshIcon,
-    SettingsIcon,
-    TagOffIcon,
 } from './icons'
-import { Tooltip, Collapse, OpProgress } from './components/controls'
-import { ExtChip, CurrentField, ErrorLabel } from './components/files'
+import { OpProgress } from './components/controls'
 import { FolderLines } from './components/folders'
-import { ShortcutsLegend, logKey, ActivityMenu } from './components/HeaderMenus'
-import { playlistChoices, PlaylistSelect, LinkField } from './components/playlists'
+import { logKey } from './components/HeaderMenus'
+import { playlistChoices } from './components/playlists'
 import {
     ClearTagsConfirm,
     CrashDialog,
@@ -97,6 +87,10 @@ import { PlaylistPrefsDialog, type PlaylistPrefsTarget } from './dialogs/Playlis
 import { TagPromptDialog } from './dialogs/TagPromptDialog'
 import { UpdateDialog } from './dialogs/UpdateDialog'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
+import { CommandBar, SimpleHero, type DownloadSource } from './main/DownloadCommands'
+import { MainHeader, StorageBanner } from './main/MainHeader'
+import { PreviewPanel } from './main/PreviewPanel'
+import { Toasts, type Toast } from './main/Toasts'
 import { AccountPlaylists, GoogleAccountPanel, SavedPlaylists, YtDlpPanel } from './settings/DownloadTab'
 import { GeneralTab } from './settings/GeneralTab'
 import { InfoTab } from './settings/InfoTab'
@@ -104,15 +98,10 @@ import { RulesTab, type RuleListKey } from './settings/RulesTab'
 import { SettingsHeader } from './settings/SettingsHeader'
 import { SETTINGS_TABS, SettingsTabsBar, type SettingsTab } from './settings/tabs'
 import { cloneConfig, comparableConfig, comparablePlaylists } from './lib/config'
-import { splitName, tagChanged, fileWillChange } from './lib/files'
+import { fileWillChange } from './lib/files'
 import { linkInText, playlistIdOf, isVideoLink } from './lib/links'
 import { type InstallProgress, installPercent, installLabel } from './lib/progress'
 import { type TagPrompt, type PromptSearch, promptsOf } from './lib/prompts'
-
-// Toast: notifica effimera (in basso a destra su desktop, in basso a tutta
-// larghezza su Android). È l'unico canale per l'esito delle azioni: `ok`
-// decide colore/icona, `duration` (ms) la durata prima della chiusura automatica.
-type Toast = { id: number; ok: boolean; message: string; duration: number }
 
 function App() {
     const [state, setState] = useState<core.StateResponse | null>(null)
@@ -1247,8 +1236,6 @@ function App() {
 
     // Casella nell'intestazione: seleziona/deseleziona tutti i file visibili
     // (con "Solo da modificare" solo quelli mostrati).
-    const allVisibleSelected = previewFiles.length > 0 && previewFiles.every((f) => reviewPaths.has(f.path))
-    const someVisibleSelected = previewFiles.some((f) => reviewPaths.has(f.path))
     function toggleReviewAll(checked: boolean) {
         setReviewPaths((prev) => {
             const next = new Set(prev)
@@ -1895,6 +1882,22 @@ function App() {
         </>
     )
 
+    // Cosa scaricare (campo del link e scelta della playlist), uguale nella
+    // schermata normale e nella card della modalità semplificata.
+    const downloadSource: DownloadSource = {
+        linkText: downloadLink,
+        onLinkChange: setDownloadLink,
+        onLinkSubmit: () => foldersOk && downloadPlaylist(),
+        onAddToPlaylist: onAddLink,
+        onPaste: isAndroid ? pasteLink : undefined,
+        hasLink: link !== '',
+        playlist: selectedPlaylist,
+        onPlaylistChange: setSelectedPlaylist,
+        options: playlistOptions,
+        noPlaylists,
+        canDownload: canDownloadSource,
+    }
+
     // Finché non arriva il primo stato (GetConfig, pochi ms) non sappiamo quale
     // schermata disegnare (normale o semplificata): meglio un istante vuoto che
     // la schermata sbagliata che poi cambia.
@@ -1917,98 +1920,20 @@ function App() {
             )}
 
             {!showSettings && (
-            <header>
-                <div className="header-inner">
-                <h1>RenameMusic</h1>
-                <div className="header-right">
-                    {!isAndroid && <ShortcutsLegend simple={simpleMode} separateDest={!destSameAsSource} />}
-                    {!showSettings && (
-                        <>
-                            {/* Senza anteprima l'aggiornamento automatico non ha
-                                nulla da aggiornare: in modalità semplificata il
-                                toggle sparisce (e il core ne ignora gli eventi). */}
-                            {!simpleMode && (
-                            <Tooltip
-                                label={
-                                    !folder || folderMissing
-                                        ? foldersHint
-                                        : watchEnabled
-                                          ? "Aggiornamento automatico attivo: clicca per disattivarlo. Le variazioni nella cartella aggiornano l'anteprima."
-                                          : "Aggiornamento automatico disattivato: clicca per attivarlo e aggiornare l'anteprima automaticamente."
-                                }
-                            >
-                                <button
-                                    type="button"
-                                    className={
-                                        'watch-toggle' +
-                                        (watchEnabled ? (folderMissing ? ' is-error' : ' is-on') : '')
-                                    }
-                                    onClick={() => toggleWatch(!watchEnabled)}
-                                    disabled={busy || !folder || folderMissing}
-                                    aria-pressed={watchEnabled}
-                                >
-                                    <span className="watch-dot" aria-hidden="true" />
-                                    {watchEnabled ? 'Agg. automatico attivo' : 'Agg. automatico'}
-                                </button>
-                            </Tooltip>
-                            )}
-                            {/* In modalità semplificata i contatori riassumono solo
-                                l'ultima conversione (non c'è un'anteprima da contare). */}
-                            {(!simpleMode || showingResults) && (
-                            <div className="counters">
-                                <span>{fileCount} file{showingResults ? ' elaborati' : ''}</span>
-                                <span className="dot">·</span>
-                                <span>{mp3Count} MP3</span>
-                                {!showingResults && reviewPaths.size > 0 && (
-                                    <>
-                                        <span className="dot">·</span>
-                                        <span className="counter-review">{reviewPaths.size} da rivedere</span>
-                                    </>
-                                )}
-                                {toRenameCount > 0 && (
-                                    <>
-                                        <span className="dot">·</span>
-                                        <span className="counter-hi">
-                                            {toRenameCount} {showingResults ? 'rinominati' : 'da rinominare'}
-                                        </span>
-                                    </>
-                                )}
-                                {failedCount > 0 && (
-                                    <>
-                                        <span className="dot">·</span>
-                                        <span className="counter-err">{failedCount} errori</span>
-                                    </>
-                                )}
-                            </div>
-                            )}
-                            {/* Registro Attività (non in modalità semplificata,
-                                dove gli esiti arrivano solo dai toast). */}
-                            {!simpleMode && (
-                                <ActivityMenu
-                                    open={activityOpen}
-                                    onOpenChange={setActivityOpen}
-                                    logs={logs}
-                                    unseen={logsUnseen}
-                                    onClear={clearLogs}
-                                    clearDisabled={busy}
-                                />
-                            )}
-                            <button
-                                type="button"
-                                className="header-btn with-icon"
-                                onClick={() => openSettings(state?.update ? 'info' : undefined)}
-                                disabled={busy}
-                                aria-label={state?.update ? 'Impostazioni (aggiornamento disponibile)' : 'Impostazioni'}
-                            >
-                                <span className="btn-icon"><SettingsIcon /></span>
-                                <span className="btn-label">Impostazioni</span>
-                                {state?.update && <span className="update-dot" aria-hidden="true" />}
-                            </button>
-                        </>
-                    )}
-                </div>
-                </div>
-            </header>
+                <MainHeader
+                    simpleMode={simpleMode}
+                    separateDest={!destSameAsSource}
+                    busy={busy}
+                    folder={folder}
+                    folderMissing={folderMissing}
+                    foldersHint={foldersHint}
+                    watchEnabled={watchEnabled}
+                    onToggleWatch={() => toggleWatch(!watchEnabled)}
+                    counters={{ showingResults, fileCount, mp3Count, reviewCount: reviewPaths.size, toRenameCount, failedCount }}
+                    activity={{ open: activityOpen, onOpenChange: setActivityOpen, logs, unseen: logsUnseen, onClear: clearLogs }}
+                    updateAvailable={!!state?.update}
+                    onOpenSettings={() => openSettings(state?.update ? 'info' : undefined)}
+                />
             )}
 
             {showSettings && draft && (
@@ -2037,222 +1962,50 @@ function App() {
                     aria-label="Operazione in corso"
                 />
 
-                {!showSettings && !storageGranted && (
-                    <div className="storage-banner" role="alert">
-                        <div className="storage-banner-text">
-                            <strong>Serve l'accesso ai file</strong>
-                            <span>
-                                Per leggere, rinominare e scaricare i brani l'app deve poter accedere
-                                alle cartelle della memoria. Attiva "Consenti l'accesso per gestire
-                                tutti i file" nella schermata che si apre, poi torna qui.
-                            </span>
-                        </div>
-                        <button className="accent" onClick={askStorage}>
-                            Concedi accesso
-                        </button>
-                    </div>
-                )}
+                {!showSettings && !storageGranted && <StorageBanner onRequest={askStorage} />}
 
                 {!showSettings && !simpleMode && (
-                <div className="top-row">
-                    <div className="top-left-head">
-                        <div className="folder-summary">{folderSummary}</div>
-
-                        <div className="actions">
-                            {/* Link sopra la riga playlist + "Scarica", su una riga
-                                propria e largo quanto lei. Il link, se inserito, ha
-                                la precedenza: la playlist si chiude (animata) e
-                                "Scarica" ne prende il posto. */}
-                            <div
-                                className="download-box"
-                                style={downloadRowWidth ? ({ '--download-row-width': downloadRowWidth + 'px' } as CSSProperties) : undefined}
-                            >
-                            <LinkField
-                                value={downloadLink}
-                                onChange={setDownloadLink}
-                                onSubmit={() => foldersOk && downloadPlaylist()}
-                                onAddToPlaylist={onAddLink}
-                                onPaste={isAndroid ? pasteLink : undefined}
-                                disabled={busy}
-                            />
-                            <div className="download-controls" ref={downloadRowRef}>
-                                <Collapse className="playlist-pick" collapsed={link !== ''} onSettled={measureDownloadRow}>
-                                    <Tooltip label={noPlaylists ? 'Nessuna playlist: aggiungine una dalle Impostazioni o collega il tuo account Google' : 'Playlist da scaricare'}>
-                                        <PlaylistSelect
-                                            value={selectedPlaylist}
-                                            options={playlistOptions}
-                                            onChange={setSelectedPlaylist}
-                                            disabled={busy || noPlaylists || link !== ''}
-                                        />
-                                    </Tooltip>
-                                </Collapse>
-                                <Tooltip label={foldersHint || (link ? 'Scarica il link inserito' : 'Scarica la playlist selezionata')}>
-                                    <button
-                                        className="accent with-icon"
-                                        onClick={downloadPlaylist}
-                                        disabled={busy || !canDownloadSource || !foldersOk}
-                                    >
-                                        <span className="btn-icon"><DownloadIcon /></span>
-                                        Scarica
-                                    </button>
-                                </Tooltip>
-                                {downloadErrors.length > 0 && (
-                                    <Tooltip label={`${downloadErrors.length} download non riusciti: clicca per i dettagli`}>
-                                        <button
-                                            type="button"
-                                            className="ghost small with-icon danger download-errors-btn"
-                                            onClick={() => setShowDownloadErrors(true)}
-                                            aria-label={`${downloadErrors.length} download non riusciti`}
-                                        >
-                                            <AlertIcon />
-                                            {downloadErrors.length}
-                                        </button>
-                                    </Tooltip>
-                                )}
-                            </div>
-                            </div>
-                            {results ? (
-                                <button className="accent with-icon" onClick={refresh} disabled={busy || !foldersOk}>
-                                    <span className="btn-icon"><RefreshIcon /></span>
-                                    Avvia nuova scansione
-                                </button>
-                            ) : (
-                                <button className="accent with-icon" onClick={process} disabled={!canProcess}>
-                                    <span className="btn-icon"><ConvertIcon /></span>
-                                    Converti nomi e scrivi tag
-                                </button>
-                            )}
-                            {busy && cancellable && (
-                                <button className="danger-solid with-icon" onClick={cancelOp}>
-                                    <span className="btn-icon"><CloseIcon /></span>
-                                    Annulla
-                                </button>
-                            )}
-                            <Tooltip label="Cancella tutti i tag ID3 dagli MP3 della cartella">
-                                <button
-                                    className="ghost with-icon danger"
-                                    onClick={() => setConfirmClearTags(true)}
-                                    disabled={!canClearTags}
-                                >
-                                    <span className="btn-icon"><TagOffIcon /></span>
-                                    Cancella tag
-                                </button>
-                            </Tooltip>
-                        </div>
-
-                        {opProgress}
-                    </div>
-                </div>
+                    <CommandBar
+                        folderLines={folderSummary}
+                        source={downloadSource}
+                        busy={busy}
+                        foldersOk={foldersOk}
+                        foldersHint={foldersHint}
+                        downloadRowWidth={downloadRowWidth}
+                        downloadRowRef={downloadRowRef}
+                        onDownloadRowSettled={measureDownloadRow}
+                        onDownload={downloadPlaylist}
+                        downloadErrorCount={downloadErrors.length}
+                        onShowDownloadErrors={() => setShowDownloadErrors(true)}
+                        hasResults={!!results}
+                        onRefresh={refresh}
+                        onProcess={process}
+                        canProcess={canProcess}
+                        cancellable={cancellable}
+                        onCancel={cancelOp}
+                        onClearTags={() => setConfirmClearTags(true)}
+                        canClearTags={canClearTags}
+                        progress={opProgress}
+                    />
                 )}
 
-                {/* Modalità semplificata: una sola card al centro, con la scelta
-                    della playlist come protagonista. Niente cartelle (sono nelle
-                    Impostazioni), anteprima o registro Attività: gli esiti
-                    arrivano dai toast e dai risultati. Senza risultati la card è
-                    centrata anche in verticale; dopo una conversione sale in cima
-                    e lascia spazio alla tabella. */}
                 {!showSettings && simpleMode && (
-                    <div className={'simple-stage' + (results ? ' has-results' : '')}>
-                        <section className="simple-hero fade-in">
-                            <div className="simple-hero-badge" aria-hidden="true">
-                                <DownloadIcon />
-                            </div>
-                            <h2 className="simple-hero-title">Scarica la tua musica</h2>
-                            <p className="simple-hero-sub">
-                                {noPlaylists
-                                    ? 'Incolla il link di un video, oppure aggiungi una playlist nelle Impostazioni.'
-                                    : 'Incolla il link di un video o scegli una playlist: i brani vengono scaricati e subito rinominati, con titolo e artista scritti nei tag.'}
-                            </p>
-
-                            {/* Link sopra playlist e azione, largo quanto loro: un
-                                blocco unico, largo al massimo 526 px. Il link, se
-                                inserito, ha la precedenza sulla playlist. */}
-                            <div className="simple-hero-download">
-                                <LinkField
-                                    value={downloadLink}
-                                    onChange={setDownloadLink}
-                                    onSubmit={() => foldersOk && downloadPlaylist()}
-                                    onAddToPlaylist={onAddLink}
-                                    onPaste={isAndroid ? pasteLink : undefined}
-                                    disabled={busy}
-                                />
-
-                                <div className="simple-hero-controls">
-                                    {/* Select + "+" restano affiancati anche quando, su
-                                        schermi stretti, i comandi si impilano. Il "+"
-                                        compare solo finché non c'è nessuna playlist. Con un link
-                                        inserito si chiudono (animati) e resta solo l'azione. */}
-                                    <Collapse className="simple-hero-pick" collapsed={link !== ''}>
-                                        <PlaylistSelect
-                                            value={selectedPlaylist}
-                                            options={playlistOptions}
-                                            onChange={setSelectedPlaylist}
-                                            disabled={busy || link !== ''}
-                                        />
-                                        {noPlaylists && (
-                                        <Tooltip label="Aggiungi una playlist nelle Impostazioni">
-                                            <button
-                                                className="ghost simple-hero-add"
-                                                onClick={() => openSettings('download')}
-                                                disabled={busy || link !== ''}
-                                                aria-label="Aggiungi una playlist nelle Impostazioni"
-                                            >
-                                                <PlusIcon />
-                                            </button>
-                                        </Tooltip>
-                                        )}
-                                    </Collapse>
-                                    {/* Durante l'operazione il pulsante principale
-                                        diventa "Annulla": una sola azione alla volta. */}
-                                    {busy && cancellable ? (
-                                        <button className="danger-solid simple-hero-action" onClick={cancelOp}>
-                                            <CloseIcon />
-                                            Annulla
-                                        </button>
-                                    ) : (
-                                        <Tooltip label={!folder ? 'Scegli prima la cartella di partenza nelle Impostazioni' : foldersHint}>
-                                            <button
-                                                className="accent simple-hero-action"
-                                                onClick={downloadPlaylist}
-                                                disabled={busy || !canDownloadSource || !foldersOk}
-                                            >
-                                                <DownloadIcon />
-                                                Scarica e converti
-                                            </button>
-                                        </Tooltip>
-                                    )}
-                                </div>
-                            </div>
-
-                            {opProgress}
-
-                            {downloadErrors.length > 0 && (
-                                <button
-                                    type="button"
-                                    className="ghost small danger simple-hero-errors"
-                                    onClick={() => setShowDownloadErrors(true)}
-                                >
-                                    <AlertIcon />
-                                    {downloadErrors.length === 1
-                                        ? '1 download non riuscito'
-                                        : `${downloadErrors.length} download non riusciti`}
-                                </button>
-                            )}
-
-                            {/* Dove finiscono i brani, con la scorciatoia per cambiarlo. */}
-                            <div className="simple-hero-foot">
-                                <FolderLines
-                                    folder={folder}
-                                    destSameAsSource={destSameAsSource}
-                                    destFolder={destFolder}
-                                    folderMissing={folderMissing}
-                                    destMissing={destMissing}
-                                    onMissingClick={() => openSettings('general')}
-                                    disabled={busy}
-                                />
-                            </div>
-                        </section>
-                    </div>
+                    <SimpleHero
+                        folderLines={folderSummary}
+                        source={downloadSource}
+                        busy={busy}
+                        hasFolder={folder !== ''}
+                        foldersOk={foldersOk}
+                        foldersHint={foldersHint}
+                        hasResults={!!results}
+                        onDownload={downloadPlaylist}
+                        cancellable={cancellable}
+                        onCancel={cancelOp}
+                        onAddPlaylist={() => openSettings('download')}
+                        downloadErrorCount={downloadErrors.length}
+                        onShowDownloadErrors={() => setShowDownloadErrors(true)}
+                        progress={opProgress}
+                    />
                 )}
 
                 {showSettings && draft && (
@@ -2360,199 +2113,24 @@ function App() {
                 {/* In modalità semplificata niente anteprima: il pannello compare
                     solo con i risultati dell'ultima conversione. */}
                 {!showSettings && (!simpleMode || results) && (
-                <section className={'panel preview-panel fade-in' + (simpleMode ? ' simple-results' : '')}>
-                    <div className="panel-head">
-                        <h2>
-                            <span className="h2-icon">{results ? <ConvertIcon /> : <EyeIcon />}</span>
-                            {results ? 'Risultato conversione' : 'Anteprima'}
-                        </h2>
-                            {!results && (
-                                <div className="preview-tools">
-                                    <Tooltip label="Mostra solo i file che subiranno una modifica, nel nome o nei tag, e quelli selezionati da rivedere. È solo una vista: l'elaborazione tratta comunque tutti i file.">
-                                        <label className="toggle-changed">
-                                            <input
-                                                type="checkbox"
-                                                checked={showOnlyChanged}
-                                                onChange={(e) => setShowOnlyChanged(e.target.checked)}
-                                                disabled={busy}
-                                            />
-                                            Solo da modificare
-                                        </label>
-                                    </Tooltip>
-                                    <Tooltip label={foldersHint || 'Aggiorna la scansione della cartella'}>
-                                        <button
-                                            className="ghost small with-icon"
-                                            onClick={refresh}
-                                            disabled={busy || !foldersOk}
-                                        >
-                                            <span className="btn-icon"><RefreshIcon /></span>
-                                            Aggiorna
-                                        </button>
-                                    </Tooltip>
-                                </div>
-                            )}
-                        </div>
-                        {results ? (
-                            results.length === 0 ? (
-                                <div className="empty">Nessun file elaborato.</div>
-                            ) : (
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Nome originale</th>
-                                            <th>Nuovo nome</th>
-                                            <th>Titolo</th>
-                                            <th>Artista</th>
-                                            <th>Esito</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {results.map((r, i) => {
-                                            const src = splitName(r.oldName)
-                                            const dst = splitName(r.newName)
-                                            const renamed = !r.skipped && !r.failed && !r.canceled && src.base !== dst.base
-                                            // Titolo/Artista scritti nei tag: mostrati solo per gli MP3
-                                            // effettivamente elaborati (non saltati/annullati), come nell'anteprima.
-                                            const showTags = r.mp3 && !r.skipped && !r.canceled
-                                            const rowClass = r.failed
-                                                ? 'failed'
-                                                : r.canceled
-                                                  ? 'skipped'
-                                                  : r.skipped
-                                                    ? 'skipped'
-                                                    : renamed
-                                                      ? 'changed'
-                                                      : ''
-                                            return (
-                                                <tr key={i} className={rowClass}>
-                                                    <td data-label="Nome originale">
-                                                        {renamed ? <s className="old-name">{src.base}</s> : src.base}
-                                                    </td>
-                                                    <td data-label="Nuovo nome">{r.skipped || r.canceled ? '—' : dst.base}</td>
-                                                    <td data-label="Titolo">
-                                                        {showTags ? r.title : <span className="muted-dash">—</span>}
-                                                    </td>
-                                                    <td data-label="Artista">
-                                                        {showTags ? r.artist : <span className="muted-dash">—</span>}
-                                                    </td>
-                                                    <td data-label="Esito">
-                                                        {r.failed ? (
-                                                            <ErrorLabel message={r.reason} />
-                                                        ) : r.canceled ? (
-                                                            <span className="badge badge-neutral">Annullato</span>
-                                                        ) : r.skipped ? (
-                                                            <span className="note">Saltato: {r.reason}</span>
-                                                        ) : (
-                                                            <div className="badges">
-                                                                {renamed ? (
-                                                                    <span className="badge badge-changed">Rinominato</span>
-                                                                ) : (
-                                                                    <span className="badge badge-neutral">Invariato</span>
-                                                                )}
-                                                                {r.tagged && (
-                                                                    <span className="badge badge-tag">Taggato</span>
-                                                                )}
-                                                                <ExtChip ext={dst.ext} />
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            )
-                                        })}
-                                    </tbody>
-                                </table>
-                            )
-                        ) : !booted ? (
-                            <div className="empty">Caricamento…</div>
-                        ) : !folder ? (
-                            <div className="empty">Scegli una cartella di partenza nelle Impostazioni per vedere l'anteprima.</div>
-                        ) : folderMissing ? (
-                            <div className="empty">Cartella di partenza non trovata.</div>
-                        ) : files.length === 0 ? (
-                            <div className="empty">Nessun file MP3 nella cartella di partenza.</div>
-                        ) : previewFiles.length === 0 ? (
-                            <div className="empty">Nessun file da modificare.</div>
-                        ) : (
-                            <table className="preview-table">
-                                <thead>
-                                    <tr>
-                                        <th className="cell-select">
-                                            <input
-                                                type="checkbox"
-                                                aria-label="Seleziona tutti da rivedere"
-                                                title="Seleziona tutti da rivedere"
-                                                checked={allVisibleSelected}
-                                                ref={(el) => {
-                                                    if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected
-                                                }}
-                                                onChange={(e) => toggleReviewAll(e.target.checked)}
-                                                disabled={busy}
-                                            />
-                                        </th>
-                                        <th className="cell-current">File attuale</th>
-                                        <th>Anteprima nuovo nome</th>
-                                        <th>Anteprima nuovo titolo</th>
-                                        <th>Anteprima nuovo artista</th>
-                                        <th>Stato</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {previewFiles.map((file, i) => {
-                                        const src = splitName(file.name)
-                                        const dst = splitName(file.preview)
-                                        const nameChanged = src.base !== dst.base
-                                        const titleChanged = file.mp3 && tagChanged(file.title, file.titlePreview)
-                                        const artistChanged = file.mp3 && tagChanged(file.artist, file.artistPreview)
-                                        const rowChanged = nameChanged || titleChanged || artistChanged
-                                        const toReview = reviewPaths.has(file.path)
-                                        return (
-                                            <tr key={i} className={(rowChanged ? 'changed' : '') + (toReview ? ' to-review' : '')}>
-                                                <td className="cell-select">
-                                                    <input
-                                                        type="checkbox"
-                                                        aria-label={'Rivedi ' + src.base}
-                                                        checked={toReview}
-                                                        onChange={(e) => toggleReview(file.path, e.target.checked)}
-                                                        disabled={busy}
-                                                    />
-                                                </td>
-                                                <td data-label="File attuale" className="cell-current">
-                                                    <CurrentField label="nome" value={src.base} changed={nameChanged} />
-                                                    {file.mp3 && (
-                                                        <CurrentField label="titolo" value={file.title ?? ''} changed={titleChanged} />
-                                                    )}
-                                                    {file.mp3 && (
-                                                        <CurrentField label="artista" value={file.artist ?? ''} changed={artistChanged} />
-                                                    )}
-                                                </td>
-                                                <td data-label="Nuovo nome" className={nameChanged ? 'value-changed' : ''}>{dst.base}</td>
-                                                <td data-label="Nuovo titolo" className={titleChanged ? 'value-changed' : ''}>
-                                                    {file.mp3 ? file.titlePreview : <span className="muted-dash">—</span>}
-                                                </td>
-                                                <td data-label="Nuovo artista" className={artistChanged ? 'value-changed' : ''}>
-                                                    {file.mp3 ? file.artistPreview : <span className="muted-dash">—</span>}
-                                                </td>
-                                                <td data-label="Stato">
-                                                    <div className="badges">
-                                                        {nameChanged ? (
-                                                            <span className="badge badge-changed">Da rinominare</span>
-                                                        ) : (
-                                                            <span className="badge badge-neutral">Invariato</span>
-                                                        )}
-                                                        {(titleChanged || artistChanged) && (
-                                                            <span className="badge badge-tag">Da taggare</span>
-                                                        )}
-                                                        {toReview && <span className="badge badge-review">Da rivedere</span>}
-                                                        <ExtChip ext={src.ext} />
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
-                    </section>
+                    <PreviewPanel
+                        results={results}
+                        simple={simpleMode}
+                        busy={busy}
+                        booted={booted}
+                        folder={folder}
+                        folderMissing={folderMissing}
+                        foldersOk={foldersOk}
+                        foldersHint={foldersHint}
+                        files={files}
+                        previewFiles={previewFiles}
+                        onlyChanged={showOnlyChanged}
+                        onOnlyChangedChange={setShowOnlyChanged}
+                        onRefresh={refresh}
+                        reviewPaths={reviewPaths}
+                        onToggleReview={toggleReview}
+                        onToggleReviewAll={toggleReviewAll}
+                    />
                 )}
             </main>
             </div>
@@ -2722,36 +2300,7 @@ function App() {
                 />
             )}
 
-            <div
-                className="toast-container"
-                aria-live="polite"
-                aria-atomic="false"
-            >
-                {toasts.map((t) => (
-                    <div key={t.id} className={'toast ' + (t.ok ? 'toast-ok' : 'toast-err')} role="status">
-                        <span className="toast-icon" aria-hidden="true">
-                            {t.ok ? <CheckIcon /> : <AlertIcon />}
-                        </span>
-                        <span className="toast-msg">{t.message}</span>
-                        <button
-                            type="button"
-                            className="toast-close"
-                            aria-label="Chiudi notifica"
-                            onClick={() => dismissToast(t.id)}
-                        >
-                            <CloseIcon />
-                        </button>
-                        {/* Barra del tempo residuo: si svuota in `duration` ms e
-                            alla fine della sua animazione chiude il toast. */}
-                        <span
-                            className="toast-timer"
-                            aria-hidden="true"
-                            style={{ animationDuration: t.duration + 'ms' }}
-                            onAnimationEnd={() => dismissToast(t.id)}
-                        />
-                    </div>
-                ))}
-            </div>
+            <Toasts toasts={toasts} onDismiss={dismissToast} />
         </div>
     )
 }
