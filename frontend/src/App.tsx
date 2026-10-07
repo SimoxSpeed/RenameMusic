@@ -461,6 +461,105 @@ function DefaultsMenu({
     )
 }
 
+// logKey identifica una riga del registro (ora, tipo e testo) per ricordare
+// fin dove è stato letto.
+function logKey(log?: core.LogEntry): string {
+    return log ? `${log.time}|${log.kind}|${log.message}` : ''
+}
+
+// ActivityMenu: registro Attività come icona nell'header, a sinistra di
+// Impostazioni e con lo stesso stile; apre, sopra un velo che oscura tutta la
+// pagina, un pannello grande (quasi a tutto schermo su Android) con le righe
+// del registro, "Pulisci" e la chiusura. Il pallino segnala righe arrivate
+// dopo l'ultima apertura (rosso se tra queste c'è un errore). Come
+// DefaultsMenu lo stato di apertura vive in App (Esc e Indietro lo chiudono);
+// qui si chiude con la ✕ o toccando il velo. Resta usabile anche durante
+// un'operazione: solo "Pulisci" si disabilita.
+function ActivityMenu({
+    open,
+    onOpenChange,
+    logs,
+    unseen,
+    onClear,
+    clearDisabled,
+}: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    logs: core.LogEntry[]
+    unseen: 'none' | 'info' | 'error'
+    onClear: () => void
+    clearDisabled?: boolean
+}) {
+    const label = unseen === 'none' ? 'Attività' : 'Attività (nuove righe)'
+    return (
+        <div className="activity-menu">
+            <button
+                type="button"
+                className={'header-btn activity-trigger' + (open ? ' is-open' : '')}
+                aria-haspopup="dialog"
+                aria-expanded={open}
+                aria-label={label}
+                title={isAndroid ? undefined : 'Attività'}
+                onClick={() => onOpenChange(!open)}
+            >
+                <ActivityIcon />
+                {unseen !== 'none' && (
+                    <span className={'update-dot' + (unseen === 'error' ? ' is-error' : '')} aria-hidden="true" />
+                )}
+            </button>
+            {open && (
+                <div className="activity-overlay" onClick={() => onOpenChange(false)}>
+                <section
+                    className="panel activity-popover"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Attività"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="panel-head">
+                        <h2>
+                            <span className="h2-icon"><ActivityIcon /></span>
+                            Attività
+                        </h2>
+                        <div className="activity-head-actions">
+                            <button
+                                className="ghost small with-icon"
+                                onClick={onClear}
+                                disabled={clearDisabled || logs.length === 0}
+                            >
+                                <span className="btn-icon"><TrashIcon /></span>
+                                Pulisci
+                            </button>
+                            <button
+                                type="button"
+                                className="ghost small activity-close"
+                                onClick={() => onOpenChange(false)}
+                                aria-label="Chiudi Attività"
+                            >
+                                <CloseIcon />
+                            </button>
+                        </div>
+                    </div>
+                    <ul className="log">
+                        {logs.length === 0 ? (
+                            <li className="log-empty">Nessuna attività.</li>
+                        ) : (
+                            logs.map((log, i) => (
+                                <li key={i} className={'log-item log-' + (log.kind || 'info')}>
+                                    <span className="log-dot" aria-hidden="true" />
+                                    {log.time && <span className="log-time">{log.time}</span>}
+                                    <span className="log-msg">{log.message}</span>
+                                </li>
+                            ))
+                        )}
+                    </ul>
+                </section>
+                </div>
+            )}
+        </div>
+    )
+}
+
 // Select: dropdown custom riutilizzabile. Il <select> nativo apre una lista
 // disegnata dal WebView (aspetto "di sistema", non stilabile): qui la
 // sostituiamo con un trigger + lista nostra (angoli arrotondati, ombra, colori
@@ -1120,6 +1219,11 @@ function App() {
     useEffect(() => {
         if (!showSettings) setDefaultsMenu(false)
     }, [showSettings])
+    // activityOpen: pannello del registro Attività aperto (ActivityMenu).
+    // logsSeen: chiave dell'ultima riga vista (la più recente all'ultima
+    // apertura, o all'avvio): quelle sopra di lei accendono il pallino.
+    const [activityOpen, setActivityOpen] = useState(false)
+    const [logsSeen, setLogsSeen] = useState('')
     // crashReport: solo Android, l'app si è chiusa in modo anomalo e c'è il
     // registro dell'errore da condividere (popup all'avvio).
     const [crashReport, setCrashReport] = useState(false)
@@ -1418,6 +1522,9 @@ function App() {
             const quick = await GetConfig()
             absorb(quick)
             syncOptions(quick.state)
+            // Le righe già nel registro all'avvio non accendono il pallino di
+            // Attività (né quelle della scansione iniziale, qui sotto).
+            setLogsSeen(logKey(quick.state.logs?.[0]))
             // Android: senza accesso ai file la scansione vedrebbe una cartella
             // vuota; controlliamo prima il permesso (la UI lo chiede se manca).
             if (isAndroid) {
@@ -1429,6 +1536,7 @@ function App() {
             const resp = await GetState()
             absorb(resp)
             syncOptions(resp.state)
+            setLogsSeen(logKey(resp.state.logs?.[0]))
             // Niente toast all'avvio: l'anteprima popolata basta a dire che la
             // scansione è andata, e un eventuale errore finisce già in Attività.
         }).finally(() => setBooted(true))
@@ -2021,6 +2129,20 @@ function App() {
     const simpleMode = !!state?.config?.simpleMode
     const files = state?.files ?? []
     const logs = state?.logs ?? []
+    // Righe del registro arrivate dopo l'ultima apertura di Attività (le più
+    // recenti sono in cima): se la riga vista non c'è più sono tutte nuove.
+    const seenAt = logs.findIndex((l) => logKey(l) === logsSeen)
+    const unseenLogs = seenAt === -1 ? logs : logs.slice(0, seenAt)
+    const logsUnseen = unseenLogs.length === 0 ? 'none' : unseenLogs.some((l) => l.kind === 'error') ? 'error' : 'info'
+    // Con il pannello aperto ogni riga che arriva è già vista.
+    const topLogKey = logKey(logs[0])
+    useEffect(() => {
+        if (activityOpen) setLogsSeen(topLogKey)
+    }, [activityOpen, topLogKey])
+    // Il registro c'è solo nella schermata principale normale: uscendone si chiude.
+    useEffect(() => {
+        if (showSettings || simpleMode) setActivityOpen(false)
+    }, [showSettings, simpleMode])
     const playlists = state?.playlists ?? []
     // Cosa scarica il tasto di download: il link, se inserito, altrimenti la
     // playlist selezionata (che intanto si disattiva).
@@ -2625,6 +2747,7 @@ function App() {
         else if (confirmReset) setConfirmReset(false)
         else if (confirmDefault) setConfirmDefault(false)
         else if (defaultsMenu) setDefaultsMenu(false)
+        else if (activityOpen) setActivityOpen(false)
         else if (showSettings) leaveSettings()
         else return false
         return true
@@ -2980,6 +3103,18 @@ function App() {
                                 )}
                             </div>
                             )}
+                            {/* Registro Attività (non in modalità semplificata,
+                                dove gli esiti arrivano solo dai toast). */}
+                            {!simpleMode && (
+                                <ActivityMenu
+                                    open={activityOpen}
+                                    onOpenChange={setActivityOpen}
+                                    logs={logs}
+                                    unseen={logsUnseen}
+                                    onClear={clearLogs}
+                                    clearDisabled={busy}
+                                />
+                            )}
                             <button
                                 type="button"
                                 className="header-btn with-icon"
@@ -3136,38 +3271,6 @@ function App() {
                         </div>
 
                         {opProgress}
-                    </div>
-
-                    <div className="activity-cell">
-                    <section className="panel fade-in activity-panel">
-                        <div className="panel-head">
-                            <h2>
-                                <span className="h2-icon"><ActivityIcon /></span>
-                                Attività
-                            </h2>
-                            <button
-                                className="ghost small with-icon"
-                                onClick={clearLogs}
-                                disabled={busy || logs.length === 0}
-                            >
-                                <span className="btn-icon"><TrashIcon /></span>
-                                Pulisci
-                            </button>
-                        </div>
-                        <ul className="log">
-                            {logs.length === 0 ? (
-                                <li className="log-empty">Nessuna attività.</li>
-                            ) : (
-                                logs.map((log, i) => (
-                                    <li key={i} className={'log-item log-' + (log.kind || 'info')}>
-                                        <span className="log-dot" aria-hidden="true" />
-                                        {log.time && <span className="log-time">{log.time}</span>}
-                                        <span className="log-msg">{log.message}</span>
-                                    </li>
-                                ))
-                            )}
-                        </ul>
-                    </section>
                     </div>
                 </div>
                 )}

@@ -1294,15 +1294,11 @@ button.chip-remove:hover:not(:disabled) {
     color: var(--muted);
 }
 
-/* Riga in cima: la testata (riepilogo cartelle+azioni) e Attività condividono
-   la stessa riga di griglia e quindi la stessa altezza (align-items di default
-   è "stretch"), così Attività non supera mai il fondo dei pulsanti. Le
-   impostazioni stanno su una riga propria, fuori dall'altezza condivisa con
-   Attività. Lascia la tabella di anteprima sotto libera di usare tutta la
-   larghezza. */
+/* Riga in cima: la testata (riepilogo cartelle+azioni), a tutta larghezza
+   (il registro Attività sta nell'header, vedi .activity-menu). */
 .top-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     margin-bottom: 16px;
 }
@@ -1318,15 +1314,6 @@ button.chip-remove:hover:not(:disabled) {
     display: flex;
     flex-direction: column;
     gap: 16px;
-}
-
-/* La cella Attività occupa la colonna destra della griglia e viene stirata
-   all'altezza della riga, che è dettata dalla colonna sinistra (i bottoni) con
-   un minimo per mostrare qualche riga di log: il pannello al suo interno è
-   posizionato in assoluto, quindi non contribuisce all'altezza della riga. */
-.activity-cell {
-    position: relative;
-    min-height: 180px;
 }
 
 /* Riquadro del riepilogo cartelle in testa alla schermata principale: le
@@ -1411,18 +1398,92 @@ button.folder-missing:disabled {
     cursor: default;
 }
 
-/* Attività riempie tutta l'altezza della cella (pari a quella della testata a
-   sinistra): non cresce con il numero di righe di log né è ridimensionabile a
-   mano, la lista scorre internamente (vedi .log). */
-.activity-panel {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
+/* Registro Attività nell'header (ActivityMenu): tasto solo icona, come
+   Impostazioni, che apre sopra un velo scuro su tutta la pagina (header
+   compreso) un pannello grande, alto quasi quanto la finestra; la lista scorre
+   internamente (vedi .log). Il velo è fixed dentro l'header, che con il suo
+   z-index sta già sopra il contenuto. */
+.activity-menu {
+    position: relative;
+    display: inline-flex;
+    align-self: stretch;
 }
 
-.activity-panel .panel-head {
+/* Alto quanto Impostazioni (la riga lo stira), con l'icona centrata. */
+.activity-trigger {
+    justify-content: center;
+    padding: 6px 9px;
+}
+
+.activity-trigger.is-open {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(203, 213, 225, 0.6);
+}
+
+.activity-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    padding: 24px;
+    background: var(--overlay);
+    backdrop-filter: blur(2px);
+    animation: activityOverlayIn 0.16s ease-out both;
+}
+
+.activity-popover {
+    display: flex;
+    flex-direction: column;
+    width: min(760px, 100%);
+    color: var(--text);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    font-size: 14px;
+    animation: activityPanelIn 0.2s ease-out both;
+}
+
+.activity-popover .panel-head {
     flex-shrink: 0;
+}
+
+.activity-popover .panel-head h2 {
+    padding: 14px 16px;
+    font-size: 16px;
+}
+
+.activity-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.activity-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 7px;
+    line-height: 0;
+}
+
+.activity-popover .log-item {
+    padding: 10px 16px;
+}
+
+@keyframes activityOverlayIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes activityPanelIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .activity-overlay,
+    .activity-popover { animation: none; }
 }
 
 /* Tra le righe nuove c'è un errore: pallino rosso invece che verde. */

@@ -425,8 +425,8 @@
 /* ---- Layout a colonna singola (telefono) ----------------------------------- */
 
 @media (max-width: 760px) {
-    /* Header: titolo e ingranaggio sulla prima riga, aggiornamento automatico
-       e contatori sulla seconda. */
+    /* Header: titolo, Attività e ingranaggio sulla prima riga, aggiornamento
+       automatico e contatori sulla seconda. */
     .is-android .header-inner {
         flex-wrap: wrap;
         gap: 8px 10px;
@@ -438,13 +438,31 @@
     }
 
     .is-android header h1 {
-        flex: 1 1 calc(100% - 64px);
+        flex: 1 1 calc(100% - 112px);
         font-size: 18px;
     }
 
-    .is-android .header-btn {
+    .is-android .header-btn,
+    .is-android .activity-menu {
         order: 1;
+    }
+
+    .is-android .header-btn {
         padding: 8px 10px;
+    }
+
+    /* Il pannello di Attività copre quasi tutto lo schermo, con un margine
+       che lascia intravedere il velo (e le aree di sistema). */
+    .is-android .activity-overlay {
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .is-android .activity-popover {
+        width: 100%;
+    }
+
+    .is-android .activity-popover .log-item {
+        padding: 10px 12px;
     }
 
     .is-android .header-btn .btn-icon {
@@ -471,26 +489,6 @@
         padding-left: 12px;
         padding-right: 12px;
         padding-top: 14px;
-    }
-
-    /* Testata e Attività impilate: prima i comandi, poi il registro attività
-       (con altezza propria). L'esito delle azioni arriva nei toast. */
-    .is-android .top-row {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .is-android .top-left-head {
-        order: 0;
-    }
-
-    .is-android .activity-cell {
-        order: 1;
-    }
-
-    .is-android .activity-panel {
-        position: relative;
-        inset: auto;
-        max-height: 260px;
     }
 
     .is-android .log-item {
