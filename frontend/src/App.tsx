@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import './App.css'
 import './mobile.css'
@@ -49,7 +49,6 @@ import {
     readClipboard,
     onEvent,
     onResume,
-    openURL,
     requestNotifications,
     requestStorage,
     storageStatus,
@@ -62,29 +61,22 @@ import {
 } from './api'
 import FolderPicker from './FolderPicker'
 import {
-    AccountIcon,
     AlertIcon,
-    BackIcon,
-    ChevronIcon,
     CheckIcon,
     CloseIcon,
     ConvertIcon,
     DownloadIcon,
     EyeIcon,
-    FolderOpenIcon,
-    InfoCircleIcon,
     PlusIcon,
     RefreshIcon,
-    RemoveIcon,
-    RulesIcon,
     SettingsIcon,
     TagOffIcon,
 } from './icons'
-import { ChipList, InfoIcon, CheckOption, Tooltip, Collapse, OpProgress } from './components/controls'
+import { Tooltip, Collapse, OpProgress } from './components/controls'
 import { ExtChip, CurrentField, ErrorLabel } from './components/files'
-import { MissingFolderIcon, FolderLines } from './components/folders'
-import { ShortcutsLegend, DefaultsMenu, logKey, ActivityMenu } from './components/HeaderMenus'
-import { playlistChoices, PlaylistSelect, PrefsButton, LinkField } from './components/playlists'
+import { FolderLines } from './components/folders'
+import { ShortcutsLegend, logKey, ActivityMenu } from './components/HeaderMenus'
+import { playlistChoices, PlaylistSelect, LinkField } from './components/playlists'
 import {
     ClearTagsConfirm,
     CrashDialog,
@@ -105,9 +97,15 @@ import { PlaylistPrefsDialog, type PlaylistPrefsTarget } from './dialogs/Playlis
 import { TagPromptDialog } from './dialogs/TagPromptDialog'
 import { UpdateDialog } from './dialogs/UpdateDialog'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
-import { cloneConfig, comparableConfig, comparablePlaylists, prefsSummary, REPLACEMENT_SCOPES } from './lib/config'
+import { AccountPlaylists, GoogleAccountPanel, SavedPlaylists, YtDlpPanel } from './settings/DownloadTab'
+import { GeneralTab } from './settings/GeneralTab'
+import { InfoTab } from './settings/InfoTab'
+import { RulesTab, type RuleListKey } from './settings/RulesTab'
+import { SettingsHeader } from './settings/SettingsHeader'
+import { SETTINGS_TABS, SettingsTabsBar, type SettingsTab } from './settings/tabs'
+import { cloneConfig, comparableConfig, comparablePlaylists } from './lib/config'
 import { splitName, tagChanged, fileWillChange } from './lib/files'
-import { linkInText, playlistIdOf, playlistKeyOf, isVideoLink } from './lib/links'
+import { linkInText, playlistIdOf, isVideoLink } from './lib/links'
 import { type InstallProgress, installPercent, installLabel } from './lib/progress'
 import { type TagPrompt, type PromptSearch, promptsOf } from './lib/prompts'
 
@@ -115,43 +113,6 @@ import { type TagPrompt, type PromptSearch, promptsOf } from './lib/prompts'
 // larghezza su Android). È l'unico canale per l'esito delle azioni: `ok`
 // decide colore/icona, `duration` (ms) la durata prima della chiusura automatica.
 type Toast = { id: number; ok: boolean; message: string; duration: number }
-
-// RuleGroup: card richiudibile di una categoria di regole (scheda Regole). Il
-// titolo porta descrizione e numero di voci, così anche da chiusa si capisce
-// cosa contiene; tone è il colore della categoria (bordo e contatore). Parte
-// chiusa: le card chiuse fanno da indice della scheda.
-function RuleGroup({ title, hint, count, tone, children }: {
-    title: string
-    hint: string
-    count: number
-    tone: 'red' | 'blue' | 'green' | 'gray' | 'yellow'
-    children: ReactNode
-}) {
-    return (
-        <details className={'rule-group tone-' + tone}>
-            <summary>
-                <ChevronIcon />
-                <span className="rule-group-title">{title}</span>
-                <span className="rule-count">{count}</span>
-                {hint && <span className="rule-hint">{hint}</span>}
-            </summary>
-            <div className="rule-group-body">{children}</div>
-        </details>
-    )
-}
-
-// Repository del progetto, linkato nella scheda Info delle Impostazioni.
-const REPO_URL = 'https://github.com/SimoxSpeed/RenameMusic'
-
-// Schede delle Impostazioni, nell'ordine in cui compaiono (su desktop anche
-// Ctrl+1…4 e Ctrl+←/→).
-type SettingsTab = 'general' | 'download' | 'rules' | 'info'
-const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode }[] = [
-    { id: 'general', label: 'Generale', icon: <SettingsIcon /> },
-    { id: 'download', label: 'Download', icon: <DownloadIcon /> },
-    { id: 'rules', label: 'Regole', icon: <RulesIcon /> },
-    { id: 'info', label: 'Info', icon: <InfoCircleIcon size={16} /> },
-]
 
 function App() {
     const [state, setState] = useState<core.StateResponse | null>(null)
@@ -1321,14 +1282,7 @@ function App() {
         applyOptions(destSameAsSource, destFolder, true)
     }
 
-    function updateDraftList(
-        key:
-            | 'supportedExtensions'
-            | 'occurrenciesToRemove'
-            | 'occurrenciesToReplaceWithFt'
-            | 'artistExceptions',
-        values: string[],
-    ) {
+    function updateDraftList(key: RuleListKey, values: string[]) {
         if (!draft) return
         setDraft({ ...draft, [key]: values } as rules.Config)
     }
@@ -1925,83 +1879,6 @@ function App() {
             <OpProgress percent={installPercent(installProgress)} label={installLabel(installProgress)} />
         ) : null
 
-    // Cartelle di partenza/destinazione e opzioni di conversione: stanno sempre
-    // nelle Impostazioni (scheda Generale), in qualunque modalità. Si applicano
-    // subito e non fanno parte dei predefiniti.
-    const folderSettings = (
-        <>
-            <div className="field-group">
-                <span className="field-label">Cartella di partenza</span>
-                <div className="toolbar">
-                    <div className="folder-path">
-                        {folder || 'Nessuna cartella selezionata'}
-                    </div>
-                    {folderMissing && <MissingFolderIcon label="Cartella di partenza" />}
-                    {!isAndroid && (
-                        <Tooltip label="Apri la cartella in Esplora risorse">
-                            <button
-                                className="ghost with-icon"
-                                onClick={() => openFolder(folder)}
-                                disabled={busy || !folder || folderMissing}
-                            >
-                                <span className="btn-icon"><FolderOpenIcon /></span>
-                                Apri
-                            </button>
-                        </Tooltip>
-                    )}
-                    <button className="primary" onClick={chooseFolder} disabled={busy || !storageGranted}>
-                        Scegli cartella
-                    </button>
-                </div>
-            </div>
-
-            {!destSameAsSource && (
-                <div className="field-group">
-                    <span className="field-label">Cartella di destinazione</span>
-                    <div className="toolbar">
-                        <div className="folder-path">
-                            {destFolder || 'Nessuna destinazione selezionata'}
-                        </div>
-                        {destMissing && <MissingFolderIcon label="Cartella di destinazione" />}
-                        {!isAndroid && (
-                            <Tooltip label="Apri la cartella in Esplora risorse">
-                                <button
-                                    className="ghost with-icon"
-                                    onClick={() => openFolder(destFolder)}
-                                    disabled={busy || !destFolder || destMissing}
-                                >
-                                    <span className="btn-icon"><FolderOpenIcon /></span>
-                                    Apri
-                                </button>
-                            </Tooltip>
-                        )}
-                        <button className="primary" onClick={chooseDestination} disabled={busy || !storageGranted}>
-                            Scegli cartella
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            <div className="options">
-                <CheckOption
-                    label="Destinazione uguale alla cartella di partenza"
-                    info="Se attiva, i file convertiti vengono scritti nella stessa cartella dei file originali. Se disattivata puoi scegliere una cartella di destinazione separata."
-                    checked={destSameAsSource}
-                    onChange={(checked) => applyOptions(checked, destFolder, deleteOriginals)}
-                    disabled={busy}
-                />
-
-                <CheckOption
-                    label="Eliminazione file originali"
-                    info="Quando attiva, dopo la conversione i file di partenza vengono eliminati definitivamente dal disco. Quando disattivata, i nuovi file convertiti vengono scritti senza toccare gli originali."
-                    checked={deleteOriginals}
-                    onChange={toggleDeleteOriginals}
-                    disabled={busy}
-                />
-            </div>
-        </>
-    )
-
     // Riepilogo delle cartelle nella schermata principale: dove si
     // leggono/finiscono i brani (si scelgono solo nelle Impostazioni).
     const folderSummary = (
@@ -2025,75 +1902,18 @@ function App() {
 
     return (
         <div className={'app' + (isAndroid ? ' is-android' : '')}>
-            {/* Barra delle Impostazioni: al posto dell'header, fissa in cima. Le
-                modifiche si salvano da sole: qui restano solo l'uscita e i
-                predefiniti (regole, playlist e modalità semplificata). */}
             {showSettings && (
-            <header className="settings-header">
-                <div className="header-inner">
-                    <div className="settings-header-title">
-                        <button
-                            type="button"
-                            className="header-btn settings-back"
-                            onClick={leaveSettings}
-                            disabled={busy}
-                            aria-label="Indietro"
-                        >
-                            <BackIcon />
-                            <span className="btn-label">Indietro</span>
-                        </button>
-                        <h1>Impostazioni</h1>
-                        {saveStatus && (
-                            <span className="save-status" role="status">
-                                {/* Su Android, per stare sulla riga con
-                                    "Predefiniti", sul telefono resta solo
-                                    l'icona (spinner o spunta, mobile.css). */}
-                                {saveStatus === 'saving' ? (
-                                    <>
-                                        {isAndroid && <span className="spinner" aria-hidden="true" />}
-                                        <span className="save-status-text">Salvataggio…</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <CheckIcon />
-                                        <span className="save-status-text">Salvato</span>
-                                    </>
-                                )}
-                            </span>
-                        )}
-                    </div>
-                    <div className="settings-header-actions">
-                        {isAndroid ? (
-                            <DefaultsMenu
-                                open={defaultsMenu}
-                                onOpenChange={setDefaultsMenu}
-                                onReset={() => setConfirmReset(true)}
-                                onSave={() => setConfirmDefault(true)}
-                                disabled={busy}
-                            />
-                        ) : (
-                        <>
-                        <ShortcutsLegend simple={simpleMode} separateDest={!destSameAsSource} settings />
-                        <Tooltip label="Riporta regole, playlist e modalità semplificata ai predefiniti salvati.">
-                            <button type="button" className="header-btn" onClick={() => setConfirmReset(true)} disabled={busy}>
-                                Ripristina predefiniti
-                            </button>
-                        </Tooltip>
-                        <Tooltip label="I predefiniti sono una configurazione di riserva, da recuperare con «Ripristina predefiniti». Salva come predefiniti regole, playlist e modalità semplificata attuali.">
-                            <button
-                                type="button"
-                                className="header-btn warn-solid"
-                                onClick={() => setConfirmDefault(true)}
-                                disabled={busy}
-                            >
-                                Salva predefiniti
-                            </button>
-                        </Tooltip>
-                        </>
-                        )}
-                    </div>
-                </div>
-            </header>
+                <SettingsHeader
+                    busy={busy}
+                    saveStatus={saveStatus}
+                    onBack={leaveSettings}
+                    defaultsMenuOpen={defaultsMenu}
+                    onDefaultsMenuChange={setDefaultsMenu}
+                    onResetDefaults={() => setConfirmReset(true)}
+                    onSaveDefaults={() => setConfirmDefault(true)}
+                    simpleMode={simpleMode}
+                    separateDest={!destSameAsSource}
+                />
             )}
 
             {!showSettings && (
@@ -2191,27 +2011,8 @@ function App() {
             </header>
             )}
 
-            {/* Schede delle Impostazioni: tab orizzontali su desktop, pillole
-                scorrevoli su Android (mobile.css). Stanno fuori dall'area che
-                scorre, ferme sotto l'header: la scrollbar parte sotto di loro. */}
             {showSettings && draft && (
-                <div className="settings-tabs-bar">
-                    <nav className="settings-tabs" aria-label="Sezioni delle impostazioni">
-                        {SETTINGS_TABS.map((t) => (
-                            <button
-                                key={t.id}
-                                type="button"
-                                className={'settings-tab' + (settingsTab === t.id ? ' is-active' : '')}
-                                aria-current={settingsTab === t.id ? 'page' : undefined}
-                                onClick={() => selectSettingsTab(t.id)}
-                            >
-                                {t.icon}
-                                <span>{t.label}</span>
-                                {t.id === 'info' && state?.update && <span className="update-dot" aria-hidden="true" />}
-                            </button>
-                        ))}
-                    </nav>
-                </div>
+                <SettingsTabsBar current={settingsTab} onSelect={selectSettingsTab} updateDot={!!state?.update} />
             )}
 
             {/* Scorre solo il contenuto sotto l'header (e sotto le schede delle
@@ -2458,594 +2259,99 @@ function App() {
                     <div className="settings-layout">
                         <div className="settings-panel">
                             {settingsTab === 'general' && (
-                                <section className="settings">
-                                    <CheckOption
-                                        label="Modalità semplificata"
-                                        info="Quando attiva, la schermata principale mostra solo il download (da un link o da una playlist): «Scarica e converti» scarica i brani e li converte subito (nomi e tag), senza anteprima."
-                                        checked={!!draft.simpleMode}
-                                        onChange={(checked) => setDraft({ ...draft, simpleMode: checked } as rules.Config)}
-                                        disabled={busy}
-                                    />
-                                    <CheckOption
-                                        label="Cerca titolo e artista su MusicBrainz"
-                                        info="Quando dal nome di una traccia non si capiscono titolo e artista (o la segni da rivedere), il popup propone il nome trovato su musicbrainz.org al posto di quello attuale. Per la ricerca il nome della traccia viene inviato a MusicBrainz."
-                                        checked={!!draft.musicBrainz}
-                                        onChange={(checked) => setDraft({ ...draft, musicBrainz: checked } as rules.Config)}
-                                        disabled={busy}
-                                    />
-                                    <hr className="settings-divider" />
-                                    <div className="settings-folders">{folderSettings}</div>
-                                </section>
+                                <GeneralTab
+                                    draft={draft}
+                                    onDraftChange={setDraft}
+                                    folder={folder}
+                                    folderMissing={folderMissing}
+                                    destFolder={destFolder}
+                                    destMissing={destMissing}
+                                    destSameAsSource={destSameAsSource}
+                                    deleteOriginals={deleteOriginals}
+                                    storageGranted={storageGranted}
+                                    busy={busy}
+                                    onOpenFolder={openFolder}
+                                    onChooseFolder={chooseFolder}
+                                    onChooseDestination={chooseDestination}
+                                    onDestSameAsSourceChange={(checked) => applyOptions(checked, destFolder, deleteOriginals)}
+                                    onDeleteOriginalsChange={toggleDeleteOriginals}
+                                />
                             )}
 
                             {settingsTab === 'download' && (
                                 <section className="settings">
-                                    {/* Su Android yt-dlp è integrato nell'app: niente scelta
-                                        tra copia gestita e percorso personalizzato. */}
-                                    {!isAndroid && (
-                                    <CheckOption
-                                        className="ytdlp-toggle"
-                                        label="Gestisci autonomamente yt-dlp"
-                                        info="Quando attivo, l'app tiene una propria copia di yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore) e la aggiorna da sola. Se manca, puoi scaricarla dal tasto accanto a «Non presente» oppure, dopo una conferma, al primo download di una playlist. Quando disattivo, indichi a mano il percorso di una tua copia di yt-dlp."
-                                        checked={ytDlpManaged}
-                                        onChange={toggleYtDlpManaged}
-                                        disabled={busy || ytDlpChecking}
+                                    <YtDlpPanel
+                                        state={state}
+                                        busy={busy}
+                                        managed={ytDlpManaged}
+                                        checking={ytDlpChecking}
+                                        onManagedChange={toggleYtDlpManaged}
+                                        pathDraft={ytDlpPathDraft}
+                                        onPathDraftChange={setYtDlpPathDraft}
+                                        onPathCommit={applyYtDlpPath}
+                                        onBrowse={browseYtDlp}
+                                        installProgress={installProgress}
+                                        onDownloadYtDlp={() => setConfirmDownloadYtDlp(true)}
+                                        onUninstallYtDlp={() => setConfirmUninstallYtDlp(true)}
+                                        onDownloadFFmpeg={() => setConfirmFFmpeg('install')}
+                                        onUninstallFFmpeg={() => setConfirmUninstallFFmpeg(true)}
                                     />
-                                    )}
-
-                                    <div className="ytdlp-panel">
-                                        <div className="ytdlp-head">
-                                            {/* Nome, stato (la versione, se presente) e in gestione
-                                                autonoma il percorso della copia dell'app: se non
-                                                c'è spazio il percorso va a capo. Il tasto per
-                                                scaricarlo resta sempre subito a destra di "Non
-                                                presente". */}
-                                            <div className="ytdlp-head-info">
-                                            <span className="ytdlp-title">yt-dlp</span>
-                                            {ytDlpChecking ? (
-                                                <span className="ytdlp-checking" role="status">
-                                                    <span className="spinner" aria-hidden="true" />
-                                                    Ricerca di una copia locale…
-                                                </span>
-                                            ) : state?.ytDlpAvailable ? (
-                                                <span
-                                                    className="ytdlp-badge ytdlp-ok"
-                                                    title={state?.ytDlpVersion ? 'Versione di yt-dlp in uso' : undefined}
-                                                >
-                                                    {state?.ytDlpVersion || 'Presente'}
-                                                </span>
-                                            ) : (
-                                                <span className="ytdlp-status">
-                                                    <span className="ytdlp-badge ytdlp-missing">
-                                                        {isAndroid ? 'Non ancora pronto' : 'Non presente'}
-                                                    </span>
-                                                    {!isAndroid && (
-                                                        <Tooltip label="Scarica yt-dlp">
-                                                            <button
-                                                                className="ghost small ytdlp-install"
-                                                                onClick={() => setConfirmDownloadYtDlp(true)}
-                                                                disabled={busy}
-                                                                aria-label="Scarica yt-dlp"
-                                                            >
-                                                                <DownloadIcon />
-                                                            </button>
-                                                        </Tooltip>
-                                                    )}
-                                                </span>
-                                            )}
-                                            {ytDlpManaged && !ytDlpChecking && state?.ytDlpEffectivePath && (
-                                                <span className="ytdlp-location">
-                                                    {!state?.ytDlpAvailable && (
-                                                        <>
-                                                            <span className="ytdlp-location-label">Verrà scaricato in:</span>{' '}
-                                                        </>
-                                                    )}
-                                                    <code className="ytdlp-path">{state.ytDlpEffectivePath}</code>
-                                                </span>
-                                            )}
-                                            {/* Fuori dalla gestione autonoma il percorso si imposta
-                                                a mano, sulla stessa riga (scende sotto se non c'è
-                                                spazio). */}
-                                            {!ytDlpManaged && (
-                                                <div className="ytdlp-path-edit">
-                                                    <span className="ytdlp-location-label">Percorso:</span>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Percorso a yt-dlp.exe"
-                                                        value={ytDlpPathDraft}
-                                                        onChange={(e) => setYtDlpPathDraft(e.target.value)}
-                                                        onBlur={applyYtDlpPath}
-                                                        disabled={busy}
-                                                    />
-                                                    <button className="ghost with-icon" onClick={browseYtDlp} disabled={busy}>
-                                                        <span className="btn-icon"><FolderOpenIcon /></span>
-                                                        Sfoglia
-                                                    </button>
-                                                </div>
-                                            )}
-                                            </div>
-                                            {ytDlpChecking ? null : isAndroid ? (
-                                                <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
-                                                    <button
-                                                        className="ghost small with-icon ytdlp-install"
-                                                        onClick={() => setConfirmDownloadYtDlp(true)}
-                                                        disabled={busy}
-                                                    >
-                                                        <span className="btn-icon"><RefreshIcon /></span>
-                                                        Aggiorna
-                                                    </button>
-                                                </Tooltip>
-                                            ) : state?.ytDlpAvailable && ytDlpManaged ? (
-                                                <Tooltip label="Rimuovi yt-dlp (elimina la copia gestita dall'app)">
-                                                    <button
-                                                        className="ghost small danger ytdlp-uninstall"
-                                                        onClick={() => setConfirmUninstallYtDlp(true)}
-                                                        disabled={busy}
-                                                        aria-label="Rimuovi yt-dlp"
-                                                    >
-                                                        <RemoveIcon />
-                                                    </button>
-                                                </Tooltip>
-                                            ) : null}
-                                        </div>
-
-                                        {busy && installProgress?.tool === 'yt-dlp' && (
-                                            <OpProgress
-                                                className="ytdlp-progress"
-                                                percent={installPercent(installProgress)}
-                                                label={installLabel(installProgress)}
-                                            />
-                                        )}
-
-                                        {/* ffmpeg serve a yt-dlp per creare gli mp3. Su Android
-                                            è incorporato in youtubedl-android. */}
-                                        {!isAndroid && (
-                                            <div className="ytdlp-head">
-                                                <span className="ytdlp-title">ffmpeg</span>
-                                                {state?.ffmpegAvailable ? (
-                                                    <>
-                                                        {/* Si rimuove solo la copia gestita: un
-                                                            ffmpeg di sistema non è dell'app. */}
-                                                        <span className="ytdlp-badge ytdlp-ok">
-                                                            Presente{!state.ffmpegManaged && ' · di sistema'}
-                                                        </span>
-                                                        {state.ffmpegManaged && (
-                                                            <Tooltip label="Rimuovi ffmpeg (elimina la copia gestita dall'app)">
-                                                                <button
-                                                                    className="ghost small danger ytdlp-uninstall"
-                                                                    onClick={() => setConfirmUninstallFFmpeg(true)}
-                                                                    disabled={busy}
-                                                                    aria-label="Rimuovi ffmpeg"
-                                                                >
-                                                                    <RemoveIcon />
-                                                                </button>
-                                                            </Tooltip>
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <span className="ytdlp-badge ytdlp-missing">Non presente</span>
-                                                        <Tooltip label="Scarica ffmpeg (serve a yt-dlp per creare gli mp3)">
-                                                            <button
-                                                                className="ghost small ytdlp-install"
-                                                                onClick={() => setConfirmFFmpeg('install')}
-                                                                disabled={busy}
-                                                                aria-label="Scarica ffmpeg"
-                                                            >
-                                                                <DownloadIcon />
-                                                            </button>
-                                                        </Tooltip>
-                                                    </>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {busy && installProgress?.tool === 'ffmpeg' && (
-                                            <OpProgress
-                                                className="ytdlp-progress"
-                                                percent={installPercent(installProgress)}
-                                                label={installLabel(installProgress)}
-                                            />
-                                        )}
-                                    </div>
-
-                                    {/* Account Google: serve a leggere e modificare le playlist
-                                        di YouTube dell'utente. Senza le credenziali OAuth (solo
-                                        desktop) resta visibile e spiega cosa manca. */}
-                                        <div className="ytdlp-panel google-panel">
-                                            {/* Titolo con la "i" a sinistra, stato (o email
-                                                dell'account) allineato a destra accanto
-                                                all'azione; su Android lo stato va sotto il
-                                                titolo e l'azione resta a destra. */}
-                                            <div className="ytdlp-head">
-                                                <div className="ytdlp-head-info">
-                                                    <span className="google-title">
-                                                        <AccountIcon />
-                                                        Account Google
-                                                    </span>
-                                                    <InfoIcon text="Collegando il tuo account l'app può leggere le tue playlist di YouTube (anche quelle private) per importarle qui, mostrarle per prime nella scelta del download, aggiungere a una playlist il video del link e, secondo le impostazioni di ogni playlist (⚙), togliere da YouTube i brani appena scaricati o aggiungerli a un'altra playlist. Puoi revocare l'accesso in qualsiasi momento con «Scollega»." />
-                                                </div>
-                                                {!googleAvailable ? (
-                                                    <span className="ytdlp-badge google-off">Non configurato</span>
-                                                ) : googleConnected ? (
-                                                    <span className="google-account-row">
-                                                        <span className="ytdlp-badge ytdlp-ok google-account" title="Account collegato">
-                                                            {state?.google?.email || 'Collegato'}
-                                                        </span>
-                                                    </span>
-                                                ) : (
-                                                    <span className="ytdlp-badge google-off">Non collegato</span>
-                                                )}
-                                                {!googleAvailable ? null : googleConnected ? (
-                                                    <button
-                                                        className="ghost small danger"
-                                                        onClick={() => setConfirmGoogleSignOut(true)}
-                                                        disabled={busy}
-                                                    >
-                                                        Scollega
-                                                    </button>
-                                                ) : googleSigningIn && !isAndroid ? (
-                                                    <button className="danger-solid small with-icon" onClick={cancelOp}>
-                                                        <span className="btn-icon"><CloseIcon /></span>
-                                                        Annulla
-                                                    </button>
-                                                ) : (
-                                                    <button className="accent small with-icon" onClick={googleSignIn} disabled={busy}>
-                                                        <span className="btn-icon"><AccountIcon /></span>
-                                                        Collega
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {googleConnected && !state?.google?.email && (
-                                                <p className="google-hint google-sub">
-                                                    Per vedere l'indirizzo dell'account collegato, scollegalo e ricollegalo.
-                                                </p>
-                                            )}
-                                            {/* Impostazioni delle playlist condivise con gli altri
-                                                dispositivi dello stesso account (Google Drive). */}
-                                            {googleConnected && (
-                                                prefsSyncing ? (
-                                                    <p className="google-hint" role="status">
-                                                        <span className="spinner" aria-hidden="true" />
-                                                        Controllo delle impostazioni salvate sull'account…
-                                                    </p>
-                                                ) : (
-                                                    <p className={'google-hint google-sub' + (state?.google?.syncError ? ' google-sync-error' : '')}>
-                                                        {state?.google?.syncError ||
-                                                            'Regole, playlist, predefiniti e impostazioni delle playlist (⚙) sono condivisi con gli altri dispositivi collegati a questo account. Cartelle e opzioni di conversione restano di ogni dispositivo.'}
-                                                    </p>
-                                                )
-                                            )}
-                                            {!googleAvailable && (
-                                                <p className="google-hint">
-                                                    Questa versione dell'app non ha le credenziali OAuth di Google
-                                                    Cloud (internal/google/credentials_local.go): ricompilala con quelle
-                                                    del client «App desktop» per collegare l'account.
-                                                </p>
-                                            )}
-                                            {googleSigningIn && !isAndroid && (
-                                                <p className="google-hint" role="status">
-                                                    <span className="spinner" aria-hidden="true" />
-                                                    Completa l'accesso nella pagina di Google che si è aperta nel browser, poi torna qui.
-                                                </p>
-                                            )}
-                                        </div>
-
-                                    {/* Playlist dell'account: le prime della scelta del
-                                        download, ognuna con le sue impostazioni (⚙). */}
+                                    <GoogleAccountPanel
+                                        google={state.google}
+                                        available={googleAvailable}
+                                        connected={googleConnected}
+                                        signingIn={googleSigningIn}
+                                        syncing={prefsSyncing}
+                                        busy={busy}
+                                        onSignIn={googleSignIn}
+                                        onSignOut={() => setConfirmGoogleSignOut(true)}
+                                        onCancel={cancelOp}
+                                    />
                                     {googleConnected && (
-                                        <div className="replacements">
-                                            <div className="replacements-head">
-                                                <span>Playlist del tuo account YouTube</span>
-                                            </div>
-                                            {accountPlaylists.length === 0 ? (
-                                                <p className="rule-empty">Il tuo account non ha ancora playlist.</p>
-                                            ) : (
-                                                <ul className="account-playlists">
-                                                    {accountPlaylists.map((p) => {
-                                                        const key = 'yt:' + p.id
-                                                        const summary = prefsSummary(playlistPrefs[key])
-                                                        return (
-                                                            <li key={p.id} className={'account-playlist' + (playlistPrefs[key]?.hidden ? ' is-hidden' : '')}>
-                                                                <span className="account-playlist-text">
-                                                                    <span className="account-playlist-title">{p.title || p.id}</span>
-                                                                    <span className="account-playlist-meta">
-                                                                        {p.count === 1 ? '1 video' : `${p.count} video`}
-                                                                        {summary && <> · <span className="account-playlist-prefs">{summary}</span></>}
-                                                                    </span>
-                                                                </span>
-                                                                {emptying === p.id ? (
-                                                                    <button className="danger-solid small with-icon" onClick={cancelOp}>
-                                                                        <span className="btn-icon"><CloseIcon /></span>
-                                                                        Annulla
-                                                                    </button>
-                                                                ) : (
-                                                                    <PrefsButton
-                                                                        summary={summary}
-                                                                        onClick={() => openPlaylistPrefs(key, p.title || p.id)}
-                                                                        disabled={busy}
-                                                                    />
-                                                                )}
-                                                                {emptying === p.id && progress && progress.total > 0 && (
-                                                                    <OpProgress
-                                                                        className="account-playlist-progress"
-                                                                        percent={Math.round((progress.done / progress.total) * 100)}
-                                                                        label={`Svuotamento · ${progress.done} / ${progress.total} brani tolti`}
-                                                                    />
-                                                                )}
-                                                            </li>
-                                                        )
-                                                    })}
-                                                </ul>
-                                            )}
-                                        </div>
+                                        <AccountPlaylists
+                                            playlists={accountPlaylists}
+                                            prefs={playlistPrefs}
+                                            emptying={emptying}
+                                            progress={progress}
+                                            busy={busy}
+                                            onCancel={cancelOp}
+                                            onOpenPrefs={openPlaylistPrefs}
+                                        />
                                     )}
-
-                                    <div className="replacements">
-                                        <div className="replacements-head saved-playlists-head">
-                                            <span>Playlist salvate (nome → link)</span>
-                                            <span className="replacements-head-actions">
-                                                {googleConnected && (
-                                                    <button
-                                                        className="ghost small with-icon"
-                                                        onClick={() => openGooglePicker('import')}
-                                                        disabled={busy}
-                                                    >
-                                                        <span className="btn-icon"><AccountIcon /></span>
-                                                        Importa dall'account
-                                                    </button>
-                                                )}
-                                                <button className="ghost small add-replacement" onClick={addPlaylistDraft} disabled={busy}>
-                                                    + Aggiungi
-                                                </button>
-                                            </span>
-                                        </div>
-                                        {/* Anche l'ultima riga si toglie con la ✕: senza playlist
-                                            resta solo l'avviso, e "Aggiungi" ne crea una. */}
-                                        {playlistDraft.length === 0 && <p className="rule-empty">Nessuna playlist salvata.</p>}
-                                        {playlistDraft.map((p, i) => (
-                                            <div className="replacement-row playlist-row" key={i}>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Nome"
-                                                    value={p.name}
-                                                    onChange={(e) => updatePlaylistDraft(i, 'name', e.target.value)}
-                                                    disabled={busy}
-                                                />
-                                                <span className="arrow">→</span>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Link playlist"
-                                                    value={p.url}
-                                                    onChange={(e) => updatePlaylistDraft(i, 'url', e.target.value)}
-                                                    disabled={busy}
-                                                />
-                                                {/* Impostazioni della playlist: si aprono solo per una
-                                                    riga compilata (nome e link). */}
-                                                <PrefsButton
-                                                    summary={prefsSummary(playlistPrefs[playlistKeyOf(p.url, p.name)])}
-                                                    onClick={() => openPlaylistPrefs(playlistKeyOf(p.url, p.name), p.name.trim())}
-                                                    disabled={busy || p.name.trim() === '' || p.url.trim() === ''}
-                                                />
-                                                <button
-                                                    className="ghost small danger"
-                                                    onClick={() => removePlaylistDraft(i)}
-                                                    disabled={busy}
-                                                    aria-label="Rimuovi playlist"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <SavedPlaylists
+                                        rows={playlistDraft}
+                                        prefs={playlistPrefs}
+                                        connected={googleConnected}
+                                        busy={busy}
+                                        onImport={() => openGooglePicker('import')}
+                                        onAdd={addPlaylistDraft}
+                                        onChange={updatePlaylistDraft}
+                                        onRemove={removePlaylistDraft}
+                                        onOpenPrefs={openPlaylistPrefs}
+                                    />
                                 </section>
                             )}
 
                             {settingsTab === 'rules' && (
-                                <section className="settings">
-                                    {/* Una card richiudibile per categoria: da chiuse fanno
-                                        da indice (titolo, descrizione e numero di voci). */}
-                                    <div className="rule-groups">
-                                        <RuleGroup
-                                            title="Pulizia del nome"
-                                            hint="Testi tolti dal nome, ad esempio «(Official Video)»"
-                                            count={(draft.occurrenciesToRemove ?? []).length}
-                                            tone="red"
-                                        >
-                                            <ChipList
-                                                label="Testi da rimuovere"
-                                                values={draft.occurrenciesToRemove ?? []}
-                                                onChange={(v) => updateDraftList('occurrenciesToRemove', v)}
-                                                disabled={busy}
-                                            />
-                                        </RuleGroup>
-
-                                        <RuleGroup
-                                            title="Featuring"
-                                            hint="«feat.», «featuring» e simili diventano un unico alias"
-                                            count={(draft.occurrenciesToReplaceWithFt ?? []).length}
-                                            tone="blue"
-                                        >
-                                            <label className="ft-alias">
-                                                <span>Alias da usare</span>
-                                                <input
-                                                    type="text"
-                                                    placeholder="ft"
-                                                    value={draft.ftAlias ?? ''}
-                                                    onChange={(e) => updateFtAlias(e.target.value)}
-                                                    disabled={busy}
-                                                />
-                                            </label>
-                                            <ChipList
-                                                label="Varianti da sostituire con l'alias"
-                                                caption="Varianti da sostituire"
-                                                values={draft.occurrenciesToReplaceWithFt ?? []}
-                                                onChange={(v) => updateDraftList('occurrenciesToReplaceWithFt', v)}
-                                                disabled={busy}
-                                            />
-                                        </RuleGroup>
-
-                                        <RuleGroup
-                                            title="Artisti"
-                                            hint="Nomi d'arte con « & » o « x » da non dividere nei tag"
-                                            count={(draft.artistExceptions ?? []).length}
-                                            tone="green"
-                                        >
-                                            <ChipList
-                                                label="Nomi d'arte da non separare"
-                                                values={draft.artistExceptions ?? []}
-                                                onChange={(v) => updateDraftList('artistExceptions', v)}
-                                                disabled={busy}
-                                            />
-                                        </RuleGroup>
-
-                                        <RuleGroup
-                                            title="File"
-                                            hint="Estensioni dei file considerati nella cartella"
-                                            count={(draft.supportedExtensions ?? []).length}
-                                            tone="gray"
-                                        >
-                                            <ChipList
-                                                label="Estensioni supportate"
-                                                values={draft.supportedExtensions ?? []}
-                                                onChange={(v) => updateDraftList('supportedExtensions', v)}
-                                                disabled={busy}
-                                            />
-                                        </RuleGroup>
-                                    </div>
-
-                                    {/* Sostituzioni Da → A: un gruppo per ambito, così
-                                        l'ambito si legge una volta sola nel titolo. */}
-                                    <h3 className="rule-title">Sostituzioni (Da → A)</h3>
-                                    <div className="rule-groups">
-                                        {REPLACEMENT_SCOPES.map((g) => {
-                                            const rows = (draft.replacements ?? [])
-                                                .map((r, i) => ({ r, i }))
-                                                .filter(({ r }) => (r.scope ?? '') === g.scope)
-                                            return (
-                                                <RuleGroup
-                                                    key={g.scope}
-                                                    title={g.label}
-                                                    hint={g.hint}
-                                                    count={rows.length}
-                                                    tone="yellow"
-                                                >
-                                                    {rows.length === 0 && <p className="rule-empty">Nessuna sostituzione.</p>}
-                                                    {rows.map(({ r, i }) => (
-                                                        <div className="replacement-row" key={i}>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="Da"
-                                                                value={r.from}
-                                                                onChange={(e) => updateReplacement(i, 'from', e.target.value)}
-                                                                disabled={busy}
-                                                            />
-                                                            <span className="arrow">→</span>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="A"
-                                                                value={r.to}
-                                                                onChange={(e) => updateReplacement(i, 'to', e.target.value)}
-                                                                disabled={busy}
-                                                            />
-                                                            <button
-                                                                className="ghost small danger"
-                                                                onClick={() => removeReplacement(i)}
-                                                                disabled={busy}
-                                                                aria-label="Rimuovi sostituzione"
-                                                            >
-                                                                ✕
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                    <div>
-                                                        <button
-                                                            className="ghost small add-replacement"
-                                                            onClick={() => addReplacement(g.scope)}
-                                                            disabled={busy}
-                                                        >
-                                                            + Aggiungi
-                                                        </button>
-                                                    </div>
-                                                </RuleGroup>
-                                            )
-                                        })}
-                                    </div>
-                                </section>
+                                <RulesTab
+                                    draft={draft}
+                                    busy={busy}
+                                    onListChange={updateDraftList}
+                                    onFtAliasChange={updateFtAlias}
+                                    onReplacementChange={updateReplacement}
+                                    onAddReplacement={addReplacement}
+                                    onRemoveReplacement={removeReplacement}
+                                />
                             )}
 
                             {settingsTab === 'info' && (
-                                <section className="settings about">
-                                    <h2>RenameMusic</h2>
-                                    <p className="about-desc">
-                                        RenameMusic scarica le tue playlist di YouTube direttamente in MP3 e mette in ordine la tua musica in un clic, con nomi puliti e tag di titolo e artista coerenti.
-                                    </p>
-                                    <div className="ytdlp-panel">
-                                        <div className="ytdlp-head">
-                                            <span className="ytdlp-title">Versione {state?.appVersion}</span>
-                                            {state?.update ? (
-                                                <>
-                                                    <span className="ytdlp-badge update-badge">
-                                                        Disponibile la versione {state.update.version}
-                                                    </span>
-                                                    <button
-                                                        className="ghost small with-icon ytdlp-install"
-                                                        onClick={() => state.update && setUpdatePopup(state.update)}
-                                                        disabled={busy}
-                                                    >
-                                                        <span className="btn-icon"><DownloadIcon /></span>
-                                                        Aggiorna
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                <Tooltip label="Controlla subito su GitHub se è uscita una nuova versione (l'app lo fa comunque da sola quando è connessa a Internet)">
-                                                    <button
-                                                        className="ghost small with-icon ytdlp-install"
-                                                        onClick={checkUpdate}
-                                                        disabled={busy}
-                                                    >
-                                                        <span className="btn-icon"><RefreshIcon /></span>
-                                                        Verifica aggiornamenti
-                                                    </button>
-                                                </Tooltip>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <dl className="about-list">
-                                        <dt>Autore</dt>
-                                        <dd>Simone D'Alessandro</dd>
-                                        <dt>Codice sorgente</dt>
-                                        <dd>
-                                            <a
-                                                href={REPO_URL}
-                                                onClick={(e) => {
-                                                    e.preventDefault()
-                                                    openURL(REPO_URL)
-                                                }}
-                                            >
-                                                github.com/SimoxSpeed/RenameMusic
-                                            </a>
-                                        </dd>
-                                    </dl>
-
-                                    <hr className="settings-divider" />
-
-                                    <div className="about-disclaimer">
-                                        <h3>Esclusione di responsabilità</h3>
-                                        <p>
-                                            RenameMusic è distribuito così com'è, senza alcuna garanzia. Rinomina e
-                                            sposta file e, se lo attivi, elimina gli originali: prima di usarlo su
-                                            una raccolta a cui tieni, fanne una copia. L'autore non risponde di
-                                            perdite di dati o di altri danni causati dall'uso dell'app.
-                                        </p>
-                                        <p>
-                                            Scaricare da YouTube può violare i suoi Termini di servizio e il diritto
-                                            d'autore: scarica solo contenuti di cui hai i diritti o che sono
-                                            distribuiti liberamente. L'uso che ne fai è sotto la tua responsabilità.
-                                        </p>
-                                    </div>
-                                </section>
+                                <InfoTab
+                                    appVersion={state.appVersion}
+                                    update={state.update}
+                                    busy={busy}
+                                    onShowUpdate={setUpdatePopup}
+                                    onCheckUpdate={checkUpdate}
+                                />
                             )}
                         </div>
                     </div>

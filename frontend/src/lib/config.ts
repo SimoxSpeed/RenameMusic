@@ -55,10 +55,3 @@ export function prefsSummary(p?: playlist.Prefs): string {
     return parts.join(' · ')
 }
 
-// Ambiti delle sostituzioni Da → A, ognuno con il suo gruppo nella scheda
-// Regole (scope come in rules.Scope: vuoto = tutto il nome).
-export const REPLACEMENT_SCOPES = [
-    { scope: '', label: 'Tutto il nome', hint: 'Su tutto il nome del file' },
-    { scope: 'artist', label: 'Solo artista', hint: 'Solo sulla parte prima di « - »' },
-    { scope: 'title', label: 'Solo titolo', hint: 'Solo sulla parte dopo « - »' },
-]
