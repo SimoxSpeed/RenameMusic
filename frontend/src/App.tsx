@@ -77,22 +77,39 @@ import {
     RefreshIcon,
     RemoveIcon,
     RulesIcon,
-    SearchIcon,
     SettingsIcon,
     TagOffIcon,
-    TrashIcon,
 } from './icons'
-import { ChipList, InfoIcon, CheckOption, Tooltip, Select, Collapse, OpProgress } from './components/controls'
+import { ChipList, InfoIcon, CheckOption, Tooltip, Collapse, OpProgress } from './components/controls'
 import { ExtChip, CurrentField, ErrorLabel } from './components/files'
 import { MissingFolderIcon, FolderLines } from './components/folders'
 import { ShortcutsLegend, DefaultsMenu, logKey, ActivityMenu } from './components/HeaderMenus'
 import { playlistChoices, PlaylistSelect, PrefsButton, LinkField } from './components/playlists'
+import {
+    ClearTagsConfirm,
+    CrashDialog,
+    DeleteOriginalsConfirm,
+    DownloadYtDlpConfirm,
+    EmptyPlaylistConfirm,
+    FFmpegConfirm,
+    GoogleSignOutConfirm,
+    InstallYtDlpConfirm,
+    ResetDefaultsConfirm,
+    SaveDefaultsConfirm,
+    UninstallFFmpegConfirm,
+    UninstallYtDlpConfirm,
+} from './dialogs/confirms'
+import { DownloadErrorsDialog } from './dialogs/DownloadErrorsDialog'
+import { GooglePickerDialog } from './dialogs/GooglePickerDialog'
+import { PlaylistPrefsDialog, type PlaylistPrefsTarget } from './dialogs/PlaylistPrefsDialog'
+import { TagPromptDialog } from './dialogs/TagPromptDialog'
+import { UpdateDialog } from './dialogs/UpdateDialog'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
 import { cloneConfig, comparableConfig, comparablePlaylists, prefsSummary, REPLACEMENT_SCOPES } from './lib/config'
 import { splitName, tagChanged, fileWillChange } from './lib/files'
 import { linkInText, playlistIdOf, playlistKeyOf, isVideoLink } from './lib/links'
-import { type InstallProgress, installPercent, formatMB, installLabel } from './lib/progress'
-import { UNKNOWN_TITLE, UNKNOWN_ARTIST, type TagPrompt, foldText, type PromptSearch, promptsOf } from './lib/prompts'
+import { type InstallProgress, installPercent, installLabel } from './lib/progress'
+import { type TagPrompt, type PromptSearch, promptsOf } from './lib/prompts'
 
 // Toast: notifica effimera (in basso a destra su desktop, in basso a tutta
 // larghezza su Android). È l'unico canale per l'esito delle azioni: `ok`
@@ -285,7 +302,7 @@ function App() {
     // ownId è il suo ID se è dell'account, quindi si può svuotare), prefsDraft
     // le impostazioni in modifica. confirmEmpty chiede conferma prima di
     // «Svuota ora»; emptying è l'ID della playlist che si sta svuotando.
-    const [prefsTarget, setPrefsTarget] = useState<{ key: string; title: string; ownId: string } | null>(null)
+    const [prefsTarget, setPrefsTarget] = useState<PlaylistPrefsTarget | null>(null)
     const [prefsDraft, setPrefsDraft] = useState<playlist.Prefs>({})
     const [confirmEmpty, setConfirmEmpty] = useState<{ id: string; title: string } | null>(null)
     const [emptying, setEmptying] = useState('')
@@ -3243,755 +3260,160 @@ function App() {
                 />
             )}
 
-            {tagPrompts.length > 0 && (() => {
-                const head = tagPrompts[0]
-                const titleUnknown = head.title === UNKNOWN_TITLE
-                const artistUnknown = head.artist === UNKNOWN_ARTIST
-                const missing = titleUnknown && artistUnknown
-                    ? 'né il titolo né l’artista'
-                    : titleUnknown
-                      ? 'il titolo'
-                      : 'l’artista'
-                const searching = !!promptSearch?.loading
-                const found = promptSearch?.names ?? []
-                const filterWords = foldText(promptFilter).split(/\s+/).filter(Boolean)
-                const shown = found.filter((name) => {
-                    const folded = foldText(name)
-                    return filterWords.every((w) => folded.includes(w))
-                })
-                const originalDraft = head.review ? head.previewBase : head.originalBase
-                const queue = tagPrompts.length > 1 && (
-                    <p className="tag-prompt-queue">Altre {tagPrompts.length - 1} tracce in attesa di una scelta.</p>
-                )
-                if (searching) {
-                    return (
-                        <div className="modal-overlay">
-                            <div className="modal" onClick={(e) => e.stopPropagation()}>
-                                <h3>{head.review ? 'Traccia da rivedere' : 'Traccia non rinominabile'}</h3>
-                                <p className="tag-prompt-searching" role="status">
-                                    <span className="spinner" aria-hidden="true" />
-                                    <span>
-                                        Ricerca di <strong>{head.originalBase}</strong> su MusicBrainz…
-                                    </span>
-                                </p>
-                                {queue}
-                                <div className="modal-actions">
-                                    <button onClick={skipPromptSearch}>Salta ricerca</button>
-                                </div>
-                            </div>
-                        </div>
-                    )
-                }
-                return (
-                    <div className="modal-overlay">
-                        <div className="modal" onClick={(e) => e.stopPropagation()}>
-                            {head.review ? (
-                                <>
-                                    <h3>Traccia da rivedere</h3>
-                                    {found.length > 0 ? (
-                                        <p>
-                                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
-                                            sotto è quello trovato su MusicBrainz (l'anteprima proponeva titolo{' '}
-                                            <strong>{head.title}</strong>, artista <strong>{head.artist}</strong>):
-                                            controllalo e conferma,{' '}
-                                            {found.length > 1 && 'scegline un altro dall’elenco, '}
-                                            <strong>correggilo</strong> (i tag verranno riestratti da esso) oppure
-                                            converti la traccia come in anteprima.
-                                        </p>
-                                    ) : (
-                                        <p>
-                                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
-                                            sotto è quello proposto dall'anteprima (titolo <strong>{head.title}</strong>,
-                                            artista <strong>{head.artist}</strong>): puoi{' '}
-                                            <strong>correggerlo</strong> (i tag verranno riestratti da esso) oppure
-                                            convertire la traccia come in anteprima.
-                                        </p>
-                                    )}
-                                </>
-                            ) : (
-                                <>
-                                    <h3>Traccia non rinominabile</h3>
-                                    {found.length > 1 ? (
-                                        <p>
-                                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>.
-                                            Su MusicBrainz ci sono più brani che corrispondono: nel campo c'è il più
-                                            diffuso, puoi sceglierne un altro dall'elenco, <strong>correggere il nome</strong>{' '}
-                                            (i tag verranno riestratti da esso) oppure saltare per lasciarlo invariato.
-                                        </p>
-                                    ) : found.length === 1 ? (
-                                        <p>
-                                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>,
-                                            ma su MusicBrainz è stata trovata la corrispondenza qui sotto: controllala e
-                                            conferma, <strong>correggila</strong> (i tag verranno riestratti dal nome)
-                                            oppure salta per lasciare il nome invariato.
-                                        </p>
-                                    ) : (
-                                        <p>
-                                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>:
-                                            così com'è non può essere rinominata né taggata correttamente. Puoi{' '}
-                                            <strong>correggere il nome</strong> qui sotto (i tag verranno riestratti da esso)
-                                            oppure procedere lasciandolo invariato.
-                                        </p>
-                                    )}
-                                </>
-                            )}
-                            <label className="tag-prompt-field">
-                                {/* Etichetta = nome originale della traccia: resta visibile
-                                    mentre lo si modifica nel campo. */}
-                                <span className="tag-prompt-label" title="Nome originale">{head.originalBase}</span>
-                                <div className="tag-prompt-input">
-                                    <input
-                                        type="text"
-                                        value={promptDraft}
-                                        onChange={(e) => setPromptDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') resolvePrompt(true)
-                                        }}
-                                        // eslint-disable-next-line jsx-a11y/no-autofocus
-                                        autoFocus
-                                    />
-                                    <ExtChip ext={head.ext} />
-                                </div>
-                            </label>
-                            {promptSearch && !promptSearch.skipped && (
-                                <p className={'tag-prompt-suggest' + (promptSearch.error ? ' is-error' : '')}>
-                                    {promptSearch.error ? (
-                                        <>Ricerca non riuscita: {promptSearch.error}.</>
-                                    ) : found.length === 0 ? (
-                                        <>Nessun risultato su MusicBrainz.</>
-                                    ) : (
-                                        <>
-                                            {found.length > 1 ? 'Proposti da MusicBrainz' : 'Proposto da MusicBrainz'} ·{' '}
-                                            <button
-                                                type="button"
-                                                className="tag-prompt-restore"
-                                                onClick={() => setPromptDraft(originalDraft)}
-                                                disabled={promptDraft === originalDraft}
-                                            >
-                                                {head.review ? 'Usa il nome dell’anteprima' : 'Usa il nome originale'}
-                                            </button>
-                                        </>
-                                    )}
-                                </p>
-                            )}
-                            {found.length > 1 && (
-                                <div className="tag-prompt-results">
-                                    <div className="tag-prompt-filter">
-                                        <SearchIcon />
-                                        <input
-                                            type="search"
-                                            value={promptFilter}
-                                            onChange={(e) => setPromptFilter(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                // Invio sceglie il primo brano filtrato; Esc svuota la ricerca
-                                                // senza chiudere nulla.
-                                                if (e.key === 'Enter' && shown.length > 0) setPromptDraft(shown[0])
-                                                if (e.key === 'Escape' && promptFilter) {
-                                                    e.stopPropagation()
-                                                    setPromptFilter('')
-                                                }
-                                            }}
-                                            placeholder={`Cerca tra i ${found.length} risultati`}
-                                            aria-label="Cerca tra i risultati di MusicBrainz"
-                                        />
-                                        <span className="tag-prompt-count">
-                                            {shown.length === found.length ? found.length : `${shown.length} di ${found.length}`}
-                                        </span>
-                                    </div>
-                                    {shown.length > 0 ? (
-                                        <ul className="tag-prompt-options">
-                                            {shown.map((name) => (
-                                                <li key={name}>
-                                                    <button
-                                                        type="button"
-                                                        className={'tag-prompt-option' + (name === promptDraft ? ' is-selected' : '')}
-                                                        aria-pressed={name === promptDraft}
-                                                        onClick={() => setPromptDraft(name)}
-                                                    >
-                                                        {name}
-                                                    </button>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="tag-prompt-empty">Nessun brano corrisponde a «{promptFilter.trim()}».</p>
-                                    )}
-                                </div>
-                            )}
-                            {queue}
-                            <div className="modal-actions">
-                                <button onClick={() => resolvePrompt(false)}>
-                                    {head.review ? 'Usa anteprima' : 'Salta'}
-                                </button>
-                                <button className="accent" onClick={() => resolvePrompt(true)}>
-                                    Continua
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            })()}
+            {tagPrompts.length > 0 && (
+                <TagPromptDialog
+                    prompts={tagPrompts}
+                    search={promptSearch}
+                    draft={promptDraft}
+                    onDraftChange={setPromptDraft}
+                    filter={promptFilter}
+                    onFilterChange={setPromptFilter}
+                    onSkipSearch={skipPromptSearch}
+                    onResolve={resolvePrompt}
+                />
+            )}
 
             {showDownloadErrors && (
-                <div className="modal-overlay" onClick={() => setShowDownloadErrors(false)}>
-                    <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-                        <h3>Download non riusciti</h3>
-                        <p>
-                            Questi {downloadErrors.length} video non sono stati
-                            scaricati. Puoi riprovare più tardi: i file già scaricati non vengono
-                            riscaricati.
-                        </p>
-                        <ul className="download-errors-list">
-                            {downloadErrors.map((e, i) => (
-                                <li key={i} className="download-error-item">
-                                    <div className="dl-err-title">{e.title || e.videoId}</div>
-                                    {e.url && <div className="dl-err-url">{e.url}</div>}
-                                    <div className="dl-err-msg">{e.message || 'Errore sconosciuto.'}</div>
-                                </li>
-                            ))}
-                        </ul>
-                        <div className="modal-actions">
-                            <button className="primary" onClick={() => setShowDownloadErrors(false)}>
-                                Chiudi
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <DownloadErrorsDialog errors={downloadErrors} onClose={() => setShowDownloadErrors(false)} />
             )}
 
             {/* Playlist dell'account Google: da spuntare per importarle nelle
                 Impostazioni, oppure da scegliere per aggiungerci il video del link. */}
             {googlePicker && (
-                <div className="modal-overlay" onClick={closeGooglePicker}>
-                    <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-                        <h3>{googlePicker === 'import' ? 'Importa le tue playlist' : 'Aggiungi a una playlist'}</h3>
-                        <p>
-                            {googlePicker === 'import'
-                                ? 'Scegli le playlist del tuo account YouTube da aggiungere a quelle da scaricare.'
-                                : 'Scegli la playlist del tuo account in cui aggiungere il video del link.'}
-                        </p>
-                        {googleLists === null ? (
-                            <p className="google-hint" role="status">
-                                <span className="spinner" aria-hidden="true" />
-                                Lettura delle playlist…
-                            </p>
-                        ) : googleLists.length === 0 ? (
-                            <p className="google-hint">Il tuo account non ha ancora playlist.</p>
-                        ) : (
-                            <ul className="google-list">
-                                {googleLists.map((p) => {
-                                    const saved = savedPlaylistIds.has(p.id)
-                                    const meta = [
-                                        p.count === 1 ? '1 video' : `${p.count} video`,
-                                        p.privacy === 'private' ? 'privata' : p.privacy === 'unlisted' ? 'non in elenco' : 'pubblica',
-                                    ].join(' · ')
-                                    return googlePicker === 'import' ? (
-                                        <li key={p.id}>
-                                            <label className={'google-item' + (saved ? ' is-disabled' : '')}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={saved || googleImport.has(p.id)}
-                                                    disabled={saved}
-                                                    onChange={(e) =>
-                                                        setGoogleImport((prev) => {
-                                                            const next = new Set(prev)
-                                                            if (e.target.checked) next.add(p.id)
-                                                            else next.delete(p.id)
-                                                            return next
-                                                        })
-                                                    }
-                                                />
-                                                <span className="google-item-text">
-                                                    <span className="google-item-title">{p.title}</span>
-                                                    <span className="google-item-meta">{saved ? 'Già salvata' : meta}</span>
-                                                </span>
-                                            </label>
-                                        </li>
-                                    ) : (
-                                        <li key={p.id}>
-                                            <button type="button" className="google-item" onClick={() => addLinkToPlaylist(p)}>
-                                                <span className="google-item-text">
-                                                    <span className="google-item-title">{p.title}</span>
-                                                    <span className="google-item-meta">{meta}</span>
-                                                </span>
-                                                <PlusIcon />
-                                            </button>
-                                        </li>
-                                    )
-                                })}
-                            </ul>
-                        )}
-                        <div className="modal-actions">
-                            <button onClick={closeGooglePicker}>Annulla</button>
-                            {googlePicker === 'import' && (
-                                <button className="primary" onClick={importGooglePlaylists} disabled={googleImport.size === 0}>
-                                    {googleImport.size > 0 ? `Importa (${googleImport.size})` : 'Importa'}
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                <GooglePickerDialog
+                    mode={googlePicker}
+                    lists={googleLists}
+                    savedIds={savedPlaylistIds}
+                    selected={googleImport}
+                    setSelected={setGoogleImport}
+                    onClose={closeGooglePicker}
+                    onImport={importGooglePlaylists}
+                    onAdd={addLinkToPlaylist}
+                />
             )}
 
             {/* Impostazioni di una playlist della scelta del download. */}
-            {prefsTarget && (() => {
-                const connected = googleConnected
-                const canRemove = connected && prefsTarget.ownId !== ''
-                const selfId = prefsTarget.key.startsWith('yt:') ? prefsTarget.key.slice(3) : ''
-                const targets = accountPlaylists
-                    .filter((p) => p.id !== selfId)
-                    .map((p) => ({ value: p.id, label: p.title || p.id }))
-                const after = prefsDraft.afterDownload ?? ''
-                // Scegliendo l'aggiunta a un'altra playlist, per una playlist
-                // dell'account si propone di spostare (togliere anche dall'origine).
-                const setAfter = (value: string) =>
-                    setPrefsDraft((d) => ({
-                        ...d,
-                        afterDownload: value,
-                        moveOnCopy: value === 'copy' && d.moveOnCopy === undefined ? canRemove : d.moveOnCopy,
-                    }))
-                return (
-                    <div className="modal-overlay" onClick={() => setPrefsTarget(null)}>
-                        <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-                            <h3>Impostazioni di «{prefsTarget.title}»</h3>
-
-                            <CheckOption
-                                label="Nascondi dalla tendina"
-                                info="La playlist non compare più nella scelta della playlist da scaricare. Resta qui nelle Impostazioni, da dove puoi farla ricomparire."
-                                checked={!!prefsDraft.hidden}
-                                onChange={(checked) => setPrefsDraft((d) => ({ ...d, hidden: checked }))}
-                            />
-
-                            <fieldset className="prefs-group">
-                                <legend>Dopo il download</legend>
-                                <label className="radio-option">
-                                    <input type="radio" name="after" checked={after === ''} onChange={() => setAfter('')} />
-                                    <span>Non fare nulla</span>
-                                </label>
-                                <label className={'radio-option' + (canRemove ? '' : ' is-disabled')}>
-                                    <input
-                                        type="radio"
-                                        name="after"
-                                        checked={after === 'remove'}
-                                        disabled={!canRemove && after !== 'remove'}
-                                        onChange={() => setAfter('remove')}
-                                    />
-                                    <span>
-                                        Togli i brani scaricati dalla playlist su YouTube
-                                        <small>
-                                            {canRemove
-                                                ? 'La playlist fa da coda: restano solo i brani ancora da scaricare.'
-                                                : connected
-                                                  ? 'Solo per le playlist del tuo account.'
-                                                  : 'Collega l\'account Google per usarlo.'}
-                                        </small>
-                                    </span>
-                                </label>
-                                <label className={'radio-option' + (connected ? '' : ' is-disabled')}>
-                                    <input
-                                        type="radio"
-                                        name="after"
-                                        checked={after === 'copy'}
-                                        disabled={!connected && after !== 'copy'}
-                                        onChange={() => setAfter('copy')}
-                                    />
-                                    <span>
-                                        Aggiungi i brani scaricati a un'altra playlist
-                                        <small>
-                                            {connected
-                                                ? 'In fondo alla playlist scelta, senza doppioni.'
-                                                : 'Collega l\'account Google per usarlo.'}
-                                        </small>
-                                    </span>
-                                </label>
-                                {after === 'copy' && (
-                                    <Select
-                                        className="prefs-target"
-                                        value={prefsDraft.copyTo ?? ''}
-                                        options={targets}
-                                        onChange={(id) =>
-                                            setPrefsDraft((d) => ({
-                                                ...d,
-                                                copyTo: id,
-                                                copyToTitle: targets.find((t) => t.value === id)?.label ?? id,
-                                            }))
-                                        }
-                                        disabled={targets.length === 0}
-                                        placeholder={targets.length === 0 ? 'Nessun\'altra playlist nel tuo account' : 'Scegli la playlist'}
-                                    />
-                                )}
-                                {after === 'copy' && (
-                                    <CheckOption
-                                        className="prefs-move"
-                                        label="Togli anche dalla playlist di origine"
-                                        info={
-                                            canRemove
-                                                ? 'I brani si spostano: dopo essere stati aggiunti alla playlist scelta vengono tolti da questa. Se l\'aggiunta non riesce, restano qui.'
-                                                : 'Solo per le playlist del tuo account: le altre non si possono modificare.'
-                                        }
-                                        checked={canRemove && !!prefsDraft.moveOnCopy}
-                                        onChange={(checked) => setPrefsDraft((d) => ({ ...d, moveOnCopy: checked }))}
-                                        disabled={!canRemove}
-                                    />
-                                )}
-                            </fieldset>
-
-                            {prefsTarget.ownId !== '' && (
-                                <fieldset className="prefs-group">
-                                    <legend>Svuota la playlist</legend>
-                                    <div className="prefs-empty">
-                                        <span>Toglie subito da YouTube tutti i brani della playlist, anche quelli non scaricati.</span>
-                                        <button
-                                            className="ghost small danger with-icon"
-                                            onClick={() => setConfirmEmpty({ id: prefsTarget.ownId, title: prefsTarget.title })}
-                                            disabled={busy}
-                                        >
-                                            <span className="btn-icon"><TrashIcon /></span>
-                                            Svuota ora
-                                        </button>
-                                    </div>
-                                </fieldset>
-                            )}
-
-                            <div className="modal-actions">
-                                <button onClick={() => setPrefsTarget(null)} disabled={busy}>
-                                    Annulla
-                                </button>
-                                <button
-                                    className="primary"
-                                    onClick={savePlaylistPrefs}
-                                    disabled={busy || (after === 'copy' && !prefsDraft.copyTo)}
-                                >
-                                    Salva
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            })()}
+            {prefsTarget && (
+                <PlaylistPrefsDialog
+                    target={prefsTarget}
+                    connected={googleConnected}
+                    accountPlaylists={accountPlaylists}
+                    draft={prefsDraft}
+                    setDraft={setPrefsDraft}
+                    busy={busy}
+                    onClose={() => setPrefsTarget(null)}
+                    onSave={savePlaylistPrefs}
+                    onEmpty={() => setConfirmEmpty({ id: prefsTarget.ownId, title: prefsTarget.title })}
+                />
+            )}
 
             {confirmEmpty && (
-                <div className="modal-overlay" onClick={() => setConfirmEmpty(null)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Svuotare «{confirmEmpty.title}»?</h3>
-                        <p>
-                            Verranno <strong>tolti da YouTube tutti i brani</strong> della playlist, anche
-                            quelli che non hai ancora scaricato. La playlist resta, vuota. L'operazione
-                            non si può annullare a cose fatte.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmEmpty(null)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="danger-solid" onClick={emptyPlaylist} disabled={busy}>
-                                Svuota
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <EmptyPlaylistConfirm
+                    title={confirmEmpty.title}
+                    onCancel={() => setConfirmEmpty(null)}
+                    onConfirm={emptyPlaylist}
+                    disabled={busy}
+                />
             )}
 
             {confirmGoogleSignOut && (
-                <div className="modal-overlay" onClick={() => setConfirmGoogleSignOut(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Scollegare l'account Google?</h3>
-                        <p>
-                            L'app perderà l'accesso alle tue playlist di YouTube e il permesso verrà
-                            revocato anche su Google. Le playlist del tuo account spariscono dalla
-                            scelta del download; quelle salvate qui restano, ma finché non ricolleghi
-                            l'account dopo il download non verranno svuotate né copiate.
-                        </p>
-                        <p>
-                            Regole, playlist e predefiniti restano quelli attuali su questo dispositivo,
-                            ma non si sincronizzano più con gli altri.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmGoogleSignOut(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="danger-solid" onClick={googleSignOut} disabled={busy}>
-                                Scollega
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <GoogleSignOutConfirm
+                    onCancel={() => setConfirmGoogleSignOut(false)}
+                    onConfirm={googleSignOut}
+                    disabled={busy}
+                />
             )}
 
             {confirmDeleteOriginals && (
-                <div className="modal-overlay" onClick={() => setConfirmDeleteOriginals(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Attivare l'eliminazione degli originali?</h3>
-                        <p>
-                            Con questa opzione attiva, dopo ogni conversione i file originali
-                            verranno <strong>eliminati definitivamente</strong>. Verifica di avere
-                            un backup se ti serve poter tornare indietro.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmDeleteOriginals(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="danger-solid" onClick={confirmEnableDelete} disabled={busy}>
-                                Continua
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <DeleteOriginalsConfirm
+                    onCancel={() => setConfirmDeleteOriginals(false)}
+                    onConfirm={confirmEnableDelete}
+                    disabled={busy}
+                />
             )}
 
             {confirmClearTags && (
-                <div className="modal-overlay" onClick={() => setConfirmClearTags(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Cancellare tutti i tag?</h3>
-                        <p>
-                            Verranno <strong>rimossi tutti i tag ID3</strong> (titolo, artista, ecc.)
-                            da tutti gli MP3 della cartella di partenza. I file non vengono rinominati
-                            né spostati, ma i metadati eliminati <strong>non sono recuperabili</strong>.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmClearTags(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="danger-solid" onClick={confirmClearTagsAction} disabled={busy}>
-                                Cancella tag
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <ClearTagsConfirm
+                    onCancel={() => setConfirmClearTags(false)}
+                    onConfirm={confirmClearTagsAction}
+                    disabled={busy}
+                />
             )}
 
             {confirmInstallYtDlp && (
-                <div className="modal-overlay" onClick={() => setConfirmInstallYtDlp(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        {isAndroid ? (
-                            <>
-                                <h3>yt-dlp non è ancora pronto</h3>
-                                <p>
-                                    L'app lo sta ancora preparando (al primo avvio richiede qualche
-                                    secondo) oppure la preparazione non è riuscita. Vuoi scaricarne
-                                    l'ultima versione e avviare subito il download {downloadWhat}?
-                                </p>
-                            </>
-                        ) : ytDlpManaged ? (
-                            <>
-                                <h3>Scaricare yt-dlp?</h3>
-                                <p>
-                                    yt-dlp non è presente. L'app lo scaricherà
-                                    {!state?.ffmpegAvailable && <> insieme a ffmpeg (circa 200 MB)</>} in{' '}
-                                    <code>%AppData%\RenameMusic</code> e avvierà subito il download
-                                    {downloadWhat}.
-                                </p>
-                            </>
-                        ) : (
-                            <>
-                                <h3>Attivare la gestione automatica di yt-dlp?</h3>
-                                <p>
-                                    <strong>"Gestisci autonomamente"</strong> non è attivo e yt-dlp
-                                    non è disponibile. Vuoi attivarlo e procedere? L'app scaricherà la
-                                    propria copia{!state?.ffmpegAvailable && <> (con ffmpeg, circa 200 MB)</>} in{' '}
-                                    <code>%AppData%\RenameMusic</code> e avvierà
-                                    subito il download {downloadWhat}.
-                                </p>
-                            </>
-                        )}
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmInstallYtDlp(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="accent" onClick={confirmInstallThenDownload} disabled={busy}>
-                                {ytDlpManaged || isAndroid ? 'Scarica e continua' : 'Attiva e continua'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <InstallYtDlpConfirm
+                    managed={ytDlpManaged}
+                    ffmpegAvailable={!!state?.ffmpegAvailable}
+                    downloadWhat={downloadWhat}
+                    onCancel={() => setConfirmInstallYtDlp(false)}
+                    onConfirm={confirmInstallThenDownload}
+                    disabled={busy}
+                />
             )}
 
             {confirmUninstallYtDlp && (
-                <div className="modal-overlay" onClick={() => setConfirmUninstallYtDlp(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Disinstallare yt-dlp?</h3>
-                        <p>
-                            La copia gestita dall'app in <code>%AppData%\RenameMusic</code> verrà
-                            <strong> rimossa</strong> (ffmpeg resta). Potrai riscaricarla in qualsiasi momento
-                            dal tasto accanto a yt-dlp o dal prossimo download di una playlist.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmUninstallYtDlp(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="danger-solid" onClick={uninstallYtDlp} disabled={busy}>
-                                Disinstalla
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <UninstallYtDlpConfirm
+                    onCancel={() => setConfirmUninstallYtDlp(false)}
+                    onConfirm={uninstallYtDlp}
+                    disabled={busy}
+                />
             )}
 
-            {crashReport && (
-                <div className="modal-overlay">
-                    <div className="modal">
-                        <h3>L'app si è chiusa in modo anomalo</h3>
-                        <p>
-                            È stato salvato un file con i dettagli dell'errore. Condividilo con lo
-                            sviluppatore (per esempio su WhatsApp) per aiutarlo a risolvere il problema.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={discardCrash}>Ignora</button>
-                            <button className="accent" onClick={shareCrash}>
-                                Condividi errore
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {crashReport && <CrashDialog onShare={shareCrash} onDiscard={discardCrash} />}
 
             {confirmUninstallFFmpeg && (
-                <div className="modal-overlay" onClick={() => setConfirmUninstallFFmpeg(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Disinstallare ffmpeg?</h3>
-                        <p>
-                            La copia gestita dall'app in <code>%AppData%\RenameMusic\ffmpeg</code> verrà
-                            <strong> rimossa</strong>. Senza ffmpeg non si possono scaricare playlist in mp3:
-                            potrai riscaricarlo dal tasto accanto a ffmpeg o dal prossimo download di una
-                            playlist.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmUninstallFFmpeg(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="danger-solid" onClick={uninstallFFmpeg} disabled={busy}>
-                                Disinstalla
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <UninstallFFmpegConfirm
+                    onCancel={() => setConfirmUninstallFFmpeg(false)}
+                    onConfirm={uninstallFFmpeg}
+                    disabled={busy}
+                />
             )}
 
             {confirmDownloadYtDlp && (
-                <div className="modal-overlay" onClick={() => setConfirmDownloadYtDlp(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>{isAndroid ? 'Aggiornare yt-dlp?' : 'Scaricare yt-dlp?'}</h3>
-                        <p>
-                            Verrà scaricata l'ultima versione ufficiale di <strong>yt-dlp</strong> da
-                            Internet (GitHub){isAndroid ? (
-                                <>, al posto di quella integrata nell'app</>
-                            ) : state?.ytDlpEffectivePath ? (
-                                <> in <code>{state.ytDlpEffectivePath}</code></>
-                            ) : ytDlpManaged ? (
-                                <> in <code>%AppData%\RenameMusic</code></>
-                            ) : (
-                                <> nel percorso indicato</>
-                            )}. Assicurati di scaricarlo solo da una fonte di cui ti fidi.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmDownloadYtDlp(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="accent" onClick={installYtDlp} disabled={busy}>
-                                {isAndroid ? 'Aggiorna' : 'Scarica'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <DownloadYtDlpConfirm
+                    effectivePath={state?.ytDlpEffectivePath ?? ''}
+                    managed={ytDlpManaged}
+                    onCancel={() => setConfirmDownloadYtDlp(false)}
+                    onConfirm={installYtDlp}
+                    disabled={busy}
+                />
             )}
 
             {confirmFFmpeg && (
-                <div className="modal-overlay" onClick={() => setConfirmFFmpeg(null)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Scaricare ffmpeg?</h3>
-                        <p>
-                            {confirmFFmpeg === 'playlist' && (
-                                <>Per creare gli mp3 yt-dlp ha bisogno di <strong>ffmpeg</strong>, che non è presente. </>
-                            )}
-                            Verrà scaricata l'ultima build ufficiale di <strong>ffmpeg</strong> per
-                            yt-dlp da Internet (GitHub, circa 200 MB) in{' '}
-                            <code>%AppData%\RenameMusic\ffmpeg</code>
-                            {confirmFFmpeg === 'playlist' && <>, poi partirà il download {downloadWhat}</>}.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmFFmpeg(null)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="accent" onClick={installFFmpeg} disabled={busy}>
-                                {confirmFFmpeg === 'playlist' ? 'Scarica e continua' : 'Scarica'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <FFmpegConfirm
+                    reason={confirmFFmpeg}
+                    downloadWhat={downloadWhat}
+                    onCancel={() => setConfirmFFmpeg(null)}
+                    onConfirm={installFFmpeg}
+                    disabled={busy}
+                />
             )}
 
             {confirmReset && (
-                <div className="modal-overlay" onClick={() => setConfirmReset(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Ripristinare i predefiniti?</h3>
-                        <p>
-                            Regole di rinomina, playlist e modalità semplificata verranno{' '}
-                            <strong>sostituite</strong> dai valori predefiniti. Le impostazioni attuali andranno
-                            perse.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmReset(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="danger" onClick={confirmResetConfig} disabled={busy}>
-                                Ripristina
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <ResetDefaultsConfirm
+                    onCancel={() => setConfirmReset(false)}
+                    onConfirm={confirmResetConfig}
+                    disabled={busy}
+                />
             )}
 
             {confirmDefault && (
-                <div className="modal-overlay" onClick={() => setConfirmDefault(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Salvare come predefiniti?</h3>
-                        <p>
-                            I predefiniti attuali verranno <strong>sovrascritti</strong> con le regole di
-                            rinomina, le playlist e la modalità semplificata correnti. "Ripristina predefiniti"
-                            userà d'ora in poi questi valori.
-                        </p>
-                        <div className="modal-actions">
-                            <button onClick={() => setConfirmDefault(false)} disabled={busy}>
-                                Annulla
-                            </button>
-                            <button className="accent" onClick={confirmMakeDefault} disabled={busy}>
-                                Conferma
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <SaveDefaultsConfirm
+                    onCancel={() => setConfirmDefault(false)}
+                    onConfirm={confirmMakeDefault}
+                    disabled={busy}
+                />
             )}
 
             {updatePopup && (
-                <div className="modal-overlay" onClick={() => !busy && setUpdatePopup(null)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Nuova versione disponibile</h3>
-                        <p>
-                            È disponibile <strong>RenameMusic {updatePopup.version}</strong> (stai usando la{' '}
-                            {state?.appVersion}).{' '}
-                            {isAndroid
-                                ? "L'app scaricherà l'aggiornamento e aprirà l'installazione di Android."
-                                : "L'app scaricherà la nuova versione e si riavvierà da sola."}
-                            {updatePopup.size > 0 && <> Download: {formatMB(updatePopup.size)} MB.</>}
-                        </p>
-                        {updatePopup.notes && <div className="update-notes">{updatePopup.notes}</div>}
-                        {busy && installProgress?.tool === 'RenameMusic' && (
-                            <OpProgress
-                                className="update-progress"
-                                percent={installPercent(installProgress)}
-                                label={installLabel(installProgress)}
-                            />
-                        )}
-                        <p className="update-later">Puoi aggiornare anche più tardi dalla scheda Info delle Impostazioni.</p>
-                        <div className="modal-actions">
-                            <button onClick={() => setUpdatePopup(null)} disabled={busy}>
-                                Più tardi
-                            </button>
-                            <button className="accent" onClick={installUpdate} disabled={busy}>
-                                Aggiorna ora
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <UpdateDialog
+                    update={updatePopup}
+                    appVersion={state.appVersion}
+                    busy={busy}
+                    installProgress={installProgress}
+                    onClose={() => setUpdatePopup(null)}
+                    onInstall={installUpdate}
+                />
             )}
 
             <div
