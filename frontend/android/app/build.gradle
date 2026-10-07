@@ -1,6 +1,26 @@
 apply plugin: 'com.android.application'
 
+// Firma degli APK: il keystore sta fuori dal repo e lo indica
+// keystore.properties (ignorato da git, modello in keystore.properties.example).
+// Deve essere sempre lo stesso: Android accetta un aggiornamento solo con la
+// firma dell'app installata, e il client OAuth Android di Google riconosce
+// l'app dallo SHA-1 del certificato (vedi mobile/signing.ps1).
+def signingProps = new Properties()
+def signingPropsFile = rootProject.file('keystore.properties')
+if (signingPropsFile.exists()) signingPropsFile.withInputStream { signingProps.load(it) }
+def hasSigning = signingProps['storeFile'] != null
+
 android {
+    signingConfigs {
+        if (hasSigning) {
+            create('app') {
+                storeFile rootProject.file(signingProps['storeFile'])
+                storePassword signingProps['storePassword']
+                keyAlias signingProps['keyAlias']
+                keyPassword signingProps['keyPassword']
+            }
+        }
+    }
     namespace = "com.renamemusic.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
@@ -20,7 +40,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (hasSigning) signingConfig signingConfigs.app
+        }
         release {
+            if (hasSigning) signingConfig signingConfigs.app
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -74,6 +98,17 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// Senza keystore.properties Gradle firmerebbe con ~/.android/debug.keystore, che
+// su un'altra macchina è diverso: meglio fermarsi (la sincronizzazione del
+// progetto in Android Studio funziona comunque, non esegue preBuild).
+tasks.named('preBuild') {
+    doFirst {
+        if (!hasSigning) {
+            throw new GradleException("Manca frontend/android/keystore.properties (con storeFile): crealo da keystore.properties.example.")
+        }
+    }
+}
 
 try {
     def servicesJSON = file('google-services.json')

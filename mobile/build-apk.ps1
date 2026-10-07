@@ -16,6 +16,10 @@
     Requisiti: Go, Node/npm, Android SDK con NDK, JDK 21 e gomobile:
         go install golang.org/x/mobile/cmd/gomobile@<versione in go.mod>
         go install golang.org/x/mobile/cmd/gobind@<versione in go.mod>
+    e frontend\android\keystore.properties (ignorato da git, modello in
+    keystore.properties.example) con il keystore delle versioni pubblicate:
+    prima di compilare si controlla che il suo certificato sia quello atteso
+    (vedi signing.ps1).
 
 .PARAMETER JavaHome
     JDK 21 da usare per Gradle. Default: il JDK del comando `java` nel PATH
@@ -100,6 +104,13 @@ if (-not $JavaHome -or (Get-JdkMajor $JavaHome) -lt 21) {
 $env:JAVA_HOME = $JavaHome
 $env:PATH = "$JavaHome\bin;$env:USERPROFILE\go\bin;$env:PATH"
 
+# Firma: keystore di keystore.properties, con il certificato delle versioni
+# pubblicate (controllato prima di perdere minuti in gomobile e Gradle).
+. (Join-Path $PSScriptRoot 'signing.ps1')
+$signing = Get-SigningConfig $android
+$signingSha1 = Get-KeystoreSha1 $JavaHome $signing
+Assert-SigningSha1 $signingSha1 "Il keystore $($signing.storeFile)"
+
 # Versione dell'app: unica fonte è update.Version in internal/update/update.go.
 # versionCode = major*10000 + minor*100 + patch, così cresce a ogni release
 # (Android rifiuta un aggiornamento con versionCode minore di quello installato).
@@ -114,6 +125,7 @@ Write-Host "Versione:    $appVersionName (versionCode $appVersionCode)"
 Write-Host "Android SDK: $env:ANDROID_HOME"
 Write-Host "Android NDK: $env:ANDROID_NDK_HOME"
 Write-Host "JDK:         $JavaHome"
+Write-Host "Keystore:    $($signing.storeFile) (SHA-1 $signingSha1)"
 
 # ---- 1. Core Go -> .aar ---------------------------------------------------
 

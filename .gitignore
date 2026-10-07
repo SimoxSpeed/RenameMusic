@@ -16,6 +16,9 @@ build/bin/
 frontend/android/app/libs/*.aar
 frontend/android/app/libs/*-sources.jar
 
+# Keystore per firmare gli APK (fuori dal repo): percorso e password, vedi keystore.properties.example
+frontend/android/keystore.properties
+
 # Documentazione locale (non versionata)
 docs/
 

@@ -5,7 +5,8 @@
 .DESCRIPTION
     1. controlli: branch, credenziali di Google per l'exe
        (internal\google\credentials_local.go, obbligatorio: le variabili
-       d'ambiente non bastano), tag libero (in locale e su origin), modifiche
+       d'ambiente non bastano), keystore per gli APK
+       (frontend\android\keystore.properties), tag libero (in locale e su origin), modifiche
        pendenti e GitHub CLI. Se il tag esiste già chiede se ricrearlo
        (sostituito solo al push, insieme a un'eventuale release GitHub
        rimasta su quel tag) o annullare. Con gh pronta apre nel Blocco note un
@@ -15,7 +16,9 @@
        unica fonte della versione: la usano il controllo aggiornamenti e l'APK)
     3. compila l'exe desktop (wails build)
     4. compila gli APK (mobile\build-apk.ps1)
-       Prima del commit verifica che l'exe contenga il client ID di Google.
+       Prima del commit verifica che l'exe contenga il client ID di Google e
+       che gli APK siano firmati con il certificato delle versioni pubblicate
+       (mobile\signing.ps1).
     5. commit di tutte le modifiche (dopo conferma) con il messaggio fisso
        "chore(release): 🚀 release <versione>", tag annotato v<versione> e push
        di branch e tag insieme (--atomic: o tutti e due o nessuno)
@@ -82,6 +85,8 @@ $allAssets = @($desktopAsset) + $apkAssets
 $credentialsFileRel = 'internal\google\credentials_local.go'
 $credentialsFile = Join-Path $root $credentialsFileRel
 $googleClientID = ''
+# Firma degli APK: keystore.properties e certificato atteso.
+. (Join-Path $root 'mobile\signing.ps1')
 # Copia di exe e APK di prima delle build, da rimettere a posto se la release
 # non va in porto (build\bin è ignorata da git).
 $backupDir = Join-Path $root 'build\bin\.release-backup'
@@ -246,6 +251,16 @@ function Assert-ExeCredentials {
         throw "$desktopAsset non contiene le credenziali di Google di $credentialsFileRel`: ricompilalo (senza -NoBuild)."
     }
     Ok "$desktopAsset contiene le credenziali di Google"
+}
+
+# Gli APK devono avere la firma delle versioni pubblicate, altrimenti chi ha
+# l'app non potrebbe aggiornarla (con -NoBuild potrebbero venire da un altro
+# keystore; build-apk.ps1 controlla già il keystore prima di compilare).
+function Assert-ApkSignatures {
+    foreach ($a in $apkAssets) {
+        Assert-SigningSha1 (Get-ApkSha1 (Join-Path $root $a)) $a
+    }
+    Ok "APK firmati con il certificato delle versioni pubblicate"
 }
 
 # Sposta da parte exe e APK attuali prima delle build: se la release non va in
@@ -439,6 +454,9 @@ try {
     $googleClientID = Get-GoogleClientID
     Ok "Credenziali di Google in $credentialsFileRel"
 
+    $signing = Get-SigningConfig (Join-Path $root 'frontend\android')
+    Ok "Keystore per gli APK: $($signing.storeFile)"
+
     $oldLocalTag = git rev-parse -q --verify "refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { $oldLocalTag = '' }
     Detail 'Controllo dei tag su origin...'
@@ -538,6 +556,7 @@ try {
     }
     Assert-Assets
     Assert-ExeCredentials
+    Assert-ApkSignatures
 
     # ---- 5. Commit, tag, push -----------------------------------------------------
 
