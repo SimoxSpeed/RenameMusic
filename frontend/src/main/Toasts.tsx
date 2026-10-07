@@ -9,11 +9,7 @@ export type Toast = { id: number; ok: boolean; message: string; duration: number
 // fine dell'animazione della sua barra del tempo (in pausa in hover su desktop).
 export function Toasts({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
     return (
-        <div
-            className="toast-container"
-            aria-live="polite"
-            aria-atomic="false"
-        >
+        <div className="toast-container" aria-live="polite" aria-atomic="false">
             {toasts.map((t) => (
                 <div key={t.id} className={'toast ' + (t.ok ? 'toast-ok' : 'toast-err')} role="status">
                     <span className="toast-icon" aria-hidden="true">

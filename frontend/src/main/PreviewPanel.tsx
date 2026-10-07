@@ -40,12 +40,8 @@ function ResultsTable({ results }: { results: core.ResultView[] }) {
                                 {renamed ? <s className="old-name">{src.base}</s> : src.base}
                             </td>
                             <td data-label="Nuovo nome">{r.skipped || r.canceled ? '—' : dst.base}</td>
-                            <td data-label="Titolo">
-                                {showTags ? r.title : <span className="muted-dash">—</span>}
-                            </td>
-                            <td data-label="Artista">
-                                {showTags ? r.artist : <span className="muted-dash">—</span>}
-                            </td>
+                            <td data-label="Titolo">{showTags ? r.title : <span className="muted-dash">—</span>}</td>
+                            <td data-label="Artista">{showTags ? r.artist : <span className="muted-dash">—</span>}</td>
                             <td data-label="Esito">
                                 {r.failed ? (
                                     <ErrorLabel message={r.reason} />
@@ -60,9 +56,7 @@ function ResultsTable({ results }: { results: core.ResultView[] }) {
                                         ) : (
                                             <span className="badge badge-neutral">Invariato</span>
                                         )}
-                                        {r.tagged && (
-                                            <span className="badge badge-tag">Taggato</span>
-                                        )}
+                                        {r.tagged && <span className="badge badge-tag">Taggato</span>}
                                         <ExtChip ext={dst.ext} />
                                     </div>
                                 )}
@@ -78,7 +72,13 @@ function ResultsTable({ results }: { results: core.ResultView[] }) {
 // PreviewTable: anteprima dei file (files, già filtrati dalla vista "Solo da
 // modificare"), con la casella per segnare ogni file da rivedere (reviewPaths)
 // e quella dell'intestazione per tutti quelli visibili.
-function PreviewTable({ files, reviewPaths, busy, onToggleReview, onToggleReviewAll }: {
+function PreviewTable({
+    files,
+    reviewPaths,
+    busy,
+    onToggleReview,
+    onToggleReviewAll,
+}: {
     files: core.FileView[]
     reviewPaths: Set<string>
     busy: boolean
@@ -140,7 +140,9 @@ function PreviewTable({ files, reviewPaths, busy, onToggleReview, onToggleReview
                                     <CurrentField label="artista" value={file.artist ?? ''} changed={artistChanged} />
                                 )}
                             </td>
-                            <td data-label="Nuovo nome" className={nameChanged ? 'value-changed' : ''}>{dst.base}</td>
+                            <td data-label="Nuovo nome" className={nameChanged ? 'value-changed' : ''}>
+                                {dst.base}
+                            </td>
                             <td data-label="Nuovo titolo" className={titleChanged ? 'value-changed' : ''}>
                                 {file.mp3 ? file.titlePreview : <span className="muted-dash">—</span>}
                             </td>
@@ -230,12 +232,10 @@ export function PreviewPanel({
                             </label>
                         </Tooltip>
                         <Tooltip label={foldersHint || 'Aggiorna la scansione della cartella'}>
-                            <button
-                                className="ghost small with-icon"
-                                onClick={onRefresh}
-                                disabled={busy || !foldersOk}
-                            >
-                                <span className="btn-icon"><RefreshIcon /></span>
+                            <button className="ghost small with-icon" onClick={onRefresh} disabled={busy || !foldersOk}>
+                                <span className="btn-icon">
+                                    <RefreshIcon />
+                                </span>
                                 Aggiorna
                             </button>
                         </Tooltip>

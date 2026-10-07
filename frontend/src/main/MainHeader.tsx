@@ -54,90 +54,93 @@ export function MainHeader({
     return (
         <header>
             <div className="header-inner">
-            <h1>RenameMusic</h1>
-            <div className="header-right">
-                {!isAndroid && <ShortcutsLegend simple={simpleMode} separateDest={separateDest} />}
-                {/* Senza anteprima l'aggiornamento automatico non ha
+                <h1>RenameMusic</h1>
+                <div className="header-right">
+                    {!isAndroid && <ShortcutsLegend simple={simpleMode} separateDest={separateDest} />}
+                    {/* Senza anteprima l'aggiornamento automatico non ha
                     nulla da aggiornare: in modalità semplificata il
                     toggle sparisce (e il core ne ignora gli eventi). */}
-                {!simpleMode && (
-                <Tooltip
-                    label={
-                        !folder || folderMissing
-                            ? foldersHint
-                            : watchEnabled
-                              ? "Aggiornamento automatico attivo: clicca per disattivarlo. Le variazioni nella cartella aggiornano l'anteprima."
-                              : "Aggiornamento automatico disattivato: clicca per attivarlo e aggiornare l'anteprima automaticamente."
-                    }
-                >
+                    {!simpleMode && (
+                        <Tooltip
+                            label={
+                                !folder || folderMissing
+                                    ? foldersHint
+                                    : watchEnabled
+                                      ? "Aggiornamento automatico attivo: clicca per disattivarlo. Le variazioni nella cartella aggiornano l'anteprima."
+                                      : "Aggiornamento automatico disattivato: clicca per attivarlo e aggiornare l'anteprima automaticamente."
+                            }
+                        >
+                            <button
+                                type="button"
+                                className={
+                                    'watch-toggle' + (watchEnabled ? (folderMissing ? ' is-error' : ' is-on') : '')
+                                }
+                                onClick={onToggleWatch}
+                                disabled={busy || !folder || folderMissing}
+                                aria-pressed={watchEnabled}
+                            >
+                                <span className="watch-dot" aria-hidden="true" />
+                                {watchEnabled ? 'Agg. automatico attivo' : 'Agg. automatico'}
+                            </button>
+                        </Tooltip>
+                    )}
+                    {/* In modalità semplificata i contatori riassumono solo
+                    l'ultima conversione (non c'è un'anteprima da contare). */}
+                    {(!simpleMode || showingResults) && (
+                        <div className="counters">
+                            <span>
+                                {fileCount} file{showingResults ? ' elaborati' : ''}
+                            </span>
+                            <span className="dot">·</span>
+                            <span>{mp3Count} MP3</span>
+                            {!showingResults && reviewCount > 0 && (
+                                <>
+                                    <span className="dot">·</span>
+                                    <span className="counter-review">{reviewCount} da rivedere</span>
+                                </>
+                            )}
+                            {toRenameCount > 0 && (
+                                <>
+                                    <span className="dot">·</span>
+                                    <span className="counter-hi">
+                                        {toRenameCount} {showingResults ? 'rinominati' : 'da rinominare'}
+                                    </span>
+                                </>
+                            )}
+                            {failedCount > 0 && (
+                                <>
+                                    <span className="dot">·</span>
+                                    <span className="counter-err">{failedCount} errori</span>
+                                </>
+                            )}
+                        </div>
+                    )}
+                    {/* Registro Attività (non in modalità semplificata,
+                    dove gli esiti arrivano solo dai toast). */}
+                    {!simpleMode && (
+                        <ActivityMenu
+                            open={activity.open}
+                            onOpenChange={activity.onOpenChange}
+                            logs={activity.logs}
+                            unseen={activity.unseen}
+                            onClear={activity.onClear}
+                            clearDisabled={busy}
+                        />
+                    )}
                     <button
                         type="button"
-                        className={
-                            'watch-toggle' +
-                            (watchEnabled ? (folderMissing ? ' is-error' : ' is-on') : '')
-                        }
-                        onClick={onToggleWatch}
-                        disabled={busy || !folder || folderMissing}
-                        aria-pressed={watchEnabled}
+                        className="header-btn with-icon"
+                        onClick={onOpenSettings}
+                        disabled={busy}
+                        aria-label={updateAvailable ? 'Impostazioni (aggiornamento disponibile)' : 'Impostazioni'}
                     >
-                        <span className="watch-dot" aria-hidden="true" />
-                        {watchEnabled ? 'Agg. automatico attivo' : 'Agg. automatico'}
+                        <span className="btn-icon">
+                            <SettingsIcon />
+                        </span>
+                        <span className="btn-label">Impostazioni</span>
+                        {updateAvailable && <span className="update-dot" aria-hidden="true" />}
                     </button>
-                </Tooltip>
-                )}
-                {/* In modalità semplificata i contatori riassumono solo
-                    l'ultima conversione (non c'è un'anteprima da contare). */}
-                {(!simpleMode || showingResults) && (
-                <div className="counters">
-                    <span>{fileCount} file{showingResults ? ' elaborati' : ''}</span>
-                    <span className="dot">·</span>
-                    <span>{mp3Count} MP3</span>
-                    {!showingResults && reviewCount > 0 && (
-                        <>
-                            <span className="dot">·</span>
-                            <span className="counter-review">{reviewCount} da rivedere</span>
-                        </>
-                    )}
-                    {toRenameCount > 0 && (
-                        <>
-                            <span className="dot">·</span>
-                            <span className="counter-hi">
-                                {toRenameCount} {showingResults ? 'rinominati' : 'da rinominare'}
-                            </span>
-                        </>
-                    )}
-                    {failedCount > 0 && (
-                        <>
-                            <span className="dot">·</span>
-                            <span className="counter-err">{failedCount} errori</span>
-                        </>
-                    )}
                 </div>
-                )}
-                {/* Registro Attività (non in modalità semplificata,
-                    dove gli esiti arrivano solo dai toast). */}
-                {!simpleMode && (
-                    <ActivityMenu
-                        open={activity.open}
-                        onOpenChange={activity.onOpenChange}
-                        logs={activity.logs}
-                        unseen={activity.unseen}
-                        onClear={activity.onClear}
-                        clearDisabled={busy}
-                    />
-                )}
-                <button
-                    type="button"
-                    className="header-btn with-icon"
-                    onClick={onOpenSettings}
-                    disabled={busy}
-                    aria-label={updateAvailable ? 'Impostazioni (aggiornamento disponibile)' : 'Impostazioni'}
-                >
-                    <span className="btn-icon"><SettingsIcon /></span>
-                    <span className="btn-label">Impostazioni</span>
-                    {updateAvailable && <span className="update-dot" aria-hidden="true" />}
-                </button>
-            </div>
             </div>
         </header>
     )
@@ -151,9 +154,8 @@ export function StorageBanner({ onRequest }: { onRequest: () => void }) {
             <div className="storage-banner-text">
                 <strong>Serve l'accesso ai file</strong>
                 <span>
-                    Per leggere, rinominare e scaricare i brani l'app deve poter accedere
-                    alle cartelle della memoria. Attiva "Consenti l'accesso per gestire
-                    tutti i file" nella schermata che si apre, poi torna qui.
+                    Per leggere, rinominare e scaricare i brani l'app deve poter accedere alle cartelle della memoria.
+                    Attiva "Consenti l'accesso per gestire tutti i file" nella schermata che si apre, poi torna qui.
                 </span>
             </div>
             <button className="accent" onClick={onRequest}>

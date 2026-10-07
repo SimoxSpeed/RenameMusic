@@ -6,14 +6,19 @@ import type { ReactNode } from 'react'
 
 // Icon: attributi comuni a tutte le icone; size e strokeWidth variano da
 // un'icona all'altra.
-function Icon({ size = 16, strokeWidth = 2, children }: {
-    size?: number
-    strokeWidth?: number
-    children: ReactNode
-}) {
+function Icon({ size = 16, strokeWidth = 2, children }: { size?: number; strokeWidth?: number; children: ReactNode }) {
     return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg
+            width={size}
+            height={size}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+        >
             {children}
         </svg>
     )

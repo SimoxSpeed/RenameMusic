@@ -25,8 +25,7 @@ export function UpdateDialog({
         <Modal onClose={() => !busy && onClose()}>
             <h3>Nuova versione disponibile</h3>
             <p>
-                È disponibile <strong>RenameMusic {update.version}</strong> (stai usando la{' '}
-                {appVersion}).{' '}
+                È disponibile <strong>RenameMusic {update.version}</strong> (stai usando la {appVersion}).{' '}
                 {isAndroid
                     ? "L'app scaricherà l'aggiornamento e aprirà l'installazione di Android."
                     : "L'app scaricherà la nuova versione e si riavvierà da sola."}

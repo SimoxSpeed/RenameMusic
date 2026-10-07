@@ -4,7 +4,8 @@ import { ChipList } from '../components/controls'
 import { ChevronIcon } from '../icons'
 
 // RuleListKey: regole a elenco di rules.Config, modificate con ChipList.
-export type RuleListKey = 'supportedExtensions' | 'occurrenciesToRemove' | 'occurrenciesToReplaceWithFt' | 'artistExceptions'
+export type RuleListKey =
+    'supportedExtensions' | 'occurrenciesToRemove' | 'occurrenciesToReplaceWithFt' | 'artistExceptions'
 
 // Ambiti delle sostituzioni Da → A, ognuno con il suo gruppo nella scheda
 // Regole (scope come in rules.Scope: vuoto = tutto il nome).
@@ -18,7 +19,13 @@ const REPLACEMENT_SCOPES = [
 // titolo porta descrizione e numero di voci, così anche da chiusa si capisce
 // cosa contiene; tone è il colore della categoria (bordo e contatore). Parte
 // chiusa: le card chiuse fanno da indice della scheda.
-function RuleGroup({ title, hint, count, tone, children }: {
+function RuleGroup({
+    title,
+    hint,
+    count,
+    tone,
+    children,
+}: {
     title: string
     hint: string
     count: number
@@ -140,13 +147,7 @@ export function RulesTab({
                         .map((r, i) => ({ r, i }))
                         .filter(({ r }) => (r.scope ?? '') === g.scope)
                     return (
-                        <RuleGroup
-                            key={g.scope}
-                            title={g.label}
-                            hint={g.hint}
-                            count={rows.length}
-                            tone="yellow"
-                        >
+                        <RuleGroup key={g.scope} title={g.label} hint={g.hint} count={rows.length} tone="yellow">
                             {rows.length === 0 && <p className="rule-empty">Nessuna sostituzione.</p>}
                             {rows.map(({ r, i }) => (
                                 <div className="replacement-row" key={i}>

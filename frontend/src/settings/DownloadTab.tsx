@@ -49,14 +49,14 @@ export function YtDlpPanel({
             {/* Su Android yt-dlp è integrato nell'app: niente scelta
                 tra copia gestita e percorso personalizzato. */}
             {!isAndroid && (
-            <CheckOption
-                className="ytdlp-toggle"
-                label="Gestisci autonomamente yt-dlp"
-                info="Quando attivo, l'app tiene una propria copia di yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore) e la aggiorna da sola. Se manca, puoi scaricarla dal tasto accanto a «Non presente» oppure, dopo una conferma, al primo download di una playlist. Quando disattivo, indichi a mano il percorso di una tua copia di yt-dlp."
-                checked={managed}
-                onChange={onManagedChange}
-                disabled={busy || checking}
-            />
+                <CheckOption
+                    className="ytdlp-toggle"
+                    label="Gestisci autonomamente yt-dlp"
+                    info="Quando attivo, l'app tiene una propria copia di yt-dlp in %AppData%\RenameMusic (scrivibile senza permessi di amministratore) e la aggiorna da sola. Se manca, puoi scaricarla dal tasto accanto a «Non presente» oppure, dopo una conferma, al primo download di una playlist. Quando disattivo, indichi a mano il percorso di una tua copia di yt-dlp."
+                    checked={managed}
+                    onChange={onManagedChange}
+                    disabled={busy || checking}
+                />
             )}
 
             <div className="ytdlp-panel">
@@ -67,68 +67,70 @@ export function YtDlpPanel({
                         scaricarlo resta sempre subito a destra di "Non
                         presente". */}
                     <div className="ytdlp-head-info">
-                    <span className="ytdlp-title">yt-dlp</span>
-                    {checking ? (
-                        <span className="ytdlp-checking" role="status">
-                            <span className="spinner" aria-hidden="true" />
-                            Ricerca di una copia locale…
-                        </span>
-                    ) : state.ytDlpAvailable ? (
-                        <span
-                            className="ytdlp-badge ytdlp-ok"
-                            title={state.ytDlpVersion ? 'Versione di yt-dlp in uso' : undefined}
-                        >
-                            {state.ytDlpVersion || 'Presente'}
-                        </span>
-                    ) : (
-                        <span className="ytdlp-status">
-                            <span className="ytdlp-badge ytdlp-missing">
-                                {isAndroid ? 'Non ancora pronto' : 'Non presente'}
+                        <span className="ytdlp-title">yt-dlp</span>
+                        {checking ? (
+                            <span className="ytdlp-checking" role="status">
+                                <span className="spinner" aria-hidden="true" />
+                                Ricerca di una copia locale…
                             </span>
-                            {!isAndroid && (
-                                <Tooltip label="Scarica yt-dlp">
-                                    <button
-                                        className="ghost small ytdlp-install"
-                                        onClick={onDownloadYtDlp}
-                                        disabled={busy}
-                                        aria-label="Scarica yt-dlp"
-                                    >
-                                        <DownloadIcon />
-                                    </button>
-                                </Tooltip>
-                            )}
-                        </span>
-                    )}
-                    {managed && !checking && state.ytDlpEffectivePath && (
-                        <span className="ytdlp-location">
-                            {!state.ytDlpAvailable && (
-                                <>
-                                    <span className="ytdlp-location-label">Verrà scaricato in:</span>{' '}
-                                </>
-                            )}
-                            <code className="ytdlp-path">{state.ytDlpEffectivePath}</code>
-                        </span>
-                    )}
-                    {/* Fuori dalla gestione autonoma il percorso si imposta
+                        ) : state.ytDlpAvailable ? (
+                            <span
+                                className="ytdlp-badge ytdlp-ok"
+                                title={state.ytDlpVersion ? 'Versione di yt-dlp in uso' : undefined}
+                            >
+                                {state.ytDlpVersion || 'Presente'}
+                            </span>
+                        ) : (
+                            <span className="ytdlp-status">
+                                <span className="ytdlp-badge ytdlp-missing">
+                                    {isAndroid ? 'Non ancora pronto' : 'Non presente'}
+                                </span>
+                                {!isAndroid && (
+                                    <Tooltip label="Scarica yt-dlp">
+                                        <button
+                                            className="ghost small ytdlp-install"
+                                            onClick={onDownloadYtDlp}
+                                            disabled={busy}
+                                            aria-label="Scarica yt-dlp"
+                                        >
+                                            <DownloadIcon />
+                                        </button>
+                                    </Tooltip>
+                                )}
+                            </span>
+                        )}
+                        {managed && !checking && state.ytDlpEffectivePath && (
+                            <span className="ytdlp-location">
+                                {!state.ytDlpAvailable && (
+                                    <>
+                                        <span className="ytdlp-location-label">Verrà scaricato in:</span>{' '}
+                                    </>
+                                )}
+                                <code className="ytdlp-path">{state.ytDlpEffectivePath}</code>
+                            </span>
+                        )}
+                        {/* Fuori dalla gestione autonoma il percorso si imposta
                         a mano, sulla stessa riga (scende sotto se non c'è
                         spazio). */}
-                    {!managed && (
-                        <div className="ytdlp-path-edit">
-                            <span className="ytdlp-location-label">Percorso:</span>
-                            <input
-                                type="text"
-                                placeholder="Percorso a yt-dlp.exe"
-                                value={pathDraft}
-                                onChange={(e) => onPathDraftChange(e.target.value)}
-                                onBlur={onPathCommit}
-                                disabled={busy}
-                            />
-                            <button className="ghost with-icon" onClick={onBrowse} disabled={busy}>
-                                <span className="btn-icon"><FolderOpenIcon /></span>
-                                Sfoglia
-                            </button>
-                        </div>
-                    )}
+                        {!managed && (
+                            <div className="ytdlp-path-edit">
+                                <span className="ytdlp-location-label">Percorso:</span>
+                                <input
+                                    type="text"
+                                    placeholder="Percorso a yt-dlp.exe"
+                                    value={pathDraft}
+                                    onChange={(e) => onPathDraftChange(e.target.value)}
+                                    onBlur={onPathCommit}
+                                    disabled={busy}
+                                />
+                                <button className="ghost with-icon" onClick={onBrowse} disabled={busy}>
+                                    <span className="btn-icon">
+                                        <FolderOpenIcon />
+                                    </span>
+                                    Sfoglia
+                                </button>
+                            </div>
+                        )}
                     </div>
                     {checking ? null : isAndroid ? (
                         <Tooltip label="Aggiorna yt-dlp all'ultima versione (YouTube cambia spesso: se i download falliscono, aggiornalo)">
@@ -137,7 +139,9 @@ export function YtDlpPanel({
                                 onClick={onDownloadYtDlp}
                                 disabled={busy}
                             >
-                                <span className="btn-icon"><RefreshIcon /></span>
+                                <span className="btn-icon">
+                                    <RefreshIcon />
+                                </span>
                                 Aggiorna
                             </button>
                         </Tooltip>
@@ -270,21 +274,21 @@ export function GoogleAccountPanel({
                     <span className="ytdlp-badge google-off">Non collegato</span>
                 )}
                 {!available ? null : connected ? (
-                    <button
-                        className="ghost small danger"
-                        onClick={onSignOut}
-                        disabled={busy}
-                    >
+                    <button className="ghost small danger" onClick={onSignOut} disabled={busy}>
                         Scollega
                     </button>
                 ) : signingIn && !isAndroid ? (
                     <button className="danger-solid small with-icon" onClick={onCancel}>
-                        <span className="btn-icon"><CloseIcon /></span>
+                        <span className="btn-icon">
+                            <CloseIcon />
+                        </span>
                         Annulla
                     </button>
                 ) : (
                     <button className="accent small with-icon" onClick={onSignIn} disabled={busy}>
-                        <span className="btn-icon"><AccountIcon /></span>
+                        <span className="btn-icon">
+                            <AccountIcon />
+                        </span>
                         Collega
                     </button>
                 )}
@@ -296,8 +300,8 @@ export function GoogleAccountPanel({
             )}
             {/* Impostazioni delle playlist condivise con gli altri
                 dispositivi dello stesso account (Google Drive). */}
-            {connected && (
-                syncing ? (
+            {connected &&
+                (syncing ? (
                     <p className="google-hint" role="status">
                         <span className="spinner" aria-hidden="true" />
                         Controllo delle impostazioni salvate sull'account…
@@ -307,13 +311,12 @@ export function GoogleAccountPanel({
                         {google?.syncError ||
                             'Regole, playlist, predefiniti e impostazioni delle playlist (⚙) sono condivisi con gli altri dispositivi collegati a questo account. Cartelle e opzioni di conversione restano di ogni dispositivo.'}
                     </p>
-                )
-            )}
+                ))}
             {!available && (
                 <p className="google-hint">
-                    Questa versione dell'app non ha le credenziali OAuth di Google
-                    Cloud (internal/google/credentials_local.go): ricompilala con quelle
-                    del client «App desktop» per collegare l'account.
+                    Questa versione dell'app non ha le credenziali OAuth di Google Cloud
+                    (internal/google/credentials_local.go): ricompilala con quelle del client «App desktop» per
+                    collegare l'account.
                 </p>
             )}
             {signingIn && !isAndroid && (
@@ -364,12 +367,19 @@ export function AccountPlaylists({
                                     <span className="account-playlist-title">{p.title || p.id}</span>
                                     <span className="account-playlist-meta">
                                         {p.count === 1 ? '1 video' : `${p.count} video`}
-                                        {summary && <> · <span className="account-playlist-prefs">{summary}</span></>}
+                                        {summary && (
+                                            <>
+                                                {' '}
+                                                · <span className="account-playlist-prefs">{summary}</span>
+                                            </>
+                                        )}
                                     </span>
                                 </span>
                                 {emptying === p.id ? (
                                     <button className="danger-solid small with-icon" onClick={onCancel}>
-                                        <span className="btn-icon"><CloseIcon /></span>
+                                        <span className="btn-icon">
+                                            <CloseIcon />
+                                        </span>
                                         Annulla
                                     </button>
                                 ) : (
@@ -424,12 +434,10 @@ export function SavedPlaylists({
                 <span>Playlist salvate (nome → link)</span>
                 <span className="replacements-head-actions">
                     {connected && (
-                        <button
-                            className="ghost small with-icon"
-                            onClick={onImport}
-                            disabled={busy}
-                        >
-                            <span className="btn-icon"><AccountIcon /></span>
+                        <button className="ghost small with-icon" onClick={onImport} disabled={busy}>
+                            <span className="btn-icon">
+                                <AccountIcon />
+                            </span>
                             Importa dall'account
                         </button>
                     )}

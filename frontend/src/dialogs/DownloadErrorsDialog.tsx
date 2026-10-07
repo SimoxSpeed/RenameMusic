@@ -8,9 +8,8 @@ export function DownloadErrorsDialog({ errors, onClose }: { errors: core.Downloa
         <Modal onClose={onClose} wide>
             <h3>Download non riusciti</h3>
             <p>
-                Questi {errors.length} video non sono stati
-                scaricati. Puoi riprovare più tardi: i file già scaricati non vengono
-                riscaricati.
+                Questi {errors.length} video non sono stati scaricati. Puoi riprovare più tardi: i file già scaricati
+                non vengono riscaricati.
             </p>
             <ul className="download-errors-list">
                 {errors.map((e, i) => (

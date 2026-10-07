@@ -81,7 +81,7 @@ export function PlaylistPrefsDialog({
                                 ? 'La playlist fa da coda: restano solo i brani ancora da scaricare.'
                                 : connected
                                   ? 'Solo per le playlist del tuo account.'
-                                  : 'Collega l\'account Google per usarlo.'}
+                                  : "Collega l'account Google per usarlo."}
                         </small>
                     </span>
                 </label>
@@ -98,7 +98,7 @@ export function PlaylistPrefsDialog({
                         <small>
                             {connected
                                 ? 'In fondo alla playlist scelta, senza doppioni.'
-                                : 'Collega l\'account Google per usarlo.'}
+                                : "Collega l'account Google per usarlo."}
                         </small>
                     </span>
                 </label>
@@ -115,7 +115,9 @@ export function PlaylistPrefsDialog({
                             }))
                         }
                         disabled={targets.length === 0}
-                        placeholder={targets.length === 0 ? 'Nessun\'altra playlist nel tuo account' : 'Scegli la playlist'}
+                        placeholder={
+                            targets.length === 0 ? "Nessun'altra playlist nel tuo account" : 'Scegli la playlist'
+                        }
                     />
                 )}
                 {after === 'copy' && (
@@ -124,7 +126,7 @@ export function PlaylistPrefsDialog({
                         label="Togli anche dalla playlist di origine"
                         info={
                             canRemove
-                                ? 'I brani si spostano: dopo essere stati aggiunti alla playlist scelta vengono tolti da questa. Se l\'aggiunta non riesce, restano qui.'
+                                ? "I brani si spostano: dopo essere stati aggiunti alla playlist scelta vengono tolti da questa. Se l'aggiunta non riesce, restano qui."
                                 : 'Solo per le playlist del tuo account: le altre non si possono modificare.'
                         }
                         checked={canRemove && !!draft.moveOnCopy}
@@ -139,12 +141,10 @@ export function PlaylistPrefsDialog({
                     <legend>Svuota la playlist</legend>
                     <div className="prefs-empty">
                         <span>Toglie subito da YouTube tutti i brani della playlist, anche quelli non scaricati.</span>
-                        <button
-                            className="ghost small danger with-icon"
-                            onClick={onEmpty}
-                            disabled={busy}
-                        >
-                            <span className="btn-icon"><TrashIcon /></span>
+                        <button className="ghost small danger with-icon" onClick={onEmpty} disabled={busy}>
+                            <span className="btn-icon">
+                                <TrashIcon />
+                            </span>
                             Svuota ora
                         </button>
                     </div>
@@ -155,11 +155,7 @@ export function PlaylistPrefsDialog({
                 <button onClick={onClose} disabled={busy}>
                     Annulla
                 </button>
-                <button
-                    className="primary"
-                    onClick={onSave}
-                    disabled={busy || (after === 'copy' && !draft.copyTo)}
-                >
+                <button className="primary" onClick={onSave} disabled={busy || (after === 'copy' && !draft.copyTo)}>
                     Salva
                 </button>
             </div>

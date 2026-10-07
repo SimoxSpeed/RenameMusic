@@ -15,7 +15,11 @@ export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode }[
 // pillole scorrevoli su Android (mobile.css). Stanno fuori dall'area che
 // scorre, ferme sotto l'header: la scrollbar parte sotto di loro. updateDot
 // accende il pallino su Info (aggiornamento disponibile).
-export function SettingsTabsBar({ current, onSelect, updateDot }: {
+export function SettingsTabsBar({
+    current,
+    onSelect,
+    updateDot,
+}: {
     current: SettingsTab
     onSelect: (tab: SettingsTab) => void
     updateDot: boolean

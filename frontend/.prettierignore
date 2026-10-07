@@ -1,0 +1,6 @@
+# Prettier formatta solo il codice (npm run format): il CSS resta scritto a
+# mano (regole compatte su una riga, allineate), il resto è generato.
+dist
+android
+wailsjs
+node_modules

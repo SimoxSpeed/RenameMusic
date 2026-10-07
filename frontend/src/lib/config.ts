@@ -37,9 +37,7 @@ export function comparableConfig(cfg: rules.Config): string {
 
 export function comparablePlaylists(list: playlist.Playlist[]): string {
     return JSON.stringify(
-        list
-            .map((p) => ({ name: p.name.trim(), url: p.url.trim() }))
-            .filter((p) => p.name !== '' && p.url !== ''),
+        list.map((p) => ({ name: p.name.trim(), url: p.url.trim() })).filter((p) => p.name !== '' && p.url !== ''),
     )
 }
 
@@ -54,4 +52,3 @@ export function prefsSummary(p?: playlist.Prefs): string {
     }
     return parts.join(' · ')
 }
-

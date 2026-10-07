@@ -24,15 +24,14 @@ export type FolderSettingsProps = {
 }
 
 function FolderSettings(props: FolderSettingsProps) {
-    const { folder, folderMissing, destFolder, destMissing, destSameAsSource, deleteOriginals, storageGranted, busy } = props
+    const { folder, folderMissing, destFolder, destMissing, destSameAsSource, deleteOriginals, storageGranted, busy } =
+        props
     return (
         <>
             <div className="field-group">
                 <span className="field-label">Cartella di partenza</span>
                 <div className="toolbar">
-                    <div className="folder-path">
-                        {folder || 'Nessuna cartella selezionata'}
-                    </div>
+                    <div className="folder-path">{folder || 'Nessuna cartella selezionata'}</div>
                     {folderMissing && <MissingFolderIcon label="Cartella di partenza" />}
                     {!isAndroid && (
                         <Tooltip label="Apri la cartella in Esplora risorse">
@@ -41,7 +40,9 @@ function FolderSettings(props: FolderSettingsProps) {
                                 onClick={() => props.onOpenFolder(folder)}
                                 disabled={busy || !folder || folderMissing}
                             >
-                                <span className="btn-icon"><FolderOpenIcon /></span>
+                                <span className="btn-icon">
+                                    <FolderOpenIcon />
+                                </span>
                                 Apri
                             </button>
                         </Tooltip>
@@ -56,9 +57,7 @@ function FolderSettings(props: FolderSettingsProps) {
                 <div className="field-group">
                     <span className="field-label">Cartella di destinazione</span>
                     <div className="toolbar">
-                        <div className="folder-path">
-                            {destFolder || 'Nessuna destinazione selezionata'}
-                        </div>
+                        <div className="folder-path">{destFolder || 'Nessuna destinazione selezionata'}</div>
                         {destMissing && <MissingFolderIcon label="Cartella di destinazione" />}
                         {!isAndroid && (
                             <Tooltip label="Apri la cartella in Esplora risorse">
@@ -67,12 +66,18 @@ function FolderSettings(props: FolderSettingsProps) {
                                     onClick={() => props.onOpenFolder(destFolder)}
                                     disabled={busy || !destFolder || destMissing}
                                 >
-                                    <span className="btn-icon"><FolderOpenIcon /></span>
+                                    <span className="btn-icon">
+                                        <FolderOpenIcon />
+                                    </span>
                                     Apri
                                 </button>
                             </Tooltip>
                         )}
-                        <button className="primary" onClick={props.onChooseDestination} disabled={busy || !storageGranted}>
+                        <button
+                            className="primary"
+                            onClick={props.onChooseDestination}
+                            disabled={busy || !storageGranted}
+                        >
                             Scegli cartella
                         </button>
                     </div>
@@ -102,7 +107,11 @@ function FolderSettings(props: FolderSettingsProps) {
 
 // GeneralTab: scheda Generale. In cima le preferenze salvate con le regole
 // (modalità semplificata, ricerca su MusicBrainz: draft), sotto le cartelle.
-export function GeneralTab({ draft, onDraftChange, ...folders }: FolderSettingsProps & {
+export function GeneralTab({
+    draft,
+    onDraftChange,
+    ...folders
+}: FolderSettingsProps & {
     draft: rules.Config
     onDraftChange: (draft: rules.Config) => void
 }) {

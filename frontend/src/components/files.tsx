@@ -36,7 +36,9 @@ export function ErrorLabel({ message }: { message: string }) {
         <span className="result-error" tabIndex={0} aria-label={'Errore: ' + message}>
             <AlertIcon />
             Errore
-            <span className="result-error-tip" role="tooltip">{message}</span>
+            <span className="result-error-tip" role="tooltip">
+                {message}
+            </span>
         </span>
     )
 }

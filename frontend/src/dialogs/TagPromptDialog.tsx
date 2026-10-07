@@ -31,11 +31,8 @@ export function TagPromptDialog({
     const head = prompts[0]
     const titleUnknown = head.title === UNKNOWN_TITLE
     const artistUnknown = head.artist === UNKNOWN_ARTIST
-    const missing = titleUnknown && artistUnknown
-        ? 'né il titolo né l’artista'
-        : titleUnknown
-          ? 'il titolo'
-          : 'l’artista'
+    const missing =
+        titleUnknown && artistUnknown ? 'né il titolo né l’artista' : titleUnknown ? 'il titolo' : 'l’artista'
     const searching = !!search?.loading
     const found = search?.names ?? []
     const filterWords = foldText(filter).split(/\s+/).filter(Boolean)
@@ -71,21 +68,19 @@ export function TagPromptDialog({
                     <h3>Traccia da rivedere</h3>
                     {found.length > 0 ? (
                         <p>
-                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
-                            sotto è quello trovato su MusicBrainz (l'anteprima proponeva titolo{' '}
-                            <strong>{head.title}</strong>, artista <strong>{head.artist}</strong>):
-                            controllalo e conferma,{' '}
+                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui sotto è quello
+                            trovato su MusicBrainz (l'anteprima proponeva titolo <strong>{head.title}</strong>, artista{' '}
+                            <strong>{head.artist}</strong>): controllalo e conferma,{' '}
                             {found.length > 1 && 'scegline un altro dall’elenco, '}
-                            <strong>correggilo</strong> (i tag verranno riestratti da esso) oppure
-                            converti la traccia come in anteprima.
+                            <strong>correggilo</strong> (i tag verranno riestratti da esso) oppure converti la traccia
+                            come in anteprima.
                         </p>
                     ) : (
                         <p>
-                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
-                            sotto è quello proposto dall'anteprima (titolo <strong>{head.title}</strong>,
-                            artista <strong>{head.artist}</strong>): puoi{' '}
-                            <strong>correggerlo</strong> (i tag verranno riestratti da esso) oppure
-                            convertire la traccia come in anteprima.
+                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui sotto è quello
+                            proposto dall'anteprima (titolo <strong>{head.title}</strong>, artista{' '}
+                            <strong>{head.artist}</strong>): puoi <strong>correggerlo</strong> (i tag verranno
+                            riestratti da esso) oppure convertire la traccia come in anteprima.
                         </p>
                     )}
                 </>
@@ -94,24 +89,23 @@ export function TagPromptDialog({
                     <h3>Traccia non rinominabile</h3>
                     {found.length > 1 ? (
                         <p>
-                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>.
-                            Su MusicBrainz ci sono più brani che corrispondono: nel campo c'è il più
-                            diffuso, puoi sceglierne un altro dall'elenco, <strong>correggere il nome</strong>{' '}
-                            (i tag verranno riestratti da esso) oppure saltare per lasciarlo invariato.
+                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>. Su
+                            MusicBrainz ci sono più brani che corrispondono: nel campo c'è il più diffuso, puoi
+                            sceglierne un altro dall'elenco, <strong>correggere il nome</strong> (i tag verranno
+                            riestratti da esso) oppure saltare per lasciarlo invariato.
                         </p>
                     ) : found.length === 1 ? (
                         <p>
-                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>,
-                            ma su MusicBrainz è stata trovata la corrispondenza qui sotto: controllala e
-                            conferma, <strong>correggila</strong> (i tag verranno riestratti dal nome)
-                            oppure salta per lasciare il nome invariato.
+                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>, ma su
+                            MusicBrainz è stata trovata la corrispondenza qui sotto: controllala e conferma,{' '}
+                            <strong>correggila</strong> (i tag verranno riestratti dal nome) oppure salta per lasciare
+                            il nome invariato.
                         </p>
                     ) : (
                         <p>
-                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>:
-                            così com'è non può essere rinominata né taggata correttamente. Puoi{' '}
-                            <strong>correggere il nome</strong> qui sotto (i tag verranno riestratti da esso)
-                            oppure procedere lasciandolo invariato.
+                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>: così com'è
+                            non può essere rinominata né taggata correttamente. Puoi <strong>correggere il nome</strong>{' '}
+                            qui sotto (i tag verranno riestratti da esso) oppure procedere lasciandolo invariato.
                         </p>
                     )}
                 </>
@@ -119,7 +113,9 @@ export function TagPromptDialog({
             <label className="tag-prompt-field">
                 {/* Etichetta = nome originale della traccia: resta visibile
                     mentre lo si modifica nel campo. */}
-                <span className="tag-prompt-label" title="Nome originale">{head.originalBase}</span>
+                <span className="tag-prompt-label" title="Nome originale">
+                    {head.originalBase}
+                </span>
                 <div className="tag-prompt-input">
                     <input
                         type="text"
@@ -200,9 +196,7 @@ export function TagPromptDialog({
             )}
             {queue}
             <div className="modal-actions">
-                <button onClick={() => onResolve(false)}>
-                    {head.review ? 'Usa anteprima' : 'Salta'}
-                </button>
+                <button onClick={() => onResolve(false)}>{head.review ? 'Usa anteprima' : 'Salta'}</button>
                 <button className="accent" onClick={() => onResolve(true)}>
                     Continua
                 </button>

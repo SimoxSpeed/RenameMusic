@@ -83,76 +83,101 @@ export function CommandBar({
                         "Scarica" ne prende il posto. */}
                     <div
                         className="download-box"
-                        style={downloadRowWidth ? ({ '--download-row-width': downloadRowWidth + 'px' } as CSSProperties) : undefined}
+                        style={
+                            downloadRowWidth
+                                ? ({ '--download-row-width': downloadRowWidth + 'px' } as CSSProperties)
+                                : undefined
+                        }
                     >
-                    <LinkField
-                        value={source.linkText}
-                        onChange={source.onLinkChange}
-                        onSubmit={source.onLinkSubmit}
-                        onAddToPlaylist={source.onAddToPlaylist}
-                        onPaste={source.onPaste}
-                        disabled={busy}
-                    />
-                    <div className="download-controls" ref={downloadRowRef}>
-                        <Collapse className="playlist-pick" collapsed={source.hasLink} onSettled={onDownloadRowSettled}>
-                            <Tooltip label={noPlaylists ? 'Nessuna playlist: aggiungine una dalle Impostazioni o collega il tuo account Google' : 'Playlist da scaricare'}>
-                                <PlaylistSelect
-                                    value={source.playlist}
-                                    options={source.options}
-                                    onChange={source.onPlaylistChange}
-                                    disabled={busy || noPlaylists || source.hasLink}
-                                />
-                            </Tooltip>
-                        </Collapse>
-                        <Tooltip label={foldersHint || (source.hasLink ? 'Scarica il link inserito' : 'Scarica la playlist selezionata')}>
-                            <button
-                                className="accent with-icon"
-                                onClick={onDownload}
-                                disabled={busy || !source.canDownload || !foldersOk}
+                        <LinkField
+                            value={source.linkText}
+                            onChange={source.onLinkChange}
+                            onSubmit={source.onLinkSubmit}
+                            onAddToPlaylist={source.onAddToPlaylist}
+                            onPaste={source.onPaste}
+                            disabled={busy}
+                        />
+                        <div className="download-controls" ref={downloadRowRef}>
+                            <Collapse
+                                className="playlist-pick"
+                                collapsed={source.hasLink}
+                                onSettled={onDownloadRowSettled}
                             >
-                                <span className="btn-icon"><DownloadIcon /></span>
-                                Scarica
-                            </button>
-                        </Tooltip>
-                        {downloadErrorCount > 0 && (
-                            <Tooltip label={`${downloadErrorCount} download non riusciti: clicca per i dettagli`}>
-                                <button
-                                    type="button"
-                                    className="ghost small with-icon danger download-errors-btn"
-                                    onClick={onShowDownloadErrors}
-                                    aria-label={`${downloadErrorCount} download non riusciti`}
+                                <Tooltip
+                                    label={
+                                        noPlaylists
+                                            ? 'Nessuna playlist: aggiungine una dalle Impostazioni o collega il tuo account Google'
+                                            : 'Playlist da scaricare'
+                                    }
                                 >
-                                    <AlertIcon />
-                                    {downloadErrorCount}
+                                    <PlaylistSelect
+                                        value={source.playlist}
+                                        options={source.options}
+                                        onChange={source.onPlaylistChange}
+                                        disabled={busy || noPlaylists || source.hasLink}
+                                    />
+                                </Tooltip>
+                            </Collapse>
+                            <Tooltip
+                                label={
+                                    foldersHint ||
+                                    (source.hasLink ? 'Scarica il link inserito' : 'Scarica la playlist selezionata')
+                                }
+                            >
+                                <button
+                                    className="accent with-icon"
+                                    onClick={onDownload}
+                                    disabled={busy || !source.canDownload || !foldersOk}
+                                >
+                                    <span className="btn-icon">
+                                        <DownloadIcon />
+                                    </span>
+                                    Scarica
                                 </button>
                             </Tooltip>
-                        )}
-                    </div>
+                            {downloadErrorCount > 0 && (
+                                <Tooltip label={`${downloadErrorCount} download non riusciti: clicca per i dettagli`}>
+                                    <button
+                                        type="button"
+                                        className="ghost small with-icon danger download-errors-btn"
+                                        onClick={onShowDownloadErrors}
+                                        aria-label={`${downloadErrorCount} download non riusciti`}
+                                    >
+                                        <AlertIcon />
+                                        {downloadErrorCount}
+                                    </button>
+                                </Tooltip>
+                            )}
+                        </div>
                     </div>
                     {hasResults ? (
                         <button className="accent with-icon" onClick={onRefresh} disabled={busy || !foldersOk}>
-                            <span className="btn-icon"><RefreshIcon /></span>
+                            <span className="btn-icon">
+                                <RefreshIcon />
+                            </span>
                             Avvia nuova scansione
                         </button>
                     ) : (
                         <button className="accent with-icon" onClick={onProcess} disabled={!canProcess}>
-                            <span className="btn-icon"><ConvertIcon /></span>
+                            <span className="btn-icon">
+                                <ConvertIcon />
+                            </span>
                             Converti nomi e scrivi tag
                         </button>
                     )}
                     {busy && cancellable && (
                         <button className="danger-solid with-icon" onClick={onCancel}>
-                            <span className="btn-icon"><CloseIcon /></span>
+                            <span className="btn-icon">
+                                <CloseIcon />
+                            </span>
                             Annulla
                         </button>
                     )}
                     <Tooltip label="Cancella tutti i tag ID3 dagli MP3 della cartella">
-                        <button
-                            className="ghost with-icon danger"
-                            onClick={onClearTags}
-                            disabled={!canClearTags}
-                        >
-                            <span className="btn-icon"><TagOffIcon /></span>
+                        <button className="ghost with-icon danger" onClick={onClearTags} disabled={!canClearTags}>
+                            <span className="btn-icon">
+                                <TagOffIcon />
+                            </span>
                             Cancella tag
                         </button>
                     </Tooltip>
@@ -241,16 +266,16 @@ export function SimpleHero({
                                 disabled={busy || source.hasLink}
                             />
                             {noPlaylists && (
-                            <Tooltip label="Aggiungi una playlist nelle Impostazioni">
-                                <button
-                                    className="ghost simple-hero-add"
-                                    onClick={onAddPlaylist}
-                                    disabled={busy || source.hasLink}
-                                    aria-label="Aggiungi una playlist nelle Impostazioni"
-                                >
-                                    <PlusIcon />
-                                </button>
-                            </Tooltip>
+                                <Tooltip label="Aggiungi una playlist nelle Impostazioni">
+                                    <button
+                                        className="ghost simple-hero-add"
+                                        onClick={onAddPlaylist}
+                                        disabled={busy || source.hasLink}
+                                        aria-label="Aggiungi una playlist nelle Impostazioni"
+                                    >
+                                        <PlusIcon />
+                                    </button>
+                                </Tooltip>
                             )}
                         </Collapse>
                         {/* Durante l'operazione il pulsante principale
@@ -261,7 +286,11 @@ export function SimpleHero({
                                 Annulla
                             </button>
                         ) : (
-                            <Tooltip label={!hasFolder ? 'Scegli prima la cartella di partenza nelle Impostazioni' : foldersHint}>
+                            <Tooltip
+                                label={
+                                    !hasFolder ? 'Scegli prima la cartella di partenza nelle Impostazioni' : foldersHint
+                                }
+                            >
                                 <button
                                     className="accent simple-hero-action"
                                     onClick={onDownload}
@@ -291,9 +320,7 @@ export function SimpleHero({
                 )}
 
                 {/* Dove finiscono i brani, con la scorciatoia per cambiarlo. */}
-                <div className="simple-hero-foot">
-                    {folderLines}
-                </div>
+                <div className="simple-hero-foot">{folderLines}</div>
             </section>
         </div>
     )

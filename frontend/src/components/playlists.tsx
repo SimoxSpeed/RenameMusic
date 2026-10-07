@@ -56,7 +56,15 @@ export function PlaylistSelect({
 // PrefsButton: tasto ⚙ che apre le impostazioni di una playlist (Impostazioni
 // > Download). Evidenziato se le impostazioni non sono quelle predefinite
 // (summary è il loro riassunto, '' se predefinite).
-export function PrefsButton({ summary, onClick, disabled }: { summary: string; onClick: () => void; disabled?: boolean }) {
+export function PrefsButton({
+    summary,
+    onClick,
+    disabled,
+}: {
+    summary: string
+    onClick: () => void
+    disabled?: boolean
+}) {
     return (
         <Tooltip label={summary ? 'Impostazioni della playlist: ' + summary : 'Impostazioni della playlist'}>
             <button
@@ -129,7 +137,12 @@ export function LinkField({
                 </Tooltip>
             )}
             {value !== '' && !disabled && (
-                <button type="button" className="link-field-clear" onClick={() => onChange('')} aria-label="Svuota il link">
+                <button
+                    type="button"
+                    className="link-field-clear"
+                    onClick={() => onChange('')}
+                    aria-label="Svuota il link"
+                >
                     <CloseIcon />
                 </button>
             )}

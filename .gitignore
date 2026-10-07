@@ -25,3 +25,6 @@ docs/
 
 # Credenziali OAuth del client desktop di Google (vedi internal/google/credentials.go)
 internal/google/credentials_local.go
+
+# Cache di tsc (tsconfig.node.json è composite)
+*.tsbuildinfo

@@ -30,19 +30,19 @@ export function ShortcutsLegend({
               ['Esc', 'Chiudi finestre e impostazioni'],
           ]
         : simple
-        ? [
-              ['Ctrl + Invio', 'Scarica e converti'],
-              ['Ctrl + ,', 'Impostazioni'],
-              ['Esc', 'Chiudi finestre e pannelli'],
-          ]
-        : [
-              ['Ctrl + I', 'Scegli cartella di partenza'],
-              ...destShortcut,
-              ['Ctrl + R', 'Aggiorna scansione'],
-              ['Ctrl + Invio', 'Converti / Nuova scansione'],
-              ['Ctrl + ,', 'Impostazioni'],
-              ['Esc', 'Chiudi finestre e pannelli'],
-          ]
+          ? [
+                ['Ctrl + Invio', 'Scarica e converti'],
+                ['Ctrl + ,', 'Impostazioni'],
+                ['Esc', 'Chiudi finestre e pannelli'],
+            ]
+          : [
+                ['Ctrl + I', 'Scegli cartella di partenza'],
+                ...destShortcut,
+                ['Ctrl + R', 'Aggiorna scansione'],
+                ['Ctrl + Invio', 'Converti / Nuova scansione'],
+                ['Ctrl + ,', 'Impostazioni'],
+                ['Esc', 'Chiudi finestre e pannelli'],
+            ]
     return (
         <button
             type="button"
@@ -193,51 +193,55 @@ export function ActivityMenu({
             </button>
             {open && (
                 <div className="activity-overlay" onClick={() => onOpenChange(false)}>
-                <section
-                    className="panel activity-popover"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label="Attività"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="panel-head">
-                        <h2>
-                            <span className="h2-icon"><ActivityIcon /></span>
-                            Attività
-                        </h2>
-                        <div className="activity-head-actions">
-                            <button
-                                className="ghost small with-icon"
-                                onClick={onClear}
-                                disabled={clearDisabled || logs.length === 0}
-                            >
-                                <span className="btn-icon"><TrashIcon /></span>
-                                Pulisci
-                            </button>
-                            <button
-                                type="button"
-                                className="ghost small activity-close"
-                                onClick={() => onOpenChange(false)}
-                                aria-label="Chiudi Attività"
-                            >
-                                <CloseIcon />
-                            </button>
+                    <section
+                        className="panel activity-popover"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Attività"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="panel-head">
+                            <h2>
+                                <span className="h2-icon">
+                                    <ActivityIcon />
+                                </span>
+                                Attività
+                            </h2>
+                            <div className="activity-head-actions">
+                                <button
+                                    className="ghost small with-icon"
+                                    onClick={onClear}
+                                    disabled={clearDisabled || logs.length === 0}
+                                >
+                                    <span className="btn-icon">
+                                        <TrashIcon />
+                                    </span>
+                                    Pulisci
+                                </button>
+                                <button
+                                    type="button"
+                                    className="ghost small activity-close"
+                                    onClick={() => onOpenChange(false)}
+                                    aria-label="Chiudi Attività"
+                                >
+                                    <CloseIcon />
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                    <ul className="log">
-                        {logs.length === 0 ? (
-                            <li className="log-empty">Nessuna attività.</li>
-                        ) : (
-                            logs.map((log, i) => (
-                                <li key={i} className={'log-item log-' + (log.kind || 'info')}>
-                                    <span className="log-dot" aria-hidden="true" />
-                                    {log.time && <span className="log-time">{log.time}</span>}
-                                    <span className="log-msg">{log.message}</span>
-                                </li>
-                            ))
-                        )}
-                    </ul>
-                </section>
+                        <ul className="log">
+                            {logs.length === 0 ? (
+                                <li className="log-empty">Nessuna attività.</li>
+                            ) : (
+                                logs.map((log, i) => (
+                                    <li key={i} className={'log-item log-' + (log.kind || 'info')}>
+                                        <span className="log-dot" aria-hidden="true" />
+                                        {log.time && <span className="log-time">{log.time}</span>}
+                                        <span className="log-msg">{log.message}</span>
+                                    </li>
+                                ))
+                            )}
+                        </ul>
+                    </section>
                 </div>
             )}
         </div>

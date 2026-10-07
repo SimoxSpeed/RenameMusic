@@ -60,9 +60,7 @@ import {
     type playlist,
 } from './api'
 import FolderPicker from './FolderPicker'
-import {
-    RefreshIcon,
-} from './icons'
+import { RefreshIcon } from './icons'
 import { OpProgress } from './components/controls'
 import { FolderLines } from './components/folders'
 import { logKey } from './components/HeaderMenus'
@@ -329,7 +327,9 @@ function App() {
 
     // La playlist scelta resta quella, se c'è ancora; altrimenti la prima.
     function syncSelectedPlaylist(s: core.StateResponse) {
-        const choices = playlistChoices(s.google?.playlists ?? [], s.playlists ?? [], s.playlistPrefs ?? {}).filter((c) => !c.separator)
+        const choices = playlistChoices(s.google?.playlists ?? [], s.playlists ?? [], s.playlistPrefs ?? {}).filter(
+            (c) => !c.separator,
+        )
         setSelectedPlaylist((prev) => (choices.some((c) => c.value === prev) ? prev : (choices[0]?.value ?? '')))
     }
 
@@ -376,9 +376,7 @@ function App() {
 
     function syncDrafts(s: core.StateResponse) {
         if (s.config) setDraft(cloneConfig(s.config))
-        setPlaylistDraft(
-            (s.playlists ?? []).map((p) => ({ name: p.name, url: p.url })),
-        )
+        setPlaylistDraft((s.playlists ?? []).map((p) => ({ name: p.name, url: p.url })))
     }
 
     // Durata minima (ms) per cui lo stato "busy" resta attivo una volta partito:
@@ -506,7 +504,7 @@ function App() {
             .then((text) => {
                 const url = linkInText(text)
                 if (url) setDownloadLink(url)
-                else notify(false, text.trim() ? 'Negli appunti non c\'è un link.' : 'Gli appunti sono vuoti.')
+                else notify(false, text.trim() ? "Negli appunti non c'è un link." : 'Gli appunti sono vuoti.')
             })
             .catch((err) => notify(false, 'Impossibile leggere gli appunti: ' + errorMessage(err)))
     }
@@ -571,7 +569,9 @@ function App() {
         SetOptions(same, dest, del)
             .then((resp) =>
                 setState((prev) =>
-                    prev ? ({ ...prev, destinationMissing: resp.state.destinationMissing } as core.StateResponse) : prev,
+                    prev
+                        ? ({ ...prev, destinationMissing: resp.state.destinationMissing } as core.StateResponse)
+                        : prev,
                 ),
             )
             .catch(() => {
@@ -1171,9 +1171,7 @@ function App() {
     // vede il riepilogo di ci\u00f2 che \u00e8 appena stato fatto.
     const showingResults = results !== null
     const fileCount = showingResults ? results!.length : files.length
-    const mp3Count = showingResults
-        ? results!.filter((r) => r.tagged).length
-        : files.filter((f) => f.mp3).length
+    const mp3Count = showingResults ? results!.filter((r) => r.tagged).length : files.filter((f) => f.mp3).length
     const toRenameCount = showingResults
         ? results!.filter((r) => !r.skipped && !r.failed && r.oldName !== r.newName).length
         : files.filter((f) => f.preview !== f.name).length
@@ -1199,8 +1197,7 @@ function App() {
     // nelle Impostazioni rilegge i dati dell'account Google, e senza account
     // collegato il gesto non fa nulla.
     const ptrRef = useRef<HTMLDivElement>(null)
-    const pullEnabled =
-        !busy && (showSettings ? googleConnected : !simpleMode && foldersOk && storageGranted)
+    const pullEnabled = !busy && (showSettings ? googleConnected : !simpleMode && foldersOk && storageGranted)
     usePullToRefresh(scrollRef, ptrRef, !!state, pullEnabled, () => (showSettings ? reloadGoogleAccount() : refresh()))
 
     const canProcess = !busy && foldersOk && files.length > 0 && destReady
@@ -1212,9 +1209,7 @@ function App() {
     // vista: l'elaborazione tratta sempre tutti i file.
     // I brani spuntati da rivedere contano come "da modificare": il filtro non
     // li nasconde, altrimenti resterebbero selezionati senza essere visibili.
-    const previewFiles = showOnlyChanged
-        ? files.filter((f) => fileWillChange(f) || reviewPaths.has(f.path))
-        : files
+    const previewFiles = showOnlyChanged ? files.filter((f) => fileWillChange(f) || reviewPaths.has(f.path)) : files
 
     // A ogni nuova anteprima (scansione, aggiornamento automatico, conversione)
     // la selezione tiene solo i file ancora presenti.
@@ -1356,7 +1351,9 @@ function App() {
             if (req !== pickerReqRef.current) return
             if (!resp.ok) {
                 setGooglePicker(null)
-                setState((prev) => (prev ? ({ ...prev, google: resp.state.google, logs: resp.state.logs } as core.StateResponse) : prev))
+                setState((prev) =>
+                    prev ? ({ ...prev, google: resp.state.google, logs: resp.state.logs } as core.StateResponse) : prev,
+                )
                 notify(false, resp.message ?? '')
                 return
             }
@@ -1454,7 +1451,9 @@ function App() {
         closeGooglePicker()
         guard(async () => {
             const resp = await AddLinkToPlaylist(link, p.id, p.title)
-            setState((prev) => (prev ? ({ ...prev, google: resp.state.google, logs: resp.state.logs } as core.StateResponse) : prev))
+            setState((prev) =>
+                prev ? ({ ...prev, google: resp.state.google, logs: resp.state.logs } as core.StateResponse) : prev,
+            )
             notify(resp.ok, resp.message ?? '')
         })
     }
@@ -1931,8 +1930,21 @@ function App() {
                     foldersHint={foldersHint}
                     watchEnabled={watchEnabled}
                     onToggleWatch={() => toggleWatch(!watchEnabled)}
-                    counters={{ showingResults, fileCount, mp3Count, reviewCount: reviewPaths.size, toRenameCount, failedCount }}
-                    activity={{ open: activityOpen, onOpenChange: setActivityOpen, logs, unseen: logsUnseen, onClear: clearLogs }}
+                    counters={{
+                        showingResults,
+                        fileCount,
+                        mp3Count,
+                        reviewCount: reviewPaths.size,
+                        toRenameCount,
+                        failedCount,
+                    }}
+                    activity={{
+                        open: activityOpen,
+                        onOpenChange: setActivityOpen,
+                        logs,
+                        unseen: logsUnseen,
+                        onClear: clearLogs,
+                    }}
                     updateAvailable={!!state?.update}
                     onOpenSettings={() => openSettings(state?.update ? 'info' : undefined)}
                 />
@@ -1956,185 +1968,187 @@ function App() {
             )}
 
             <div className="app-scroll" ref={scrollRef}>
-            <main className={showSettings ? 'is-settings' : simpleMode ? 'is-simple' : ''}>
-                <div
-                    className={'busy-bar' + (busy ? ' is-active' : '')}
-                    role="progressbar"
-                    aria-hidden={!busy}
-                    aria-label="Operazione in corso"
-                />
-
-                {!showSettings && !storageGranted && <StorageBanner onRequest={askStorage} />}
-
-                {!showSettings && !simpleMode && (
-                    <CommandBar
-                        folderLines={folderSummary}
-                        source={downloadSource}
-                        busy={busy}
-                        foldersOk={foldersOk}
-                        foldersHint={foldersHint}
-                        downloadRowWidth={downloadRowWidth}
-                        downloadRowRef={downloadRowRef}
-                        onDownloadRowSettled={measureDownloadRow}
-                        onDownload={downloadPlaylist}
-                        downloadErrorCount={downloadErrors.length}
-                        onShowDownloadErrors={() => setShowDownloadErrors(true)}
-                        hasResults={!!results}
-                        onRefresh={refresh}
-                        onProcess={process}
-                        canProcess={canProcess}
-                        cancellable={cancellable}
-                        onCancel={cancelOp}
-                        onClearTags={() => setConfirmClearTags(true)}
-                        canClearTags={canClearTags}
-                        progress={opProgress}
+                <main className={showSettings ? 'is-settings' : simpleMode ? 'is-simple' : ''}>
+                    <div
+                        className={'busy-bar' + (busy ? ' is-active' : '')}
+                        role="progressbar"
+                        aria-hidden={!busy}
+                        aria-label="Operazione in corso"
                     />
-                )}
 
-                {!showSettings && simpleMode && (
-                    <SimpleHero
-                        folderLines={folderSummary}
-                        source={downloadSource}
-                        busy={busy}
-                        hasFolder={folder !== ''}
-                        foldersOk={foldersOk}
-                        foldersHint={foldersHint}
-                        hasResults={!!results}
-                        onDownload={downloadPlaylist}
-                        cancellable={cancellable}
-                        onCancel={cancelOp}
-                        onAddPlaylist={() => openSettings('download')}
-                        downloadErrorCount={downloadErrors.length}
-                        onShowDownloadErrors={() => setShowDownloadErrors(true)}
-                        progress={opProgress}
-                    />
-                )}
+                    {!showSettings && !storageGranted && <StorageBanner onRequest={askStorage} />}
 
-                {showSettings && draft && (
-                    <div className="settings-layout">
-                        <div className="settings-panel">
-                            {settingsTab === 'general' && (
-                                <GeneralTab
-                                    draft={draft}
-                                    onDraftChange={setDraft}
-                                    folder={folder}
-                                    folderMissing={folderMissing}
-                                    destFolder={destFolder}
-                                    destMissing={destMissing}
-                                    destSameAsSource={destSameAsSource}
-                                    deleteOriginals={deleteOriginals}
-                                    storageGranted={storageGranted}
-                                    busy={busy}
-                                    onOpenFolder={openFolder}
-                                    onChooseFolder={chooseFolder}
-                                    onChooseDestination={chooseDestination}
-                                    onDestSameAsSourceChange={(checked) => applyOptions(checked, destFolder, deleteOriginals)}
-                                    onDeleteOriginalsChange={toggleDeleteOriginals}
-                                />
-                            )}
+                    {!showSettings && !simpleMode && (
+                        <CommandBar
+                            folderLines={folderSummary}
+                            source={downloadSource}
+                            busy={busy}
+                            foldersOk={foldersOk}
+                            foldersHint={foldersHint}
+                            downloadRowWidth={downloadRowWidth}
+                            downloadRowRef={downloadRowRef}
+                            onDownloadRowSettled={measureDownloadRow}
+                            onDownload={downloadPlaylist}
+                            downloadErrorCount={downloadErrors.length}
+                            onShowDownloadErrors={() => setShowDownloadErrors(true)}
+                            hasResults={!!results}
+                            onRefresh={refresh}
+                            onProcess={process}
+                            canProcess={canProcess}
+                            cancellable={cancellable}
+                            onCancel={cancelOp}
+                            onClearTags={() => setConfirmClearTags(true)}
+                            canClearTags={canClearTags}
+                            progress={opProgress}
+                        />
+                    )}
 
-                            {settingsTab === 'download' && (
-                                <section className="settings">
-                                    <YtDlpPanel
-                                        state={state}
+                    {!showSettings && simpleMode && (
+                        <SimpleHero
+                            folderLines={folderSummary}
+                            source={downloadSource}
+                            busy={busy}
+                            hasFolder={folder !== ''}
+                            foldersOk={foldersOk}
+                            foldersHint={foldersHint}
+                            hasResults={!!results}
+                            onDownload={downloadPlaylist}
+                            cancellable={cancellable}
+                            onCancel={cancelOp}
+                            onAddPlaylist={() => openSettings('download')}
+                            downloadErrorCount={downloadErrors.length}
+                            onShowDownloadErrors={() => setShowDownloadErrors(true)}
+                            progress={opProgress}
+                        />
+                    )}
+
+                    {showSettings && draft && (
+                        <div className="settings-layout">
+                            <div className="settings-panel">
+                                {settingsTab === 'general' && (
+                                    <GeneralTab
+                                        draft={draft}
+                                        onDraftChange={setDraft}
+                                        folder={folder}
+                                        folderMissing={folderMissing}
+                                        destFolder={destFolder}
+                                        destMissing={destMissing}
+                                        destSameAsSource={destSameAsSource}
+                                        deleteOriginals={deleteOriginals}
+                                        storageGranted={storageGranted}
                                         busy={busy}
-                                        managed={ytDlpManaged}
-                                        checking={ytDlpChecking}
-                                        onManagedChange={toggleYtDlpManaged}
-                                        pathDraft={ytDlpPathDraft}
-                                        onPathDraftChange={setYtDlpPathDraft}
-                                        onPathCommit={applyYtDlpPath}
-                                        onBrowse={browseYtDlp}
-                                        installProgress={installProgress}
-                                        onDownloadYtDlp={() => setConfirmDownloadYtDlp(true)}
-                                        onUninstallYtDlp={() => setConfirmUninstallYtDlp(true)}
-                                        onDownloadFFmpeg={() => setConfirmFFmpeg('install')}
-                                        onUninstallFFmpeg={() => setConfirmUninstallFFmpeg(true)}
+                                        onOpenFolder={openFolder}
+                                        onChooseFolder={chooseFolder}
+                                        onChooseDestination={chooseDestination}
+                                        onDestSameAsSourceChange={(checked) =>
+                                            applyOptions(checked, destFolder, deleteOriginals)
+                                        }
+                                        onDeleteOriginalsChange={toggleDeleteOriginals}
                                     />
-                                    <GoogleAccountPanel
-                                        google={state.google}
-                                        available={googleAvailable}
-                                        connected={googleConnected}
-                                        signingIn={googleSigningIn}
-                                        syncing={prefsSyncing}
-                                        busy={busy}
-                                        onSignIn={googleSignIn}
-                                        onSignOut={() => setConfirmGoogleSignOut(true)}
-                                        onCancel={cancelOp}
-                                    />
-                                    {googleConnected && (
-                                        <AccountPlaylists
-                                            playlists={accountPlaylists}
-                                            prefs={playlistPrefs}
-                                            emptying={emptying}
-                                            progress={progress}
+                                )}
+
+                                {settingsTab === 'download' && (
+                                    <section className="settings">
+                                        <YtDlpPanel
+                                            state={state}
                                             busy={busy}
+                                            managed={ytDlpManaged}
+                                            checking={ytDlpChecking}
+                                            onManagedChange={toggleYtDlpManaged}
+                                            pathDraft={ytDlpPathDraft}
+                                            onPathDraftChange={setYtDlpPathDraft}
+                                            onPathCommit={applyYtDlpPath}
+                                            onBrowse={browseYtDlp}
+                                            installProgress={installProgress}
+                                            onDownloadYtDlp={() => setConfirmDownloadYtDlp(true)}
+                                            onUninstallYtDlp={() => setConfirmUninstallYtDlp(true)}
+                                            onDownloadFFmpeg={() => setConfirmFFmpeg('install')}
+                                            onUninstallFFmpeg={() => setConfirmUninstallFFmpeg(true)}
+                                        />
+                                        <GoogleAccountPanel
+                                            google={state.google}
+                                            available={googleAvailable}
+                                            connected={googleConnected}
+                                            signingIn={googleSigningIn}
+                                            syncing={prefsSyncing}
+                                            busy={busy}
+                                            onSignIn={googleSignIn}
+                                            onSignOut={() => setConfirmGoogleSignOut(true)}
                                             onCancel={cancelOp}
+                                        />
+                                        {googleConnected && (
+                                            <AccountPlaylists
+                                                playlists={accountPlaylists}
+                                                prefs={playlistPrefs}
+                                                emptying={emptying}
+                                                progress={progress}
+                                                busy={busy}
+                                                onCancel={cancelOp}
+                                                onOpenPrefs={openPlaylistPrefs}
+                                            />
+                                        )}
+                                        <SavedPlaylists
+                                            rows={playlistDraft}
+                                            prefs={playlistPrefs}
+                                            connected={googleConnected}
+                                            busy={busy}
+                                            onImport={() => openGooglePicker('import')}
+                                            onAdd={addPlaylistDraft}
+                                            onChange={updatePlaylistDraft}
+                                            onRemove={removePlaylistDraft}
                                             onOpenPrefs={openPlaylistPrefs}
                                         />
-                                    )}
-                                    <SavedPlaylists
-                                        rows={playlistDraft}
-                                        prefs={playlistPrefs}
-                                        connected={googleConnected}
+                                    </section>
+                                )}
+
+                                {settingsTab === 'rules' && (
+                                    <RulesTab
+                                        draft={draft}
                                         busy={busy}
-                                        onImport={() => openGooglePicker('import')}
-                                        onAdd={addPlaylistDraft}
-                                        onChange={updatePlaylistDraft}
-                                        onRemove={removePlaylistDraft}
-                                        onOpenPrefs={openPlaylistPrefs}
+                                        onListChange={updateDraftList}
+                                        onFtAliasChange={updateFtAlias}
+                                        onReplacementChange={updateReplacement}
+                                        onAddReplacement={addReplacement}
+                                        onRemoveReplacement={removeReplacement}
                                     />
-                                </section>
-                            )}
+                                )}
 
-                            {settingsTab === 'rules' && (
-                                <RulesTab
-                                    draft={draft}
-                                    busy={busy}
-                                    onListChange={updateDraftList}
-                                    onFtAliasChange={updateFtAlias}
-                                    onReplacementChange={updateReplacement}
-                                    onAddReplacement={addReplacement}
-                                    onRemoveReplacement={removeReplacement}
-                                />
-                            )}
-
-                            {settingsTab === 'info' && (
-                                <InfoTab
-                                    appVersion={state.appVersion}
-                                    update={state.update}
-                                    busy={busy}
-                                    onShowUpdate={setUpdatePopup}
-                                    onCheckUpdate={checkUpdate}
-                                />
-                            )}
+                                {settingsTab === 'info' && (
+                                    <InfoTab
+                                        appVersion={state.appVersion}
+                                        update={state.update}
+                                        busy={busy}
+                                        onShowUpdate={setUpdatePopup}
+                                        onCheckUpdate={checkUpdate}
+                                    />
+                                )}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* In modalità semplificata niente anteprima: il pannello compare
+                    {/* In modalità semplificata niente anteprima: il pannello compare
                     solo con i risultati dell'ultima conversione. */}
-                {!showSettings && (!simpleMode || results) && (
-                    <PreviewPanel
-                        results={results}
-                        simple={simpleMode}
-                        busy={busy}
-                        booted={booted}
-                        folder={folder}
-                        folderMissing={folderMissing}
-                        foldersOk={foldersOk}
-                        foldersHint={foldersHint}
-                        files={files}
-                        previewFiles={previewFiles}
-                        onlyChanged={showOnlyChanged}
-                        onOnlyChangedChange={setShowOnlyChanged}
-                        onRefresh={refresh}
-                        reviewPaths={reviewPaths}
-                        onToggleReview={toggleReview}
-                        onToggleReviewAll={toggleReviewAll}
-                    />
-                )}
-            </main>
+                    {!showSettings && (!simpleMode || results) && (
+                        <PreviewPanel
+                            results={results}
+                            simple={simpleMode}
+                            busy={busy}
+                            booted={booted}
+                            folder={folder}
+                            folderMissing={folderMissing}
+                            foldersOk={foldersOk}
+                            foldersHint={foldersHint}
+                            files={files}
+                            previewFiles={previewFiles}
+                            onlyChanged={showOnlyChanged}
+                            onOnlyChangedChange={setShowOnlyChanged}
+                            onRefresh={refresh}
+                            reviewPaths={reviewPaths}
+                            onToggleReview={toggleReview}
+                            onToggleReviewAll={toggleReviewAll}
+                        />
+                    )}
+                </main>
             </div>
 
             {folderPicker && (

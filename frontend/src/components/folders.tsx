@@ -5,7 +5,15 @@ import { Tooltip } from './controls'
 // MissingFolderIcon: icona d'errore accanto a una cartella impostata ma non
 // trovata sul disco; il dettaglio compare solo in hover. Con onClick (fuori
 // dalle Impostazioni) è un pulsante che porta dove la si sceglie di nuovo.
-export function MissingFolderIcon({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) {
+export function MissingFolderIcon({
+    label,
+    onClick,
+    disabled,
+}: {
+    label: string
+    onClick?: () => void
+    disabled?: boolean
+}) {
     const detail = label + ' non trovata: è stata spostata, rinominata o eliminata.'
     if (!onClick) {
         return (

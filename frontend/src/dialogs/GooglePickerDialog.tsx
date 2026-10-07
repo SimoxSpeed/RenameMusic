@@ -48,7 +48,11 @@ export function GooglePickerDialog({
                         const saved = savedIds.has(p.id)
                         const meta = [
                             p.count === 1 ? '1 video' : `${p.count} video`,
-                            p.privacy === 'private' ? 'privata' : p.privacy === 'unlisted' ? 'non in elenco' : 'pubblica',
+                            p.privacy === 'private'
+                                ? 'privata'
+                                : p.privacy === 'unlisted'
+                                  ? 'non in elenco'
+                                  : 'pubblica',
                         ].join(' · ')
                         return mode === 'import' ? (
                             <li key={p.id}>

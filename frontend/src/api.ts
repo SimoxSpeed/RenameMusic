@@ -31,14 +31,14 @@ interface RenameMusicPlugin {
 const native = registerPlugin<RenameMusicPlugin>('RenameMusic')
 
 // Binding di Wails (desktop): window.go.core.App con un metodo per nome.
-type WailsWindow = Window & { go?: { core?: { App?: Record<string, ((...args: unknown[]) => Promise<unknown>) | undefined> } } }
+type WailsWindow = Window & {
+    go?: { core?: { App?: Record<string, ((...args: unknown[]) => Promise<unknown>) | undefined> } }
+}
 
 // call invoca un metodo del core per nome.
 function call<T>(method: string, ...args: unknown[]): Promise<T> {
     if (isAndroid) {
-        return native
-            .call({ method, args: JSON.stringify(args) })
-            .then((r) => JSON.parse(r.result) as T)
+        return native.call({ method, args: JSON.stringify(args) }).then((r) => JSON.parse(r.result) as T)
     }
     const bound = (window as WailsWindow).go?.core?.App?.[method]
     if (typeof bound !== 'function') {

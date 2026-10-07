@@ -9,7 +9,14 @@ import { CaretIcon, CloseIcon, InfoCircleIcon } from '../icons'
 // si scartano solo quelle vuote e i doppioni. Non è dentro una <label>, perché
 // un clic sull'etichetta attiverebbe il primo ✕. label dà il nome al campo per
 // gli screen reader; caption, se c'è, è l'etichetta visibile sopra l'elenco.
-export function ChipList({ values, onChange, label, caption, placeholder, disabled }: {
+export function ChipList({
+    values,
+    onChange,
+    label,
+    caption,
+    placeholder,
+    disabled,
+}: {
     values: string[]
     onChange: (values: string[]) => void
     label: string
@@ -105,7 +112,9 @@ export function InfoIcon({ text }: { text: string }) {
             }}
         >
             <InfoCircleIcon />
-            <span className="info-tooltip" role="tooltip">{text}</span>
+            <span className="info-tooltip" role="tooltip">
+                {text}
+            </span>
         </button>
     )
 }
@@ -117,7 +126,14 @@ export function InfoIcon({ text }: { text: string }) {
 // con htmlFor. L'ultima parola è tenuta insieme all'icona (check-tail), così
 // l'icona non va mai a capo da sola: per questo le label sono due, entrambe
 // collegate alla stessa casella.
-export function CheckOption({ label, info, checked, onChange, disabled, className }: {
+export function CheckOption({
+    label,
+    info,
+    checked,
+    onChange,
+    disabled,
+    className,
+}: {
     label: string
     info: string
     checked: boolean
@@ -141,9 +157,15 @@ export function CheckOption({ label, info, checked, onChange, disabled, classNam
                 />
             </span>
             <span className="check-text">
-                {head && <label htmlFor={id} className="check-label">{head}</label>}
+                {head && (
+                    <label htmlFor={id} className="check-label">
+                        {head}
+                    </label>
+                )}
                 <span className="check-tail">
-                    <label htmlFor={id} className="check-label">{tail}</label>
+                    <label htmlFor={id} className="check-label">
+                        {tail}
+                    </label>
                     <InfoIcon text={info} />
                 </span>
             </span>
@@ -161,7 +183,9 @@ export function Tooltip({ label, children }: { label: string; children: ReactNod
     return (
         <span className="tip">
             {children}
-            <span className="info-tooltip" role="tooltip">{label}</span>
+            <span className="info-tooltip" role="tooltip">
+                {label}
+            </span>
         </span>
     )
 }
@@ -208,7 +232,7 @@ export function Select({
     }, [open])
 
     const selected = options.find((o) => o.value === value)
-    const label = selected ? selected.label : placeholder ?? ''
+    const label = selected ? selected.label : (placeholder ?? '')
 
     return (
         <div className={'select-wrap' + (className ? ' ' + className : '')} ref={wrapRef}>
@@ -227,22 +251,24 @@ export function Select({
             </button>
             {open && options.length > 0 && (
                 <ul className="select-menu" role="listbox">
-                    {options.map((o) => o.separator ? (
-                        <li key={o.value} role="separator" className="select-separator" />
-                    ) : (
-                        <li
-                            key={o.value}
-                            role="option"
-                            aria-selected={o.value === value}
-                            className={'select-option' + (o.value === value ? ' is-selected' : '')}
-                            onClick={() => {
-                                onChange(o.value)
-                                setOpen(false)
-                            }}
-                        >
-                            {o.label}
-                        </li>
-                    ))}
+                    {options.map((o) =>
+                        o.separator ? (
+                            <li key={o.value} role="separator" className="select-separator" />
+                        ) : (
+                            <li
+                                key={o.value}
+                                role="option"
+                                aria-selected={o.value === value}
+                                className={'select-option' + (o.value === value ? ' is-selected' : '')}
+                                onClick={() => {
+                                    onChange(o.value)
+                                    setOpen(false)
+                                }}
+                            >
+                                {o.label}
+                            </li>
+                        ),
+                    )}
                 </ul>
             )}
         </div>
@@ -304,7 +330,11 @@ export function Collapse({
         const style = getComputedStyle(el)
         const from = gone
             ? { size: 0, margin: -gap, opacity: 0 }
-            : { size: el.getBoundingClientRect()[size], margin: parseFloat(style[margin]) || 0, opacity: parseFloat(style.opacity) }
+            : {
+                  size: el.getBoundingClientRect()[size],
+                  margin: parseFloat(style[margin]) || 0,
+                  opacity: parseFloat(style.opacity),
+              }
         el.getAnimations().forEach((a) => a.cancel())
 
         // Dove si arriva: da aperto è la misura naturale, senza gli stili
@@ -343,7 +373,15 @@ export function Collapse({
 
 // OpProgress è la barra di avanzamento delle operazioni lunghe: `percent`
 // (0-100) riempie la barra; null => totale non noto, si mostra solo l'etichetta.
-export function OpProgress({ percent, label, className }: { percent: number | null; label: string; className?: string }) {
+export function OpProgress({
+    percent,
+    label,
+    className,
+}: {
+    percent: number | null
+    label: string
+    className?: string
+}) {
     return (
         <div className={'op-progress' + (className ? ' ' + className : '')}>
             {percent !== null && (

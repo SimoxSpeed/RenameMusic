@@ -4,7 +4,12 @@ import { ConfirmDialog, Modal } from '../components/Modal'
 // Popup di conferma delle azioni distruttive o lunghe: ognuno riceve
 // onCancel/onConfirm e disabled (operazione in corso), il resto è il testo.
 
-export function EmptyPlaylistConfirm({ title, onCancel, onConfirm, disabled }: {
+export function EmptyPlaylistConfirm({
+    title,
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     title: string
     onCancel: () => void
     onConfirm: () => void
@@ -20,15 +25,18 @@ export function EmptyPlaylistConfirm({ title, onCancel, onConfirm, disabled }: {
             disabled={disabled}
         >
             <p>
-                Verranno <strong>tolti da YouTube tutti i brani</strong> della playlist, anche
-                quelli che non hai ancora scaricato. La playlist resta, vuota. L'operazione
-                non si può annullare a cose fatte.
+                Verranno <strong>tolti da YouTube tutti i brani</strong> della playlist, anche quelli che non hai ancora
+                scaricato. La playlist resta, vuota. L'operazione non si può annullare a cose fatte.
             </p>
         </ConfirmDialog>
     )
 }
 
-export function GoogleSignOutConfirm({ onCancel, onConfirm, disabled }: {
+export function GoogleSignOutConfirm({
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     onCancel: () => void
     onConfirm: () => void
     disabled: boolean
@@ -43,20 +51,23 @@ export function GoogleSignOutConfirm({ onCancel, onConfirm, disabled }: {
             disabled={disabled}
         >
             <p>
-                L'app perderà l'accesso alle tue playlist di YouTube e il permesso verrà
-                revocato anche su Google. Le playlist del tuo account spariscono dalla
-                scelta del download; quelle salvate qui restano, ma finché non ricolleghi
-                l'account dopo il download non verranno svuotate né copiate.
+                L'app perderà l'accesso alle tue playlist di YouTube e il permesso verrà revocato anche su Google. Le
+                playlist del tuo account spariscono dalla scelta del download; quelle salvate qui restano, ma finché non
+                ricolleghi l'account dopo il download non verranno svuotate né copiate.
             </p>
             <p>
-                Regole, playlist e predefiniti restano quelli attuali su questo dispositivo,
-                ma non si sincronizzano più con gli altri.
+                Regole, playlist e predefiniti restano quelli attuali su questo dispositivo, ma non si sincronizzano più
+                con gli altri.
             </p>
         </ConfirmDialog>
     )
 }
 
-export function DeleteOriginalsConfirm({ onCancel, onConfirm, disabled }: {
+export function DeleteOriginalsConfirm({
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     onCancel: () => void
     onConfirm: () => void
     disabled: boolean
@@ -71,15 +82,19 @@ export function DeleteOriginalsConfirm({ onCancel, onConfirm, disabled }: {
             disabled={disabled}
         >
             <p>
-                Con questa opzione attiva, dopo ogni conversione i file originali
-                verranno <strong>eliminati definitivamente</strong>. Verifica di avere
-                un backup se ti serve poter tornare indietro.
+                Con questa opzione attiva, dopo ogni conversione i file originali verranno{' '}
+                <strong>eliminati definitivamente</strong>. Verifica di avere un backup se ti serve poter tornare
+                indietro.
             </p>
         </ConfirmDialog>
     )
 }
 
-export function ClearTagsConfirm({ onCancel, onConfirm, disabled }: {
+export function ClearTagsConfirm({
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     onCancel: () => void
     onConfirm: () => void
     disabled: boolean
@@ -94,9 +109,9 @@ export function ClearTagsConfirm({ onCancel, onConfirm, disabled }: {
             disabled={disabled}
         >
             <p>
-                Verranno <strong>rimossi tutti i tag ID3</strong> (titolo, artista, ecc.)
-                da tutti gli MP3 della cartella di partenza. I file non vengono rinominati
-                né spostati, ma i metadati eliminati <strong>non sono recuperabili</strong>.
+                Verranno <strong>rimossi tutti i tag ID3</strong> (titolo, artista, ecc.) da tutti gli MP3 della
+                cartella di partenza. I file non vengono rinominati né spostati, ma i metadati eliminati{' '}
+                <strong>non sono recuperabili</strong>.
             </p>
         </ConfirmDialog>
     )
@@ -105,7 +120,14 @@ export function ClearTagsConfirm({ onCancel, onConfirm, disabled }: {
 // InstallYtDlpConfirm: "Scarica" senza yt-dlp. Il testo dipende da come
 // l'app gestisce yt-dlp (integrato su Android, copia gestita o percorso
 // personalizzato); downloadWhat è "del link" o "della playlist".
-export function InstallYtDlpConfirm({ managed, ffmpegAvailable, downloadWhat, onCancel, onConfirm, disabled }: {
+export function InstallYtDlpConfirm({
+    managed,
+    ffmpegAvailable,
+    downloadWhat,
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     managed: boolean
     ffmpegAvailable: boolean
     downloadWhat: string
@@ -130,31 +152,31 @@ export function InstallYtDlpConfirm({ managed, ffmpegAvailable, downloadWhat, on
         >
             {isAndroid ? (
                 <p>
-                    L'app lo sta ancora preparando (al primo avvio richiede qualche
-                    secondo) oppure la preparazione non è riuscita. Vuoi scaricarne
-                    l'ultima versione e avviare subito il download {downloadWhat}?
+                    L'app lo sta ancora preparando (al primo avvio richiede qualche secondo) oppure la preparazione non
+                    è riuscita. Vuoi scaricarne l'ultima versione e avviare subito il download {downloadWhat}?
                 </p>
             ) : managed ? (
                 <p>
                     yt-dlp non è presente. L'app lo scaricherà
-                    {!ffmpegAvailable && <> insieme a ffmpeg (circa 200 MB)</>} in{' '}
-                    <code>%AppData%\RenameMusic</code> e avvierà subito il download{' '}
-                    {downloadWhat}.
+                    {!ffmpegAvailable && <> insieme a ffmpeg (circa 200 MB)</>} in <code>%AppData%\RenameMusic</code> e
+                    avvierà subito il download {downloadWhat}.
                 </p>
             ) : (
                 <p>
-                    <strong>"Gestisci autonomamente"</strong> non è attivo e yt-dlp
-                    non è disponibile. Vuoi attivarlo e procedere? L'app scaricherà la
-                    propria copia{!ffmpegAvailable && <> (con ffmpeg, circa 200 MB)</>} in{' '}
-                    <code>%AppData%\RenameMusic</code> e avvierà
-                    subito il download {downloadWhat}.
+                    <strong>"Gestisci autonomamente"</strong> non è attivo e yt-dlp non è disponibile. Vuoi attivarlo e
+                    procedere? L'app scaricherà la propria copia{!ffmpegAvailable && <> (con ffmpeg, circa 200 MB)</>}{' '}
+                    in <code>%AppData%\RenameMusic</code> e avvierà subito il download {downloadWhat}.
                 </p>
             )}
         </ConfirmDialog>
     )
 }
 
-export function UninstallYtDlpConfirm({ onCancel, onConfirm, disabled }: {
+export function UninstallYtDlpConfirm({
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     onCancel: () => void
     onConfirm: () => void
     disabled: boolean
@@ -170,14 +192,18 @@ export function UninstallYtDlpConfirm({ onCancel, onConfirm, disabled }: {
         >
             <p>
                 La copia gestita dall'app in <code>%AppData%\RenameMusic</code> verrà
-                <strong> rimossa</strong> (ffmpeg resta). Potrai riscaricarla in qualsiasi momento
-                dal tasto accanto a yt-dlp o dal prossimo download di una playlist.
+                <strong> rimossa</strong> (ffmpeg resta). Potrai riscaricarla in qualsiasi momento dal tasto accanto a
+                yt-dlp o dal prossimo download di una playlist.
             </p>
         </ConfirmDialog>
     )
 }
 
-export function UninstallFFmpegConfirm({ onCancel, onConfirm, disabled }: {
+export function UninstallFFmpegConfirm({
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     onCancel: () => void
     onConfirm: () => void
     disabled: boolean
@@ -193,9 +219,8 @@ export function UninstallFFmpegConfirm({ onCancel, onConfirm, disabled }: {
         >
             <p>
                 La copia gestita dall'app in <code>%AppData%\RenameMusic\ffmpeg</code> verrà
-                <strong> rimossa</strong>. Senza ffmpeg non si possono scaricare playlist in mp3:
-                potrai riscaricarlo dal tasto accanto a ffmpeg o dal prossimo download di una
-                playlist.
+                <strong> rimossa</strong>. Senza ffmpeg non si possono scaricare playlist in mp3: potrai riscaricarlo
+                dal tasto accanto a ffmpeg o dal prossimo download di una playlist.
             </p>
         </ConfirmDialog>
     )
@@ -203,7 +228,13 @@ export function UninstallFFmpegConfirm({ onCancel, onConfirm, disabled }: {
 
 // DownloadYtDlpConfirm: tasto per scaricare (su Android aggiornare) yt-dlp.
 // effectivePath è dove finirà la copia, se il core lo sa già.
-export function DownloadYtDlpConfirm({ effectivePath, managed, onCancel, onConfirm, disabled }: {
+export function DownloadYtDlpConfirm({
+    effectivePath,
+    managed,
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     effectivePath: string
     managed: boolean
     onCancel: () => void
@@ -220,16 +251,23 @@ export function DownloadYtDlpConfirm({ effectivePath, managed, onCancel, onConfi
             disabled={disabled}
         >
             <p>
-                Verrà scaricata l'ultima versione ufficiale di <strong>yt-dlp</strong> da
-                Internet (GitHub){isAndroid ? (
+                Verrà scaricata l'ultima versione ufficiale di <strong>yt-dlp</strong> da Internet (GitHub)
+                {isAndroid ? (
                     <>, al posto di quella integrata nell'app</>
                 ) : effectivePath ? (
-                    <> in <code>{effectivePath}</code></>
+                    <>
+                        {' '}
+                        in <code>{effectivePath}</code>
+                    </>
                 ) : managed ? (
-                    <> in <code>%AppData%\RenameMusic</code></>
+                    <>
+                        {' '}
+                        in <code>%AppData%\RenameMusic</code>
+                    </>
                 ) : (
                     <> nel percorso indicato</>
-                )}. Assicurati di scaricarlo solo da una fonte di cui ti fidi.
+                )}
+                . Assicurati di scaricarlo solo da una fonte di cui ti fidi.
             </p>
         </ConfirmDialog>
     )
@@ -237,7 +275,13 @@ export function DownloadYtDlpConfirm({ effectivePath, managed, onCancel, onConfi
 
 // FFmpegConfirm: download di ffmpeg dal tasto nel pannello ('install') o
 // prima del download di una playlist che ne ha bisogno ('playlist').
-export function FFmpegConfirm({ reason, downloadWhat, onCancel, onConfirm, disabled }: {
+export function FFmpegConfirm({
+    reason,
+    downloadWhat,
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     reason: 'install' | 'playlist'
     downloadWhat: string
     onCancel: () => void
@@ -255,18 +299,23 @@ export function FFmpegConfirm({ reason, downloadWhat, onCancel, onConfirm, disab
         >
             <p>
                 {reason === 'playlist' && (
-                    <>Per creare gli mp3 yt-dlp ha bisogno di <strong>ffmpeg</strong>, che non è presente. </>
+                    <>
+                        Per creare gli mp3 yt-dlp ha bisogno di <strong>ffmpeg</strong>, che non è presente.{' '}
+                    </>
                 )}
-                Verrà scaricata l'ultima build ufficiale di <strong>ffmpeg</strong> per
-                yt-dlp da Internet (GitHub, circa 200 MB) in{' '}
-                <code>%AppData%\RenameMusic\ffmpeg</code>
+                Verrà scaricata l'ultima build ufficiale di <strong>ffmpeg</strong> per yt-dlp da Internet (GitHub,
+                circa 200 MB) in <code>%AppData%\RenameMusic\ffmpeg</code>
                 {reason === 'playlist' && <>, poi partirà il download {downloadWhat}</>}.
             </p>
         </ConfirmDialog>
     )
 }
 
-export function ResetDefaultsConfirm({ onCancel, onConfirm, disabled }: {
+export function ResetDefaultsConfirm({
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     onCancel: () => void
     onConfirm: () => void
     disabled: boolean
@@ -281,15 +330,18 @@ export function ResetDefaultsConfirm({ onCancel, onConfirm, disabled }: {
             disabled={disabled}
         >
             <p>
-                Regole di rinomina, playlist e modalità semplificata verranno{' '}
-                <strong>sostituite</strong> dai valori predefiniti. Le impostazioni attuali andranno
-                perse.
+                Regole di rinomina, playlist e modalità semplificata verranno <strong>sostituite</strong> dai valori
+                predefiniti. Le impostazioni attuali andranno perse.
             </p>
         </ConfirmDialog>
     )
 }
 
-export function SaveDefaultsConfirm({ onCancel, onConfirm, disabled }: {
+export function SaveDefaultsConfirm({
+    onCancel,
+    onConfirm,
+    disabled,
+}: {
     onCancel: () => void
     onConfirm: () => void
     disabled: boolean
@@ -304,9 +356,8 @@ export function SaveDefaultsConfirm({ onCancel, onConfirm, disabled }: {
             disabled={disabled}
         >
             <p>
-                I predefiniti attuali verranno <strong>sovrascritti</strong> con le regole di
-                rinomina, le playlist e la modalità semplificata correnti. "Ripristina predefiniti"
-                userà d'ora in poi questi valori.
+                I predefiniti attuali verranno <strong>sovrascritti</strong> con le regole di rinomina, le playlist e la
+                modalità semplificata correnti. "Ripristina predefiniti" userà d'ora in poi questi valori.
             </p>
         </ConfirmDialog>
     )
@@ -319,8 +370,8 @@ export function CrashDialog({ onShare, onDiscard }: { onShare: () => void; onDis
         <Modal>
             <h3>L'app si è chiusa in modo anomalo</h3>
             <p>
-                È stato salvato un file con i dettagli dell'errore. Condividilo con lo
-                sviluppatore (per esempio su WhatsApp) per aiutarlo a risolvere il problema.
+                È stato salvato un file con i dettagli dell'errore. Condividilo con lo sviluppatore (per esempio su
+                WhatsApp) per aiutarlo a risolvere il problema.
             </p>
             <div className="modal-actions">
                 <button onClick={onDiscard}>Ignora</button>

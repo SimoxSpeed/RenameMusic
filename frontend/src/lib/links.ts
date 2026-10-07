@@ -34,8 +34,9 @@ export function playlistKeyOf(url: string, name: string): string {
 export function isVideoLink(link: string): boolean {
     const u = youtubeUrl(link)
     if (!u) return false
-    const id = u.hostname.toLowerCase() === 'youtu.be'
-        ? u.pathname.split('/')[1]
-        : u.searchParams.get('v') ?? u.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)/)?.[1]
+    const id =
+        u.hostname.toLowerCase() === 'youtu.be'
+            ? u.pathname.split('/')[1]
+            : (u.searchParams.get('v') ?? u.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)/)?.[1])
     return /^[A-Za-z0-9_-]{11}$/.test(id ?? '')
 }

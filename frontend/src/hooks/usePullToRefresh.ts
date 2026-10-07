@@ -95,7 +95,12 @@ export function usePullToRefresh(
             refreshRef
                 .current()
                 .catch(() => {})
-                .then(() => new Promise((r) => window.setTimeout(r, Math.max(0, PULL_MIN_MS - (performance.now() - start)))))
+                .then(
+                    () =>
+                        new Promise((r) =>
+                            window.setTimeout(r, Math.max(0, PULL_MIN_MS - (performance.now() - start))),
+                        ),
+                )
                 .then(() => {
                     refreshing = false
                     pull = 0
