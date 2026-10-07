@@ -60,6 +60,9 @@ type Options struct {
 type Result struct {
 	Downloaded int
 	Failed     int
+	// Succeeded elenca gli ID dei video scaricati con successo, nell'ordine
+	// della playlist: servono a quel che segue il download (Prefs.AfterDownload).
+	Succeeded []string
 	// Failures elenca i video il cui download è fallito, con il dettaglio
 	// dell'errore, così la UI può mostrarli in un modale dedicato.
 	Failures []Failure
@@ -251,6 +254,7 @@ func Download(opts Options) (Result, error) {
 		done       int32
 		mu         sync.Mutex
 		failures   []Failure
+		succeeded  []string
 	)
 
 	for _, v := range videos {
@@ -275,6 +279,9 @@ func Download(opts Options) (Result, error) {
 				mu.Unlock()
 			} else {
 				atomic.AddInt32(&downloaded, 1)
+				mu.Lock()
+				succeeded = append(succeeded, info.id)
+				mu.Unlock()
 			}
 			d := atomic.AddInt32(&done, 1)
 			if opts.OnProgress != nil {
@@ -284,7 +291,25 @@ func Download(opts Options) (Result, error) {
 	}
 
 	wg.Wait()
-	return Result{Downloaded: int(downloaded), Failed: int(failed), Failures: failures}, nil
+	return Result{Downloaded: int(downloaded), Failed: int(failed), Failures: failures, Succeeded: inPlaylistOrder(videos, succeeded)}, nil
+}
+
+// inPlaylistOrder riordina gli ID scaricati (in ordine di fine download)
+// secondo l'ordine della playlist: aggiunti a un'altra playlist vi compaiono
+// nello stesso ordine.
+func inPlaylistOrder(videos []videoInfo, ids []string) []string {
+	done := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		done[id] = true
+	}
+	ordered := make([]string, 0, len(ids))
+	for _, v := range videos {
+		if done[v.id] {
+			ordered = append(ordered, v.id)
+			delete(done, v.id)
+		}
+	}
+	return ordered
 }
 
 // videoInfo è l'ID + titolo di un video enumerato dalla playlist.

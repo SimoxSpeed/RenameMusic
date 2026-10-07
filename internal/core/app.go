@@ -8,6 +8,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -113,6 +114,7 @@ type App struct {
 	host    Host
 	ytdlp   YtDlp
 	updater Updater
+	google  GoogleAuth
 
 	mu       sync.Mutex
 	config   rules.Config
@@ -135,6 +137,23 @@ type App struct {
 	// "Ripristina predefiniti" lo ricopia in playlists.
 	playlists        []playlist.Playlist
 	defaultPlaylists []playlist.Playlist
+
+	// playlistPrefs sono le impostazioni delle singole playlist della scelta
+	// del download (playlist-prefs.json, chiave playlistKey): nascoste, cosa
+	// fare dopo il download. Non fanno parte dei predefiniti.
+	playlistPrefs map[string]playlist.Prefs
+	// Sincronizzazione delle impostazioni con l'account Google
+	// (settingssync.go, state.json), sezione per sezione: syncUpdated è
+	// l'istante dell'ultima modifica di ogni sezione, syncDirty le sezioni
+	// cambiate e non ancora caricate, syncErr l'errore dell'ultima
+	// sincronizzazione. syncMu serializza le sincronizzazioni, syncWG conta
+	// quelle in background (i test le attendono).
+	syncUpdated  map[string]time.Time
+	syncDirty    map[string]bool
+	syncErr      string
+	syncMu       sync.Mutex
+	syncWG       sync.WaitGroup
+	syncRevision int // vedi GoogleView.SyncRevision
 
 	// Opzioni di elaborazione persistite (state.json).
 	destSameAsSource bool
@@ -190,6 +209,15 @@ type App struct {
 	// ytDlpCheck anticipa il prossimo controllo automatico.
 	ytDlpMu    sync.Mutex
 	ytDlpCheck chan struct{}
+
+	// Account Google collegato (state.json, vedi google.go): googleEmail è
+	// l'indirizzo dell'account. googleLists sono le playlist dell'account
+	// (solo in memoria, rilette all'avvio e al ritorno sulla finestra),
+	// googleListsAt quando sono state lette l'ultima volta.
+	googleConnected bool
+	googleEmail     string
+	googleLists     []GooglePlaylistView
+	googleListsAt   time.Time
 }
 
 type FileView struct {
@@ -271,6 +299,11 @@ type StateResponse struct {
 	// Update è la nuova versione disponibile (assente se l'app è aggiornata o
 	// il controllo non è ancora riuscito).
 	Update *UpdateView `json:"update,omitempty"`
+	// Google è lo stato dell'account Google collegato.
+	Google GoogleView `json:"google"`
+	// PlaylistPrefs sono le impostazioni delle singole playlist (chiave
+	// "yt:<ID della playlist>" o, per una salvata senza ID, "pl:<nome>").
+	PlaylistPrefs map[string]playlist.Prefs `json:"playlistPrefs"`
 }
 
 // DownloadErrorView descrive un singolo video di playlist il cui download è
@@ -295,15 +328,24 @@ type ActionResponse struct {
 	// DownloadErrors elenca i video non scaricati (con dettaglio) dopo un
 	// DownloadPlaylist con errori, così la UI può mostrarli in un modale.
 	DownloadErrors []DownloadErrorView `json:"downloadErrors,omitempty"`
+	// GooglePlaylists sono le playlist dell'account Google (GooglePlaylists).
+	GooglePlaylists []GooglePlaylistView `json:"googlePlaylists,omitempty"`
+
+	// playlistNote: esito di quel che segue il download sulle playlist di
+	// YouTube (vedi afterDownload), che DownloadAndProcess riporta nella risposta
+	// della conversione. Non esportato: interno al core, non arriva alla UI.
+	playlistNote       string
+	playlistNoteFailed bool
 }
 
 // Options configura i servizi di piattaforma di un App. Campi nil => Host che
-// scarta gli eventi, gestione di yt-dlp desktop (ExecYtDlp) e nessun controllo
-// degli aggiornamenti.
+// scarta gli eventi, gestione di yt-dlp desktop (ExecYtDlp), nessun controllo
+// degli aggiornamenti e nessun accesso a Google.
 type Options struct {
 	Host    Host
 	YtDlp   YtDlp
 	Updater Updater
+	Google  GoogleAuth
 }
 
 // New crea l'App caricando regole, predefiniti, stato e playlist persistiti.
@@ -347,6 +389,10 @@ func New(opts Options) *App {
 	if err != nil {
 		logs = append([]LogEntry{newLogEntry(LogError, "Impossibile leggere le playlist predefinite.")}, logs...)
 	}
+	playlistPrefs, err := settings.LoadPlaylistPrefs()
+	if err != nil {
+		logs = append([]LogEntry{newLogEntry(LogError, "Impossibile leggere le impostazioni delle playlist.")}, logs...)
+	}
 
 	w := watcher.New()
 	if os.Getenv("RENAMEMUSIC_WATCH_DEBUG") != "" {
@@ -357,12 +403,18 @@ func New(opts Options) *App {
 		host:             opts.Host,
 		ytdlp:            opts.YtDlp,
 		updater:          opts.Updater,
+		google:           opts.Google,
+		googleConnected:  st.GoogleConnected && opts.Google != nil,
+		googleEmail:      st.GoogleEmail,
 		updateSeen:       st.UpdateSeenVersion,
 		config:           current,
 		defaults:         defaults,
 		logs:             logs,
 		playlists:        playlists,
 		defaultPlaylists: defaultPlaylists,
+		playlistPrefs:    playlistPrefs,
+		syncUpdated:      st.SyncUpdated,
+		syncDirty:        st.SyncDirty,
 		destSameAsSource: st.DestinationSameAsSource,
 		destFolder:       st.DestinationFolder,
 		deleteOriginals:  st.DeleteOriginals,
@@ -406,6 +458,10 @@ func (a *App) persistStateLocked() {
 		YtDlpManaged:            a.ytDlpManaged,
 		YtDlpPath:               a.ytDlpPath,
 		UpdateSeenVersion:       a.updateSeen,
+		GoogleConnected:         a.googleConnected,
+		GoogleEmail:             a.googleEmail,
+		SyncUpdated:             a.syncUpdated,
+		SyncDirty:               a.syncDirty,
 	})
 }
 
@@ -488,6 +544,11 @@ func Start(a *App) {
 
 	// Aggiornamento automatico della copia di yt-dlp gestita dall'app.
 	go a.ytDlpUpdateLoop()
+
+	// Playlist dell'account Google collegato, per la scelta del download, e
+	// impostazioni condivise con gli altri dispositivi dell'account.
+	go a.refreshGoogleListsInBackground()
+	go a.settingsSyncLoop()
 }
 
 // RefreshYtDlp ricalcola lo stato di yt-dlp e notifica la UI con
@@ -695,8 +756,18 @@ func (a *App) SelectFolder() ActionResponse {
 // SetConfig applica una nuova configurazione di regole/cartella (correnti) e la salva su disco.
 // Le voci vuote vengono scartate. Non tocca i predefiniti.
 func (a *App) SetConfig(cfg rules.Config) ActionResponse {
-	cfg = normalizeConfig(cfg)
+	state, saveErr := a.storeConfig(normalizeConfig(cfg), true)
+	if saveErr != nil {
+		return ActionResponse{OK: false, Message: "Configurazione applicata ma non salvata su disco.", State: state}
+	}
+	return ActionResponse{OK: true, Message: "Configurazione salvata.", State: state}
+}
 
+// storeConfig applica e salva le regole correnti cfg (già normalizzate),
+// tenendo la cartella di partenza attuale, e riscansiona la cartella. Con
+// changed le segna come modificate qui, da caricare sull'account Google;
+// senza, arrivano proprio da lì (vedi settingssync.go).
+func (a *App) storeConfig(cfg rules.Config, changed bool) (StateResponse, error) {
 	a.mu.Lock()
 	cfg.StartFolder = a.config.StartFolder // la cartella si gestisce a parte, non la tocchiamo
 	a.mu.Unlock()
@@ -722,6 +793,9 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	if scanErr != nil {
 		a.addLogLocked(LogError, "Scansione con le nuove regole fallita: "+scanErr.Error())
 	}
+	if changed {
+		a.markChangedLocked(syncConfig)
+	}
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
 	a.mu.Unlock()
@@ -729,11 +803,10 @@ func (a *App) SetConfig(cfg rules.Config) ActionResponse {
 	if watchWanted {
 		_ = a.startWatcher() // eventuali errori restano visibili nel log al prossimo cambio.
 	}
-
-	if saveErr != nil {
-		return ActionResponse{OK: false, Message: "Configurazione applicata ma non salvata su disco.", State: state}
+	if changed {
+		a.syncSettingsInBackground()
 	}
-	return ActionResponse{OK: true, Message: "Configurazione salvata.", State: state}
+	return state, saveErr
 }
 
 // SetAsDefault rende i nuovi predefiniti le regole fornite (persistite in
@@ -758,8 +831,10 @@ func (a *App) SetAsDefault(cfg rules.Config, playlists []playlist.Playlist) Acti
 	} else {
 		a.addLogLocked(LogSuccess, "Nuovi predefiniti salvati.")
 	}
+	a.markChangedLocked(syncDefaults, syncDefaultPlaylists)
 	state := a.snapshot()
 	a.mu.Unlock()
+	a.syncSettingsInBackground()
 
 	if saveErr != nil {
 		return ActionResponse{OK: false, Message: "Predefiniti non salvati su disco.", State: state}
@@ -801,6 +876,7 @@ func (a *App) ResetConfig() ActionResponse {
 	if scanErr != nil {
 		a.addLogLocked(LogError, "Scansione con le regole predefinite fallita: "+scanErr.Error())
 	}
+	a.markChangedLocked(syncConfig, syncPlaylists)
 	watchWanted := a.watchEnabled
 	state := a.snapshot()
 	a.mu.Unlock()
@@ -808,6 +884,7 @@ func (a *App) ResetConfig() ActionResponse {
 	if watchWanted {
 		_ = a.startWatcher()
 	}
+	a.syncSettingsInBackground()
 
 	if saveErr != nil {
 		return ActionResponse{OK: false, Message: "Predefiniti ripristinati ma non salvati su disco.", State: state}
@@ -913,8 +990,10 @@ func (a *App) SetPlaylists(list []playlist.Playlist) ActionResponse {
 	if saveErr != nil {
 		a.addLogLocked(LogError, "Playlist aggiornate ma NON salvate su disco: "+saveErr.Error())
 	}
+	a.markChangedLocked(syncPlaylists)
 	state := a.snapshot()
 	a.mu.Unlock()
+	a.syncSettingsInBackground()
 
 	if saveErr != nil {
 		return ActionResponse{OK: false, Message: "Playlist non salvate su disco.", State: state}
@@ -1140,6 +1219,10 @@ func (a *App) downloadAndProcess(dl func(context.Context) (ActionResponse, bool)
 		resp.OK = false
 		resp.Message = fmt.Sprintf("%s %d download non riusciti.", resp.Message, n)
 	}
+	if dlResp.playlistNote != "" {
+		resp.Message += " " + dlResp.playlistNote
+		resp.OK = resp.OK && !dlResp.playlistNoteFailed
+	}
 	return resp
 }
 
@@ -1148,6 +1231,9 @@ func (a *App) downloadAndProcess(dl func(context.Context) (ActionResponse, bool)
 type downloadSource struct {
 	url      string
 	playlist string
+	// prefs: impostazioni della playlist, tra cui cosa fare a download finito
+	// dei brani scaricati (vedi afterDownload).
+	prefs playlist.Prefs
 }
 
 // what descrive la sorgente nei log, es. `playlist "Preferiti"` o "dal link".
@@ -1182,6 +1268,7 @@ func (a *App) downloadPlaylist(opCtx context.Context, name string) (resp ActionR
 	for _, p := range a.playlists {
 		if p.Name == name {
 			src.url = p.URL
+			src.prefs = a.playlistPrefs[playlistKey(p.URL, p.Name)]
 			found = true
 			break
 		}
@@ -1277,6 +1364,10 @@ func (a *App) download(opCtx context.Context, src downloadSource) (resp ActionRe
 	}
 	a.mu.Unlock()
 
+	// Cosa fare dei brani appena scaricati, secondo le impostazioni della
+	// playlist (anche se il download è stato annullato: quelli finiti ci sono).
+	removalNote, removalFailed := a.afterDownload(src, result.Succeeded)
+
 	// Scansiona la cartella per aggiornare l'anteprima con i nuovi file.
 	message, ok := a.performScan()
 	finalState := a.snapshotLocked()
@@ -1292,13 +1383,26 @@ func (a *App) download(opCtx context.Context, src downloadSource) (resp ActionRe
 		})
 	}
 
+	// La nota sulla playlist accompagna il messaggio (anche quello della
+	// conversione, in DownloadAndProcess); se la rimozione è fallita l'esito è
+	// un errore, perché al prossimo download quei brani si riscaricherebbero.
+	// Non ferma però la conversione: downloaded resta quello della scansione.
+	withNote := func(r ActionResponse) ActionResponse {
+		r.playlistNote, r.playlistNoteFailed = removalNote, removalFailed
+		if removalNote != "" {
+			r.Message += " " + removalNote
+			r.OK = r.OK && !removalFailed
+		}
+		return r
+	}
+
 	if canceled {
-		return ActionResponse{OK: ok, Message: "Download annullato. " + message, State: finalState, DownloadErrors: dlErrors}, false
+		return withNote(ActionResponse{OK: ok, Message: "Download annullato. " + message, State: finalState, DownloadErrors: dlErrors}), false
 	}
 	if result.Failed > 0 {
-		return ActionResponse{OK: false, Message: fmt.Sprintf("Download completato con %d errori.", result.Failed), State: finalState, DownloadErrors: dlErrors}, ok
+		return withNote(ActionResponse{OK: false, Message: fmt.Sprintf("Download completato con %d errori.", result.Failed), State: finalState, DownloadErrors: dlErrors}), ok
 	}
-	return ActionResponse{OK: ok, Message: message, State: finalState}, ok
+	return withNote(ActionResponse{OK: ok, Message: message, State: finalState}), ok
 }
 
 // ChooseDirectory apre il selettore cartella e restituisce il percorso scelto
@@ -1947,6 +2051,8 @@ func (a *App) snapshot() StateResponse {
 		FFmpegManaged:      a.ffmpegManaged,
 		AppVersion:         update.Version,
 		Update:             a.updateViewLocked(),
+		Google:             a.googleViewLocked(),
+		PlaylistPrefs:      maps.Clone(a.playlistPrefs),
 	}
 }
 

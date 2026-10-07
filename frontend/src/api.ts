@@ -82,6 +82,17 @@ export const ResolveTagPrompt = (path: string, useEdited: boolean, editedBase: s
 export const CheckUpdate = (): Action => call('CheckUpdate')
 export const MarkUpdateSeen = (version: string): Action => call('MarkUpdateSeen', version)
 export const InstallUpdate = (): Action => call('InstallUpdate')
+export const GoogleSignIn = (): Action => call('GoogleSignIn')
+export const GoogleSignOut = (): Action => call('GoogleSignOut')
+export const GooglePlaylists = (): Action => call('GooglePlaylists')
+export const RefreshGooglePlaylists = (): Action => call('RefreshGooglePlaylists')
+export const EmptyGooglePlaylist = (id: string): Action => call('EmptyGooglePlaylist', id)
+export const SyncSettings = (): Action => call('SyncSettings')
+export const SetPlaylistPrefs = (key: string, prefs: playlist.Prefs): Action => call('SetPlaylistPrefs', key, prefs)
+export const DownloadGooglePlaylist = (id: string): Action => call('DownloadGooglePlaylist', id)
+export const DownloadGooglePlaylistAndProcess = (id: string): Action => call('DownloadGooglePlaylistAndProcess', id)
+export const AddLinkToPlaylist = (link: string, playlistID: string, title: string): Action =>
+    call('AddLinkToPlaylist', link, playlistID, title)
 
 // openURL apre un link esterno nel browser di sistema. Su Android basta
 // navigarci: Capacitor apre nel browser gli indirizzi esterni all'app.

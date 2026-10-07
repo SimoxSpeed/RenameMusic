@@ -12,6 +12,8 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"renamemusic/internal/core"
+	"renamemusic/internal/google"
+	"renamemusic/internal/settings"
 )
 
 //go:embed all:frontend/dist
@@ -22,7 +24,16 @@ func main() {
 	// qui gli si forniscono i servizi di piattaforma desktop (Wails + yt-dlp.exe
 	// + aggiornamento dell'eseguibile).
 	host := &desktopHost{}
-	app := core.New(core.Options{Host: host, YtDlp: core.ExecYtDlp{}, Updater: desktopUpdater{host: host}})
+	opts := core.Options{Host: host, YtDlp: core.ExecYtDlp{}, Updater: desktopUpdater{host: host}}
+	// Account Google (playlist di YouTube): accesso OAuth nel browser di
+	// sistema, con il token salvato cifrato in %AppData%\RenameMusic.
+	if tokenPath, err := settings.GoogleTokenPath(); err == nil {
+		opts.Google = google.NewDesktopAuth(tokenPath, func(url string) error {
+			wailsruntime.BrowserOpenURL(host.ctx, url)
+			return nil
+		})
+	}
+	app := core.New(opts)
 
 	// Configurazione Wails
 	err := wails.Run(&options.App{

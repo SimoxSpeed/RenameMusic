@@ -34,6 +34,16 @@ import {
     CheckUpdate,
     MarkUpdateSeen,
     InstallUpdate,
+    GoogleSignIn,
+    GoogleSignOut,
+    GooglePlaylists,
+    RefreshGooglePlaylists,
+    SyncSettings,
+    EmptyGooglePlaylist,
+    SetPlaylistPrefs,
+    DownloadGooglePlaylist,
+    DownloadGooglePlaylistAndProcess,
+    AddLinkToPlaylist,
     isAndroid,
     onClipboardLink,
     onEvent,
@@ -51,6 +61,7 @@ import {
 } from './api'
 import FolderPicker from './FolderPicker'
 import {
+    AccountIcon,
     ActivityIcon,
     AlertIcon,
     BackIcon,
@@ -68,6 +79,7 @@ import {
     InfoCircleIcon,
     KeyboardIcon,
     LinkIcon,
+    PlaylistAddIcon,
     PlusIcon,
     RefreshIcon,
     RemoveIcon,
@@ -463,7 +475,8 @@ function Select({
     className,
 }: {
     value: string
-    options: { value: string; label: string }[]
+    // separator: riga divisoria tra gruppi di voci, non selezionabile.
+    options: { value: string; label: string; separator?: boolean }[]
     onChange: (value: string) => void
     disabled?: boolean
     placeholder?: string
@@ -509,7 +522,9 @@ function Select({
             </button>
             {open && options.length > 0 && (
                 <ul className="select-menu" role="listbox">
-                    {options.map((o) => (
+                    {options.map((o) => o.separator ? (
+                        <li key={o.value} role="separator" className="select-separator" />
+                    ) : (
                         <li
                             key={o.value}
                             role="option"
@@ -529,9 +544,32 @@ function Select({
     )
 }
 
+// Voce della scelta della playlist da scaricare: una playlist dell'account
+// Google (value "yt:<id>") o una salvata nelle Impostazioni ("pl:<nome>").
+type PlaylistChoice = { value: string; label: string; separator?: boolean }
+
+// playlistChoices elenca prima le playlist dell'account Google, poi (dopo un
+// separatore) quelle salvate, senza quelle nascoste nelle loro impostazioni.
+// Una salvata che è anche dell'account compare solo tra quelle dell'account
+// (le impostazioni sono le stesse: vedi playlistKeyOf).
+function playlistChoices(
+    account: core.GooglePlaylistView[],
+    saved: playlist.Playlist[],
+    prefs: Record<string, playlist.Prefs>,
+): PlaylistChoice[] {
+    const accountIds = new Set(account.map((p) => p.id))
+    const own = account
+        .filter((p) => !prefs['yt:' + p.id]?.hidden)
+        .map((p) => ({ value: 'yt:' + p.id, label: p.title || p.id }))
+    const rest = saved
+        .filter((p) => !accountIds.has(playlistIdOf(p.url)) && !prefs[playlistKeyOf(p.url, p.name)]?.hidden)
+        .map((p) => ({ value: 'pl:' + p.name, label: p.name }))
+    if (own.length > 0 && rest.length > 0) return [...own, { value: 'sep', label: '', separator: true }, ...rest]
+    return [...own, ...rest]
+}
+
 // PlaylistSelect: la Select per la scelta della playlist da scaricare. Gestisce
-// lo stato "vuoto" (nessuna playlist salvata) disabilitando il trigger e usando
-// il nome come value/label.
+// lo stato "vuoto" (nessuna playlist) disabilitando il trigger.
 function PlaylistSelect({
     value,
     options,
@@ -539,8 +577,8 @@ function PlaylistSelect({
     disabled,
 }: {
     value: string
-    options: { name: string }[]
-    onChange: (name: string) => void
+    options: PlaylistChoice[]
+    onChange: (value: string) => void
     disabled?: boolean
 }) {
     const empty = options.length === 0
@@ -548,11 +586,30 @@ function PlaylistSelect({
         <Select
             className="select-playlist"
             value={value}
-            options={options.map((p) => ({ value: p.name, label: p.name }))}
+            options={options}
             onChange={onChange}
             disabled={disabled || empty}
             placeholder={empty ? 'Nessuna playlist' : 'Seleziona playlist'}
         />
+    )
+}
+
+// PrefsButton: tasto ⚙ che apre le impostazioni di una playlist (Impostazioni
+// > Download). Evidenziato se le impostazioni non sono quelle predefinite
+// (summary è il loro riassunto, '' se predefinite).
+function PrefsButton({ summary, onClick, disabled }: { summary: string; onClick: () => void; disabled?: boolean }) {
+    return (
+        <Tooltip label={summary ? 'Impostazioni della playlist: ' + summary : 'Impostazioni della playlist'}>
+            <button
+                type="button"
+                className={'ghost small prefs-btn' + (summary ? ' is-on' : '')}
+                onClick={onClick}
+                disabled={disabled}
+                aria-label="Impostazioni della playlist"
+            >
+                <SettingsIcon />
+            </button>
+        </Tooltip>
     )
 }
 
@@ -650,19 +707,24 @@ function Collapse({
 
 // LinkField: campo per il link da scaricare (di solito un singolo video), sopra
 // la scelta della playlist, con il tasto per svuotarlo. Invio avvia il download.
+// onAddToPlaylist, se c'è (account Google collegato e link di un video), mostra
+// anche il tasto per aggiungere il video a una playlist dell'account.
 function LinkField({
     value,
     onChange,
     onSubmit,
+    onAddToPlaylist,
     disabled,
 }: {
     value: string
     onChange: (value: string) => void
     onSubmit: () => void
+    onAddToPlaylist?: () => void
     disabled?: boolean
 }) {
+    const canAdd = !!onAddToPlaylist && value !== '' && !disabled
     return (
-        <div className="link-field">
+        <div className={'link-field' + (canAdd ? ' has-add' : '')}>
             <span className="link-field-icon" aria-hidden="true">
                 <LinkIcon />
             </span>
@@ -682,6 +744,18 @@ function LinkField({
                 }}
                 disabled={disabled}
             />
+            {canAdd && (
+                <Tooltip label="Aggiungi il video a una playlist del tuo account YouTube">
+                    <button
+                        type="button"
+                        className="link-field-add"
+                        onClick={onAddToPlaylist}
+                        aria-label="Aggiungi il video a una playlist"
+                    >
+                        <PlaylistAddIcon />
+                    </button>
+                </Tooltip>
+            )}
             {value !== '' && !disabled && (
                 <button type="button" className="link-field-clear" onClick={() => onChange('')} aria-label="Svuota il link">
                     <CloseIcon />
@@ -948,6 +1022,52 @@ function comparablePlaylists(list: playlist.Playlist[]): string {
     )
 }
 
+// youtubeUrl legge un link di YouTube (anche m., music., youtu.be); null se
+// non lo è. Stessi controlli di youtube.PlaylistID/VideoID lato Go.
+function youtubeUrl(link: string): URL | null {
+    try {
+        const u = new URL(link.trim())
+        const host = u.hostname.toLowerCase().replace(/^www\./, '')
+        return host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be' ? u : null
+    } catch {
+        return null
+    }
+}
+
+// playlistIdOf: ID della playlist di un link di YouTube ('' se non ne ha).
+function playlistIdOf(link: string): string {
+    return youtubeUrl(link)?.searchParams.get('list') ?? ''
+}
+
+// playlistKeyOf: chiave delle impostazioni di una playlist salvata, come
+// playlistKey lato Go: quella della playlist di YouTube del link, o il nome.
+function playlistKeyOf(url: string, name: string): string {
+    const id = playlistIdOf(url)
+    return id ? 'yt:' + id : 'pl:' + name.trim()
+}
+
+// prefsSummary riassume le impostazioni di una playlist ('' se predefinite).
+function prefsSummary(p?: playlist.Prefs): string {
+    const parts: string[] = []
+    if (p?.hidden) parts.push('Nascosta')
+    if (p?.afterDownload === 'remove') parts.push('Si svuota dopo il download')
+    if (p?.afterDownload === 'copy') {
+        const verb = p.moveOnCopy ? 'si spostano' : 'si aggiungono'
+        parts.push(`Dopo il download i brani ${verb} in «${p.copyToTitle || p.copyTo}»`)
+    }
+    return parts.join(' · ')
+}
+
+// isVideoLink: il link punta a un video di YouTube (watch?v=, youtu.be/, shorts/).
+function isVideoLink(link: string): boolean {
+    const u = youtubeUrl(link)
+    if (!u) return false
+    const id = u.hostname.toLowerCase() === 'youtu.be'
+        ? u.pathname.split('/')[1]
+        : u.searchParams.get('v') ?? u.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)/)?.[1]
+    return /^[A-Za-z0-9_-]{11}$/.test(id ?? '')
+}
+
 // Ambiti delle sostituzioni Da → A, ognuno con il suo gruppo nella scheda
 // Regole (scope come in rules.Scope: vuoto = tutto il nome).
 const REPLACEMENT_SCOPES = [
@@ -1085,6 +1205,29 @@ function App() {
     // questa sessione, per non riaprirlo prima che il core la segni come vista.
     const [updatePopup, setUpdatePopup] = useState<core.UpdateView | null>(null)
     const updateShownRef = useRef('')
+    // Account Google (playlist di YouTube). googleSigningIn: accesso in corso
+    // (su desktop si completa nel browser e si può annullare). googlePicker:
+    // popup con le playlist dell'account, per importarle nelle Impostazioni
+    // ('import') o per aggiungerci il video del link ('add'); googleLists è
+    // null finché l'elenco non arriva, googleImport sono gli ID spuntati per
+    // l'importazione. pickerReqRef scarta le risposte di un popup già chiuso.
+    const [googleSigningIn, setGoogleSigningIn] = useState(false)
+    const [confirmGoogleSignOut, setConfirmGoogleSignOut] = useState(false)
+    const [googlePicker, setGooglePicker] = useState<null | 'import' | 'add'>(null)
+    const [googleLists, setGoogleLists] = useState<core.GooglePlaylistView[] | null>(null)
+    const [googleImport, setGoogleImport] = useState<Set<string>>(() => new Set())
+    const pickerReqRef = useRef(0)
+    // Impostazioni di una playlist (Impostazioni > Download, tasto ⚙):
+    // prefsTarget è la playlist aperta (key come StateResponse.playlistPrefs;
+    // ownId è il suo ID se è dell'account, quindi si può svuotare), prefsDraft
+    // le impostazioni in modifica. confirmEmpty chiede conferma prima di
+    // «Svuota ora»; emptying è l'ID della playlist che si sta svuotando.
+    const [prefsTarget, setPrefsTarget] = useState<{ key: string; title: string; ownId: string } | null>(null)
+    const [prefsDraft, setPrefsDraft] = useState<playlist.Prefs>({})
+    const [confirmEmpty, setConfirmEmpty] = useState<{ id: string; title: string } | null>(null)
+    const [emptying, setEmptying] = useState('')
+    // prefsSyncing: controllo in corso delle impostazioni sull'account Google.
+    const [prefsSyncing, setPrefsSyncing] = useState(false)
 
     // showSettingsRef rispecchia showSettings per absorbState, che gira anche
     // nei gestori di eventi registrati una sola volta (vedi folder:dropped) e al
@@ -1139,10 +1282,10 @@ function App() {
     // gestisce a parte. resetDrafts forza il riallineamento: serve al ripristino
     // dei predefiniti, che cambia proprio lo stato salvato delle bozze.
     function absorbState(next: core.StateResponse, resetDrafts = false) {
+        noteSyncRevision(next)
         setState(next)
         stateRef.current = next
-        const playlists = next.playlists ?? []
-        setSelectedPlaylist((prev) => (playlists.some((p) => p.name === prev) ? prev : (playlists[0]?.name ?? '')))
+        syncSelectedPlaylist(next)
         if (showSettingsRef.current && !resetDrafts) {
             setDraft((prev) => (prev ? ({ ...prev, startFolder: next.folder } as rules.Config) : prev))
             return
@@ -1150,9 +1293,58 @@ function App() {
         syncDrafts(next)
     }
 
+    // La playlist scelta resta quella, se c'è ancora; altrimenti la prima.
+    function syncSelectedPlaylist(s: core.StateResponse) {
+        const choices = playlistChoices(s.google?.playlists ?? [], s.playlists ?? [], s.playlistPrefs ?? {}).filter((c) => !c.separator)
+        setSelectedPlaylist((prev) => (choices.some((c) => c.value === prev) ? prev : (choices[0]?.value ?? '')))
+    }
+
+    // Stato dell'account Google aggiornato fuori dal resto (lettura delle
+    // playlist, sincronizzazione delle impostazioni con l'account). Di solito
+    // cambiano solo account e impostazioni delle playlist, e si tocca solo
+    // quello; se dall'account sono arrivate regole o playlist di un altro
+    // dispositivo si assorbe tutto lo stato, e nelle Impostazioni si
+    // riallineano anche le bozze, purché non siano state modificate nel
+    // frattempo (altrimenti vince la modifica appena fatta).
+    function absorbSynced(next: core.StateResponse) {
+        noteSyncRevision(next)
+        const prev = stateRef.current
+        const rulesChanged =
+            !!prev?.config &&
+            !!next.config &&
+            (comparableConfig(prev.config) !== comparableConfig(next.config) ||
+                comparablePlaylists(prev.playlists ?? []) !== comparablePlaylists(next.playlists ?? []))
+        if (!prev || !rulesChanged) {
+            const patch = { google: next.google, playlistPrefs: next.playlistPrefs, logs: next.logs }
+            setState((p) => (p ? ({ ...p, ...patch } as core.StateResponse) : p))
+            if (prev) syncSelectedPlaylist({ ...prev, ...patch } as core.StateResponse)
+            return
+        }
+        const draftsClean =
+            !!draftRef.current &&
+            comparableConfig(draftRef.current) === comparableConfig(prev.config) &&
+            comparablePlaylists(playlistDraftRef.current) === comparablePlaylists(prev.playlists ?? [])
+        absorbState(next)
+        if (showSettingsRef.current && draftsClean) syncDrafts(next)
+    }
+
+    // Avviso quando arrivano impostazioni cambiate su un altro dispositivo
+    // (GoogleView.syncRevision cresce). syncRevisionRef è -1 finché non si è
+    // visto il primo stato: all'avvio non si avvisa.
+    const syncRevisionRef = useRef(-1)
+    function noteSyncRevision(next: core.StateResponse) {
+        const rev = next.google?.syncRevision ?? 0
+        if (syncRevisionRef.current >= 0 && rev > syncRevisionRef.current) {
+            notify(true, 'Impostazioni aggiornate da un altro dispositivo.')
+        }
+        syncRevisionRef.current = Math.max(syncRevisionRef.current, rev)
+    }
+
     function syncDrafts(s: core.StateResponse) {
         if (s.config) setDraft(cloneConfig(s.config))
-        setPlaylistDraft((s.playlists ?? []).map((p) => ({ name: p.name, url: p.url })))
+        setPlaylistDraft(
+            (s.playlists ?? []).map((p) => ({ name: p.name, url: p.url })),
+        )
     }
 
     // Durata minima (ms) per cui lo stato "busy" resta attivo una volta partito:
@@ -1264,6 +1456,7 @@ function App() {
             } else {
                 recheckFolders()
             }
+            refreshGoogleLists()
         })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
@@ -1285,6 +1478,27 @@ function App() {
             })
             .catch((e) => notify(false, 'Impossibile richiedere il permesso: ' + String(e)))
     }
+
+    // Rilegge le playlist dell'account Google, se collegato. Un accesso
+    // scaduto scollega l'account e lo dice con un toast.
+    function refreshGoogleLists() {
+        if (!stateRef.current?.google?.connected) return
+        RefreshGooglePlaylists()
+            .then((resp) => {
+                absorbSynced(resp.state)
+                if (!resp.ok) notify(false, resp.message ?? '')
+            })
+            .catch(() => {})
+    }
+
+    // Playlist dell'account lette dal core all'avvio (o accesso scaduto).
+    useEffect(() => {
+        return onEvent('google:changed', (payload: unknown) => {
+            const next = payload as core.StateResponse
+            if (next) absorbSynced(next)
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     // Riporta nello stato solo se le cartelle impostate si trovano ancora sul disco.
     function recheckFolders() {
@@ -1432,8 +1646,13 @@ function App() {
     // Al ritorno sulla finestra ricontrolliamo che le cartelle esistano ancora
     // (nel frattempo possono essere state spostate o eliminate): aggiorniamo solo
     // gli avvisi, senza toccare anteprima e bozze. GetConfig non scansiona.
+    // Anche le playlist dell'account Google si rileggono (il core lo fa solo
+    // se l'ultima lettura non è recente): così compaiono quelle appena create.
     useEffect(() => {
-        const onFocus = () => recheckFolders()
+        const onFocus = () => {
+            recheckFolders()
+            refreshGoogleLists()
+        }
         window.addEventListener('focus', onFocus)
         return () => window.removeEventListener('focus', onFocus)
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1723,6 +1942,20 @@ function App() {
     function openSettings(tab?: SettingsTab) {
         if (tab) setSettingsTab(tab)
         setShowSettings(true)
+        syncPrefsFromAccount()
+        refreshGoogleLists()
+    }
+
+    // All'apertura delle Impostazioni si ricontrollano subito le impostazioni
+    // delle playlist salvate sull'account (cambiate da un altro dispositivo),
+    // senza busy: intanto il pannello dell'account mostra il controllo in corso.
+    function syncPrefsFromAccount() {
+        if (!stateRef.current?.google?.connected) return
+        setPrefsSyncing(true)
+        SyncSettings()
+            .then((resp) => absorbSynced(resp.state))
+            .catch(() => {})
+            .finally(() => setPrefsSyncing(false))
     }
 
     // Cambio di scheda: il contenuto riparte dall'alto.
@@ -1794,6 +2027,21 @@ function App() {
     const link = downloadLink.trim()
     const canDownloadSource = link !== '' || selectedPlaylist !== ''
     const downloadWhat = link ? 'del link' : 'della playlist'
+    // Account Google: googleAvailable = accesso possibile in questa build (su
+    // desktop servono le credenziali OAuth). Con l'account collegato e il link
+    // di un video, il campo del link offre l'aggiunta a una playlist.
+    const googleAvailable = !!state?.google?.available
+    const googleConnected = googleAvailable && !!state?.google?.connected
+    const onAddLink = googleConnected && isVideoLink(link) ? () => openGooglePicker('add') : undefined
+    // ID delle playlist già nella bozza: nel popup di importazione non si
+    // possono riaggiungere.
+    const savedPlaylistIds = new Set(playlistDraft.map((p) => playlistIdOf(p.url)).filter((id) => id !== ''))
+    // Scelta della playlist da scaricare: prima quelle dell'account Google,
+    // poi quelle salvate, senza le nascoste.
+    const accountPlaylists = googleConnected ? (state?.google?.playlists ?? []) : []
+    const playlistPrefs = state?.playlistPrefs ?? {}
+    const playlistOptions = playlistChoices(accountPlaylists, playlists, playlistPrefs)
+    const noPlaylists = playlistOptions.length === 0
     // Contatori nell'header: dopo un'elaborazione la lista `files` \u00e8 vuota
     // (i file sono stati rinominati/spostati), quindi mostreremmo "0 file".
     // Quando ci sono `results` calcoliamo i contatori da quelli, cos\u00ec l'utente
@@ -1953,6 +2201,147 @@ function App() {
         setPlaylistDraft((prev) => prev.filter((_, i) => i !== index))
     }
 
+    // Collega l'account Google: su desktop l'accesso si completa nel browser
+    // (il pannello mostra "Annulla", che ferma l'attesa del core), su Android
+    // nella schermata di Google Play Services.
+    function googleSignIn() {
+        setGoogleSigningIn(true)
+        setCancellable(true)
+        guard(async () => {
+            const resp = await GoogleSignIn()
+            absorb(resp)
+            notify(resp.ok, resp.message ?? '')
+        }).finally(() => {
+            setGoogleSigningIn(false)
+            setCancellable(false)
+        })
+    }
+
+    function googleSignOut() {
+        setConfirmGoogleSignOut(false)
+        guard(async () => {
+            const resp = await GoogleSignOut()
+            absorb(resp)
+            notify(resp.ok, resp.message ?? '')
+        })
+    }
+
+    // Apre il popup delle playlist dell'account e ne carica l'elenco (il
+    // caricamento si vede nel popup, senza busy). Se l'accesso non è più valido
+    // il core scollega l'account e il popup si chiude con l'errore.
+    async function openGooglePicker(mode: 'import' | 'add') {
+        const req = (pickerReqRef.current += 1)
+        setGooglePicker(mode)
+        setGoogleLists(null)
+        setGoogleImport(new Set())
+        try {
+            const resp = await GooglePlaylists()
+            if (req !== pickerReqRef.current) return
+            if (!resp.ok) {
+                setGooglePicker(null)
+                setState((prev) => (prev ? ({ ...prev, google: resp.state.google, logs: resp.state.logs } as core.StateResponse) : prev))
+                notify(false, resp.message ?? '')
+                return
+            }
+            setGoogleLists(resp.googlePlaylists ?? [])
+        } catch (err: any) {
+            if (req !== pickerReqRef.current) return
+            setGooglePicker(null)
+            notify(false, 'Errore: ' + (err?.message ?? String(err)))
+        }
+    }
+
+    function closeGooglePicker() {
+        pickerReqRef.current += 1
+        setGooglePicker(null)
+    }
+
+    // Aggiunge alla bozza le playlist spuntate (le righe vuote si tolgono). Il
+    // nome è il titolo su YouTube, reso unico: il download le cerca per nome.
+    function importGooglePlaylists() {
+        const chosen = (googleLists ?? []).filter((p) => googleImport.has(p.id))
+        setPlaylistDraft((prev) => {
+            const rows = prev.filter((p) => p.name.trim() !== '' || p.url.trim() !== '')
+            const names = new Set(rows.map((p) => p.name.trim()))
+            for (const p of chosen) {
+                let name = p.title.trim() || p.id
+                for (let n = 2; names.has(name); n++) name = `${p.title.trim() || p.id} (${n})`
+                names.add(name)
+                rows.push({ name, url: p.url })
+            }
+            return rows
+        })
+        closeGooglePicker()
+        notify(true, chosen.length === 1 ? '1 playlist importata.' : `${chosen.length} playlist importate.`)
+    }
+
+    // Apre le impostazioni della playlist con chiave key.
+    function openPlaylistPrefs(key: string, title: string) {
+        const id = key.startsWith('yt:') ? key.slice(3) : ''
+        const ownId = id && accountPlaylists.some((p) => p.id === id) ? id : ''
+        setPrefsDraft({ ...(playlistPrefs[key] ?? {}) })
+        setPrefsTarget({ key, title, ownId })
+    }
+
+    // Le impostazioni delle playlist cambiano anche la scelta del download
+    // (le nascoste spariscono): si riallinea la playlist selezionata.
+    function absorbPrefs(next: core.StateResponse) {
+        setState((prev) =>
+            prev ? ({ ...prev, playlistPrefs: next.playlistPrefs, logs: next.logs } as core.StateResponse) : prev,
+        )
+        if (stateRef.current) {
+            syncSelectedPlaylist({ ...stateRef.current, playlistPrefs: next.playlistPrefs } as core.StateResponse)
+        }
+    }
+
+    function savePlaylistPrefs() {
+        const target = prefsTarget
+        if (!target) return
+        const draft = { ...prefsDraft }
+        if (draft.afterDownload !== 'copy') {
+            delete draft.copyTo
+            delete draft.copyToTitle
+            delete draft.moveOnCopy
+        }
+        if (!target.ownId) delete draft.moveOnCopy
+        guard(async () => {
+            const resp = await SetPlaylistPrefs(target.key, draft as playlist.Prefs)
+            absorbPrefs(resp.state)
+            if (resp.ok) setPrefsTarget(null)
+            notify(resp.ok, resp.ok ? 'Impostazioni della playlist salvate.' : (resp.message ?? ''))
+        })
+    }
+
+    // «Svuota ora» (dopo conferma): toglie da YouTube tutti i brani della
+    // playlist, con avanzamento e Annulla nel riquadro delle playlist.
+    function emptyPlaylist() {
+        const target = confirmEmpty
+        if (!target) return
+        setConfirmEmpty(null)
+        setPrefsTarget(null)
+        setEmptying(target.id)
+        setProgress(null)
+        setCancellable(true)
+        guard(async () => {
+            const resp = await EmptyGooglePlaylist(target.id)
+            absorbSynced(resp.state)
+            notify(resp.ok, resp.message ?? '')
+        }).finally(() => {
+            setEmptying('')
+            setCancellable(false)
+            setProgress(null)
+        })
+    }
+
+    function addLinkToPlaylist(p: core.GooglePlaylistView) {
+        closeGooglePicker()
+        guard(async () => {
+            const resp = await AddLinkToPlaylist(link, p.id, p.title)
+            setState((prev) => (prev ? ({ ...prev, google: resp.state.google, logs: resp.state.logs } as core.StateResponse) : prev))
+            notify(resp.ok, resp.message ?? '')
+        })
+    }
+
     // Avvia il download del link inserito o, se il campo è vuoto, della
     // playlist selezionata. Se yt-dlp non è presente
     // chiede prima conferma con un popup: se la gestione automatica è attiva
@@ -2006,9 +2395,12 @@ function App() {
     // errori si toglie dal campo, a meno che nel frattempo non ne sia arrivato
     // un altro dagli appunti.
     async function playlistStep() {
+        const [kind, key] = [selectedPlaylist.slice(0, 3), selectedPlaylist.slice(3)]
         const resp = link
             ? await (simpleMode ? DownloadLinkAndProcess(link) : DownloadLink(link))
-            : await (simpleMode ? DownloadAndProcess(selectedPlaylist) : DownloadPlaylist(selectedPlaylist))
+            : kind === 'yt:'
+              ? await (simpleMode ? DownloadGooglePlaylistAndProcess(key) : DownloadGooglePlaylist(key))
+              : await (simpleMode ? DownloadAndProcess(key) : DownloadPlaylist(key))
         setCancellable(false)
         absorb(resp)
         if (link && resp.ok) setDownloadLink((prev) => (prev.trim() === link ? '' : prev))
@@ -2226,6 +2618,10 @@ function App() {
         } else if (updatePopup) {
             if (!busy) setUpdatePopup(null)
         } else if (showDownloadErrors) setShowDownloadErrors(false)
+        else if (confirmEmpty) setConfirmEmpty(null)
+        else if (prefsTarget) setPrefsTarget(null)
+        else if (googlePicker) setGooglePicker(null)
+        else if (confirmGoogleSignOut) setConfirmGoogleSignOut(false)
         else if (confirmDeleteOriginals) setConfirmDeleteOriginals(false)
         else if (confirmClearTags) setConfirmClearTags(false)
         else if (confirmInstallYtDlp) setConfirmInstallYtDlp(false)
@@ -2678,16 +3074,17 @@ function App() {
                                 value={downloadLink}
                                 onChange={setDownloadLink}
                                 onSubmit={() => foldersOk && downloadPlaylist()}
+                                onAddToPlaylist={onAddLink}
                                 disabled={busy}
                             />
                             <div className="download-controls" ref={downloadRowRef}>
                                 <Collapse className="playlist-pick" collapsed={link !== ''} onSettled={measureDownloadRow}>
-                                    <Tooltip label={playlists.length === 0 ? 'Nessuna playlist salvata: aggiungine una dalle Impostazioni' : 'Playlist da scaricare'}>
+                                    <Tooltip label={noPlaylists ? 'Nessuna playlist: aggiungine una dalle Impostazioni o collega il tuo account Google' : 'Playlist da scaricare'}>
                                         <PlaylistSelect
                                             value={selectedPlaylist}
-                                            options={playlists}
+                                            options={playlistOptions}
                                             onChange={setSelectedPlaylist}
-                                            disabled={busy || playlists.length === 0 || link !== ''}
+                                            disabled={busy || noPlaylists || link !== ''}
                                         />
                                     </Tooltip>
                                 </Collapse>
@@ -2796,7 +3193,7 @@ function App() {
                             </div>
                             <h2 className="simple-hero-title">Scarica la tua musica</h2>
                             <p className="simple-hero-sub">
-                                {playlists.length === 0
+                                {noPlaylists
                                     ? 'Incolla il link di un video, oppure aggiungi una playlist nelle Impostazioni.'
                                     : 'Incolla il link di un video o scegli una playlist: i brani vengono scaricati e subito rinominati, con titolo e artista scritti nei tag.'}
                             </p>
@@ -2809,6 +3206,7 @@ function App() {
                                     value={downloadLink}
                                     onChange={setDownloadLink}
                                     onSubmit={() => foldersOk && downloadPlaylist()}
+                                    onAddToPlaylist={onAddLink}
                                     disabled={busy}
                                 />
 
@@ -2820,11 +3218,11 @@ function App() {
                                     <Collapse className="simple-hero-pick" collapsed={link !== ''}>
                                         <PlaylistSelect
                                             value={selectedPlaylist}
-                                            options={playlists}
+                                            options={playlistOptions}
                                             onChange={setSelectedPlaylist}
                                             disabled={busy || link !== ''}
                                         />
-                                        {playlists.length === 0 && (
+                                        {noPlaylists && (
                                         <Tooltip label="Aggiungi una playlist nelle Impostazioni">
                                             <button
                                                 className="ghost simple-hero-add"
@@ -3078,17 +3476,155 @@ function App() {
                                         )}
                                     </div>
 
+                                    {/* Account Google: serve a leggere e modificare le playlist
+                                        di YouTube dell'utente. Senza le credenziali OAuth (solo
+                                        desktop) resta visibile e spiega cosa manca. */}
+                                        <div className="ytdlp-panel google-panel">
+                                            <div className="ytdlp-head">
+                                                <div className="ytdlp-head-info">
+                                                    <span className="google-title">
+                                                        <AccountIcon />
+                                                        Account Google
+                                                    </span>
+                                                    {!googleAvailable ? (
+                                                        <span className="ytdlp-badge google-off">Non configurato</span>
+                                                    ) : googleConnected ? (
+                                                        <span className="ytdlp-badge ytdlp-ok google-account" title="Account collegato">
+                                                            {state?.google?.email || 'Collegato'}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="ytdlp-badge google-off">Non collegato</span>
+                                                    )}
+                                                    <InfoIcon text="Collegando il tuo account l'app può leggere le tue playlist di YouTube (anche quelle private) per importarle qui, mostrarle per prime nella scelta del download, aggiungere a una playlist il video del link e, secondo le impostazioni di ogni playlist (⚙), togliere da YouTube i brani appena scaricati o aggiungerli a un'altra playlist. Puoi revocare l'accesso in qualsiasi momento con «Scollega»." />
+                                                </div>
+                                                {!googleAvailable ? null : googleConnected ? (
+                                                    <button
+                                                        className="ghost small danger"
+                                                        onClick={() => setConfirmGoogleSignOut(true)}
+                                                        disabled={busy}
+                                                    >
+                                                        Scollega
+                                                    </button>
+                                                ) : googleSigningIn && !isAndroid ? (
+                                                    <button className="danger-solid small with-icon" onClick={cancelOp}>
+                                                        <span className="btn-icon"><CloseIcon /></span>
+                                                        Annulla
+                                                    </button>
+                                                ) : (
+                                                    <button className="accent small with-icon" onClick={googleSignIn} disabled={busy}>
+                                                        <span className="btn-icon"><AccountIcon /></span>
+                                                        Collega
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {googleConnected && !state?.google?.email && (
+                                                <p className="google-hint google-sub">
+                                                    Per vedere l'indirizzo dell'account collegato, scollegalo e ricollegalo.
+                                                </p>
+                                            )}
+                                            {/* Impostazioni delle playlist condivise con gli altri
+                                                dispositivi dello stesso account (Google Drive). */}
+                                            {googleConnected && (
+                                                prefsSyncing ? (
+                                                    <p className="google-hint" role="status">
+                                                        <span className="spinner" aria-hidden="true" />
+                                                        Controllo delle impostazioni salvate sull'account…
+                                                    </p>
+                                                ) : (
+                                                    <p className={'google-hint google-sub' + (state?.google?.syncError ? ' google-sync-error' : '')}>
+                                                        {state?.google?.syncError ||
+                                                            'Regole, playlist, predefiniti e impostazioni delle playlist (⚙) sono condivisi con gli altri dispositivi collegati a questo account. Cartelle e opzioni di conversione restano di ogni dispositivo.'}
+                                                    </p>
+                                                )
+                                            )}
+                                            {!googleAvailable && (
+                                                <p className="google-hint">
+                                                    Questa versione dell'app non ha le credenziali OAuth di Google
+                                                    Cloud (internal/google/credentials_local.go): ricompilala con quelle
+                                                    del client «App desktop» per collegare l'account.
+                                                </p>
+                                            )}
+                                            {googleSigningIn && !isAndroid && (
+                                                <p className="google-hint" role="status">
+                                                    <span className="spinner" aria-hidden="true" />
+                                                    Completa l'accesso nella pagina di Google che si è aperta nel browser, poi torna qui.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                    {/* Playlist dell'account: le prime della scelta del
+                                        download, ognuna con le sue impostazioni (⚙). */}
+                                    {googleConnected && (
+                                        <div className="replacements">
+                                            <div className="replacements-head">
+                                                <span>Playlist del tuo account YouTube</span>
+                                            </div>
+                                            {accountPlaylists.length === 0 ? (
+                                                <p className="rule-empty">Il tuo account non ha ancora playlist.</p>
+                                            ) : (
+                                                <ul className="account-playlists">
+                                                    {accountPlaylists.map((p) => {
+                                                        const key = 'yt:' + p.id
+                                                        const summary = prefsSummary(playlistPrefs[key])
+                                                        return (
+                                                            <li key={p.id} className={'account-playlist' + (playlistPrefs[key]?.hidden ? ' is-hidden' : '')}>
+                                                                <span className="account-playlist-text">
+                                                                    <span className="account-playlist-title">{p.title || p.id}</span>
+                                                                    <span className="account-playlist-meta">
+                                                                        {p.count === 1 ? '1 video' : `${p.count} video`}
+                                                                        {summary && <> · <span className="account-playlist-prefs">{summary}</span></>}
+                                                                    </span>
+                                                                </span>
+                                                                {emptying === p.id ? (
+                                                                    <button className="danger-solid small with-icon" onClick={cancelOp}>
+                                                                        <span className="btn-icon"><CloseIcon /></span>
+                                                                        Annulla
+                                                                    </button>
+                                                                ) : (
+                                                                    <PrefsButton
+                                                                        summary={summary}
+                                                                        onClick={() => openPlaylistPrefs(key, p.title || p.id)}
+                                                                        disabled={busy}
+                                                                    />
+                                                                )}
+                                                                {emptying === p.id && progress && progress.total > 0 && (
+                                                                    <OpProgress
+                                                                        className="account-playlist-progress"
+                                                                        percent={Math.round((progress.done / progress.total) * 100)}
+                                                                        label={`Svuotamento · ${progress.done} / ${progress.total} brani tolti`}
+                                                                    />
+                                                                )}
+                                                            </li>
+                                                        )
+                                                    })}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="replacements">
                                         <div className="replacements-head">
-                                            <span>Playlist YouTube (nome → link)</span>
-                                            <button className="ghost small add-replacement" onClick={addPlaylistDraft} disabled={busy}>
-                                                + Aggiungi
-                                            </button>
+                                            <span>Playlist salvate (nome → link)</span>
+                                            <span className="replacements-head-actions">
+                                                {googleConnected && (
+                                                    <button
+                                                        className="ghost small with-icon"
+                                                        onClick={() => openGooglePicker('import')}
+                                                        disabled={busy}
+                                                    >
+                                                        <span className="btn-icon"><AccountIcon /></span>
+                                                        Importa dall'account
+                                                    </button>
+                                                )}
+                                                <button className="ghost small add-replacement" onClick={addPlaylistDraft} disabled={busy}>
+                                                    + Aggiungi
+                                                </button>
+                                            </span>
                                         </div>
                                         {/* Senza playlist una riga vuota è già pronta da compilare,
                                             senza dover premere prima "Aggiungi". */}
                                         {(playlistDraft.length > 0 ? playlistDraft : [{ name: '', url: '' }]).map((p, i) => (
-                                            <div className="replacement-row" key={i}>
+                                            <div className="replacement-row playlist-row" key={i}>
                                                 <input
                                                     type="text"
                                                     placeholder="Nome"
@@ -3103,6 +3639,13 @@ function App() {
                                                     value={p.url}
                                                     onChange={(e) => updatePlaylistDraft(i, 'url', e.target.value)}
                                                     disabled={busy}
+                                                />
+                                                {/* Impostazioni della playlist: si aprono solo per una
+                                                    riga compilata (nome e link). */}
+                                                <PrefsButton
+                                                    summary={prefsSummary(playlistPrefs[playlistKeyOf(p.url, p.name)])}
+                                                    onClick={() => openPlaylistPrefs(playlistKeyOf(p.url, p.name), p.name.trim())}
+                                                    disabled={busy || p.name.trim() === '' || p.url.trim() === ''}
                                                 />
                                                 <button
                                                     className="ghost small danger"
@@ -3627,6 +4170,264 @@ function App() {
                         <div className="modal-actions">
                             <button className="primary" onClick={() => setShowDownloadErrors(false)}>
                                 Chiudi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Playlist dell'account Google: da spuntare per importarle nelle
+                Impostazioni, oppure da scegliere per aggiungerci il video del link. */}
+            {googlePicker && (
+                <div className="modal-overlay" onClick={closeGooglePicker}>
+                    <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+                        <h3>{googlePicker === 'import' ? 'Importa le tue playlist' : 'Aggiungi a una playlist'}</h3>
+                        <p>
+                            {googlePicker === 'import'
+                                ? 'Scegli le playlist del tuo account YouTube da aggiungere a quelle da scaricare.'
+                                : 'Scegli la playlist del tuo account in cui aggiungere il video del link.'}
+                        </p>
+                        {googleLists === null ? (
+                            <p className="google-hint" role="status">
+                                <span className="spinner" aria-hidden="true" />
+                                Lettura delle playlist…
+                            </p>
+                        ) : googleLists.length === 0 ? (
+                            <p className="google-hint">Il tuo account non ha ancora playlist.</p>
+                        ) : (
+                            <ul className="google-list">
+                                {googleLists.map((p) => {
+                                    const saved = savedPlaylistIds.has(p.id)
+                                    const meta = [
+                                        p.count === 1 ? '1 video' : `${p.count} video`,
+                                        p.privacy === 'private' ? 'privata' : p.privacy === 'unlisted' ? 'non in elenco' : 'pubblica',
+                                    ].join(' · ')
+                                    return googlePicker === 'import' ? (
+                                        <li key={p.id}>
+                                            <label className={'google-item' + (saved ? ' is-disabled' : '')}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={saved || googleImport.has(p.id)}
+                                                    disabled={saved}
+                                                    onChange={(e) =>
+                                                        setGoogleImport((prev) => {
+                                                            const next = new Set(prev)
+                                                            if (e.target.checked) next.add(p.id)
+                                                            else next.delete(p.id)
+                                                            return next
+                                                        })
+                                                    }
+                                                />
+                                                <span className="google-item-text">
+                                                    <span className="google-item-title">{p.title}</span>
+                                                    <span className="google-item-meta">{saved ? 'Già salvata' : meta}</span>
+                                                </span>
+                                            </label>
+                                        </li>
+                                    ) : (
+                                        <li key={p.id}>
+                                            <button type="button" className="google-item" onClick={() => addLinkToPlaylist(p)}>
+                                                <span className="google-item-text">
+                                                    <span className="google-item-title">{p.title}</span>
+                                                    <span className="google-item-meta">{meta}</span>
+                                                </span>
+                                                <PlusIcon />
+                                            </button>
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        )}
+                        <div className="modal-actions">
+                            <button onClick={closeGooglePicker}>Annulla</button>
+                            {googlePicker === 'import' && (
+                                <button className="primary" onClick={importGooglePlaylists} disabled={googleImport.size === 0}>
+                                    {googleImport.size > 0 ? `Importa (${googleImport.size})` : 'Importa'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Impostazioni di una playlist della scelta del download. */}
+            {prefsTarget && (() => {
+                const connected = googleConnected
+                const canRemove = connected && prefsTarget.ownId !== ''
+                const selfId = prefsTarget.key.startsWith('yt:') ? prefsTarget.key.slice(3) : ''
+                const targets = accountPlaylists
+                    .filter((p) => p.id !== selfId)
+                    .map((p) => ({ value: p.id, label: p.title || p.id }))
+                const after = prefsDraft.afterDownload ?? ''
+                // Scegliendo l'aggiunta a un'altra playlist, per una playlist
+                // dell'account si propone di spostare (togliere anche dall'origine).
+                const setAfter = (value: string) =>
+                    setPrefsDraft((d) => ({
+                        ...d,
+                        afterDownload: value,
+                        moveOnCopy: value === 'copy' && d.moveOnCopy === undefined ? canRemove : d.moveOnCopy,
+                    }))
+                return (
+                    <div className="modal-overlay" onClick={() => setPrefsTarget(null)}>
+                        <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+                            <h3>Impostazioni di «{prefsTarget.title}»</h3>
+
+                            <CheckOption
+                                label="Nascondi dalla tendina"
+                                info="La playlist non compare più nella scelta della playlist da scaricare. Resta qui nelle Impostazioni, da dove puoi farla ricomparire."
+                                checked={!!prefsDraft.hidden}
+                                onChange={(checked) => setPrefsDraft((d) => ({ ...d, hidden: checked }))}
+                            />
+
+                            <fieldset className="prefs-group">
+                                <legend>Dopo il download</legend>
+                                <label className="radio-option">
+                                    <input type="radio" name="after" checked={after === ''} onChange={() => setAfter('')} />
+                                    <span>Non fare nulla</span>
+                                </label>
+                                <label className={'radio-option' + (canRemove ? '' : ' is-disabled')}>
+                                    <input
+                                        type="radio"
+                                        name="after"
+                                        checked={after === 'remove'}
+                                        disabled={!canRemove && after !== 'remove'}
+                                        onChange={() => setAfter('remove')}
+                                    />
+                                    <span>
+                                        Togli i brani scaricati dalla playlist su YouTube
+                                        <small>
+                                            {canRemove
+                                                ? 'La playlist fa da coda: restano solo i brani ancora da scaricare.'
+                                                : connected
+                                                  ? 'Solo per le playlist del tuo account.'
+                                                  : 'Collega l\'account Google per usarlo.'}
+                                        </small>
+                                    </span>
+                                </label>
+                                <label className={'radio-option' + (connected ? '' : ' is-disabled')}>
+                                    <input
+                                        type="radio"
+                                        name="after"
+                                        checked={after === 'copy'}
+                                        disabled={!connected && after !== 'copy'}
+                                        onChange={() => setAfter('copy')}
+                                    />
+                                    <span>
+                                        Aggiungi i brani scaricati a un'altra playlist
+                                        <small>
+                                            {connected
+                                                ? 'In fondo alla playlist scelta, senza doppioni.'
+                                                : 'Collega l\'account Google per usarlo.'}
+                                        </small>
+                                    </span>
+                                </label>
+                                {after === 'copy' && (
+                                    <Select
+                                        className="prefs-target"
+                                        value={prefsDraft.copyTo ?? ''}
+                                        options={targets}
+                                        onChange={(id) =>
+                                            setPrefsDraft((d) => ({
+                                                ...d,
+                                                copyTo: id,
+                                                copyToTitle: targets.find((t) => t.value === id)?.label ?? id,
+                                            }))
+                                        }
+                                        disabled={targets.length === 0}
+                                        placeholder={targets.length === 0 ? 'Nessun\'altra playlist nel tuo account' : 'Scegli la playlist'}
+                                    />
+                                )}
+                                {after === 'copy' && (
+                                    <CheckOption
+                                        className="prefs-move"
+                                        label="Togli anche dalla playlist di origine"
+                                        info={
+                                            canRemove
+                                                ? 'I brani si spostano: dopo essere stati aggiunti alla playlist scelta vengono tolti da questa. Se l\'aggiunta non riesce, restano qui.'
+                                                : 'Solo per le playlist del tuo account: le altre non si possono modificare.'
+                                        }
+                                        checked={canRemove && !!prefsDraft.moveOnCopy}
+                                        onChange={(checked) => setPrefsDraft((d) => ({ ...d, moveOnCopy: checked }))}
+                                        disabled={!canRemove}
+                                    />
+                                )}
+                            </fieldset>
+
+                            {prefsTarget.ownId !== '' && (
+                                <fieldset className="prefs-group">
+                                    <legend>Svuota la playlist</legend>
+                                    <div className="prefs-empty">
+                                        <span>Toglie subito da YouTube tutti i brani della playlist, anche quelli non scaricati.</span>
+                                        <button
+                                            className="ghost small danger with-icon"
+                                            onClick={() => setConfirmEmpty({ id: prefsTarget.ownId, title: prefsTarget.title })}
+                                            disabled={busy}
+                                        >
+                                            <span className="btn-icon"><TrashIcon /></span>
+                                            Svuota ora
+                                        </button>
+                                    </div>
+                                </fieldset>
+                            )}
+
+                            <div className="modal-actions">
+                                <button onClick={() => setPrefsTarget(null)} disabled={busy}>
+                                    Annulla
+                                </button>
+                                <button
+                                    className="primary"
+                                    onClick={savePlaylistPrefs}
+                                    disabled={busy || (after === 'copy' && !prefsDraft.copyTo)}
+                                >
+                                    Salva
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            })()}
+
+            {confirmEmpty && (
+                <div className="modal-overlay" onClick={() => setConfirmEmpty(null)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Svuotare «{confirmEmpty.title}»?</h3>
+                        <p>
+                            Verranno <strong>tolti da YouTube tutti i brani</strong> della playlist, anche
+                            quelli che non hai ancora scaricato. La playlist resta, vuota. L'operazione
+                            non si può annullare a cose fatte.
+                        </p>
+                        <div className="modal-actions">
+                            <button onClick={() => setConfirmEmpty(null)} disabled={busy}>
+                                Annulla
+                            </button>
+                            <button className="danger-solid" onClick={emptyPlaylist} disabled={busy}>
+                                Svuota
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {confirmGoogleSignOut && (
+                <div className="modal-overlay" onClick={() => setConfirmGoogleSignOut(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Scollegare l'account Google?</h3>
+                        <p>
+                            L'app perderà l'accesso alle tue playlist di YouTube e il permesso verrà
+                            revocato anche su Google. Le playlist del tuo account spariscono dalla
+                            scelta del download; quelle salvate qui restano, ma finché non ricolleghi
+                            l'account dopo il download non verranno svuotate né copiate.
+                        </p>
+                        <p>
+                            Regole, playlist e predefiniti restano quelli attuali su questo dispositivo,
+                            ma non si sincronizzano più con gli altri.
+                        </p>
+                        <div className="modal-actions">
+                            <button onClick={() => setConfirmGoogleSignOut(false)} disabled={busy}>
+                                Annulla
+                            </button>
+                            <button className="danger-solid" onClick={googleSignOut} disabled={busy}>
+                                Scollega
                             </button>
                         </div>
                     </div>

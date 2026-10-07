@@ -1425,6 +1425,11 @@ button.folder-missing:disabled {
     flex-shrink: 0;
 }
 
+/* Tra le righe nuove c'è un errore: pallino rosso invece che verde. */
+.update-dot.is-error {
+    background: var(--danger);
+}
+
 /* Controlli di download playlist (select + "+" + "Scarica"): stanno sotto il
    divisore, con il campo del link sopra (.download-box, su una riga propria
    del contenitore flex-wrap .actions), subito sopra i bottoni di
@@ -1536,6 +1541,35 @@ button.folder-missing:disabled {
 
 .link-field-clear:hover:not(:disabled) {
     color: var(--text);
+    background: var(--panel-alt);
+}
+
+/* Tasto "aggiungi a una playlist" (account Google collegato), a sinistra della
+   ✕: è il .tip che lo avvolge (riferimento del tooltip) a stare in posizione. */
+.link-field.has-add input {
+    padding-right: 72px;
+}
+
+.link-field > .tip {
+    position: absolute;
+    right: 37px;
+}
+
+.link-field-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary);
+}
+
+.link-field-add:hover:not(:disabled) {
     background: var(--panel-alt);
 }
 
@@ -1703,6 +1737,10 @@ main.is-simple {
     right: 9px;
 }
 
+.simple-hero .link-field > .tip {
+    right: 41px;
+}
+
 .simple-hero .link-field + .simple-hero-controls {
     margin-top: 10px;
 }
@@ -1868,6 +1906,13 @@ main.is-simple {
     font-weight: 600;
 }
 
+/* Divisorio fra gruppi di voci (playlist dell'account / salvate). */
+.select-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--line);
+}
+
 /* Larghezze specifiche per contesto d'uso. */
 .select-playlist .select-trigger {
     min-width: 160px;
@@ -1977,6 +2022,260 @@ main.is-simple {
 .ytdlp-missing {
     background: color-mix(in srgb, var(--danger) 16%, transparent);
     color: var(--danger);
+}
+
+/* Account Google (scheda Download): stessa card di yt-dlp, con il nome
+   dell'account nel badge e l'azione (Collega/Scollega) a destra. */
+.google-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.google-account {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.google-off {
+    background: color-mix(in srgb, var(--muted) 16%, transparent);
+    color: var(--muted);
+}
+
+.google-panel .ytdlp-head > button {
+    flex: none;
+    margin-left: auto;
+}
+
+.google-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--muted);
+}
+
+/* Testata delle playlist: "Importa dall'account" accanto a "+ Aggiungi". */
+.replacements-head-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Riga di una playlist salvata, con il tasto delle sue impostazioni (⚙). */
+.replacement-row.playlist-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;
+}
+
+.prefs-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 7px;
+    line-height: 0;
+    color: var(--muted);
+}
+
+.prefs-btn.is-on {
+    color: var(--primary);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* Playlist dell'account nella scheda Download: una riga per playlist con
+   nome, numero di video, riassunto delle impostazioni e tasto ⚙. */
+.account-playlists {
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.account-playlist {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--input-bg);
+}
+
+.account-playlist.is-hidden .account-playlist-title {
+    color: var(--muted);
+}
+
+.account-playlist-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.account-playlist-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.account-playlist-meta {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.account-playlist-prefs {
+    color: var(--primary);
+}
+
+.account-playlist-progress {
+    flex-basis: 100%;
+}
+
+/* Popup delle impostazioni di una playlist. */
+.prefs-group {
+    margin: 16px 0 0;
+    padding: 0;
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.prefs-group legend {
+    margin-bottom: 8px;
+    padding: 0;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.radio-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.radio-option input {
+    flex: none;
+    width: auto;
+    min-height: 0;
+    margin: 0.2em 0 0;
+    cursor: inherit;
+}
+
+.radio-option small {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.radio-option.is-disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.prefs-target {
+    align-self: flex-start;
+    margin-left: 26px;
+}
+
+.prefs-target .select-trigger {
+    min-width: 220px;
+}
+
+.prefs-empty {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.prefs-empty > button {
+    flex: none;
+}
+
+/* Elenco delle playlist dell'account nel popup (importazione o aggiunta). */
+.google-list {
+    list-style: none;
+    margin: 0 0 18px;
+    padding: 0;
+    max-height: 46vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.google-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.google-item:hover:not(.is-disabled) {
+    border-color: var(--primary);
+}
+
+.google-item input {
+    flex: none;
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    cursor: inherit;
+}
+
+.google-item.is-disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.google-item > svg {
+    flex: none;
+    margin-left: auto;
+    color: var(--primary);
+}
+
+.google-item-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.google-item-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.google-item-meta {
+    font-size: 12px;
+    color: var(--muted);
 }
 
 /* Loader mostrato al posto del badge mentre, riattivata la gestione autonoma,
@@ -2694,4 +2993,19 @@ th {
    tempo resta, perché è la sua animazione a chiudere il toast. */
 @media (prefers-reduced-motion: reduce) {
     .toast { animation: none; }
+}
+
+/* Riga sotto l'account collegato (canale, numero di playlist): testo in linea. */
+.google-hint.google-sub {
+    display: block;
+}
+
+/* «Togli anche dalla playlist di origine», sotto la scelta della destinazione. */
+.prefs-move {
+    margin-left: 26px;
+}
+
+/* Sincronizzazione delle impostazioni delle playlist non riuscita. */
+.google-hint.google-sync-error {
+    color: var(--warn);
 }

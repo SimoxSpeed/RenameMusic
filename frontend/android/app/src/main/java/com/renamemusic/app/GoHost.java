@@ -232,6 +232,27 @@ final class GoHost implements Host {
         }
     }
 
+    /** Account Google per la YouTube Data API: vedi {@link GoogleAuth}. */
+    @Override
+    public String googleToken(boolean interactive) {
+        ClassLoader previousLoader = useAppClassLoader();
+        try {
+            return GoogleAuth.token(context, interactive);
+        } finally {
+            Thread.currentThread().setContextClassLoader(previousLoader);
+        }
+    }
+
+    @Override
+    public void googleClearToken(String token) {
+        ClassLoader previousLoader = useAppClassLoader();
+        try {
+            GoogleAuth.clearToken(context, token);
+        } finally {
+            Thread.currentThread().setContextClassLoader(previousLoader);
+        }
+    }
+
     /** L'APK sta nella cartella privata dell'app: lo esponiamo con il FileProvider. */
     private void launchInstaller(String path) {
         Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", new File(path));

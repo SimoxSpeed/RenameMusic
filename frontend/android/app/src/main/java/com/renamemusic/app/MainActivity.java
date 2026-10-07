@@ -1,16 +1,30 @@
 package com.renamemusic.app;
 
+import android.app.PendingIntent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
+import androidx.activity.result.contract.ActivityResultContracts;
+
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.PluginHandle;
 import com.getcapacitor.WebViewListener;
 
 public class MainActivity extends BridgeActivity {
+    /**
+     * Schermata di consenso di Google (scelta dell'account e permesso su
+     * YouTube), aperta da GoogleAuth. Va registrata prima dell'avvio
+     * dell'Activity: se viene ricreata a metà, il risultato arriva comunque a
+     * GoogleAuth.
+     */
+    private final ActivityResultLauncher<IntentSenderRequest> googleConsent =
+        registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), GoogleAuth::onConsentResult);
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         CrashLog.install(this);
@@ -19,6 +33,18 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(RenameMusicPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.addWebViewListener(new RenderRecovery(this));
+        GoogleAuth.attach(this);
+    }
+
+    @Override
+    public void onDestroy() {
+        GoogleAuth.detach(this);
+        super.onDestroy();
+    }
+
+    /** Chiamata da GoogleAuth sul thread principale. */
+    void launchGoogleConsent(PendingIntent intent) {
+        googleConsent.launch(new IntentSenderRequest.Builder(intent).build());
     }
 
     /** Con il focus si possono leggere gli appunti: vedi RenameMusicPlugin.onWindowFocused. */

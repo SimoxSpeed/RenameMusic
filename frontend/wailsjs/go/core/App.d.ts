@@ -4,6 +4,8 @@ import {core} from '../models';
 import {rules} from '../models';
 import {playlist} from '../models';
 
+export function AddLinkToPlaylist(arg1:string,arg2:string,arg3:string):Promise<core.ActionResponse>;
+
 export function Cancel():Promise<core.ActionResponse>;
 
 export function CheckUpdate():Promise<core.ActionResponse>;
@@ -18,15 +20,27 @@ export function ClearTags():Promise<core.ActionResponse>;
 
 export function DownloadAndProcess(arg1:string):Promise<core.ActionResponse>;
 
+export function DownloadGooglePlaylist(arg1:string):Promise<core.ActionResponse>;
+
+export function DownloadGooglePlaylistAndProcess(arg1:string):Promise<core.ActionResponse>;
+
 export function DownloadLink(arg1:string):Promise<core.ActionResponse>;
 
 export function DownloadLinkAndProcess(arg1:string):Promise<core.ActionResponse>;
 
 export function DownloadPlaylist(arg1:string):Promise<core.ActionResponse>;
 
+export function EmptyGooglePlaylist(arg1:string):Promise<core.ActionResponse>;
+
 export function GetConfig():Promise<core.ActionResponse>;
 
 export function GetState():Promise<core.ActionResponse>;
+
+export function GooglePlaylists():Promise<core.ActionResponse>;
+
+export function GoogleSignIn():Promise<core.ActionResponse>;
+
+export function GoogleSignOut():Promise<core.ActionResponse>;
 
 export function InstallFFmpeg():Promise<core.ActionResponse>;
 
@@ -39,6 +53,8 @@ export function MarkUpdateSeen(arg1:string):Promise<core.ActionResponse>;
 export function OpenFolder(arg1:string):Promise<core.ActionResponse>;
 
 export function ProcessAll(arg1:Array<string>):Promise<core.ActionResponse>;
+
+export function RefreshGooglePlaylists():Promise<core.ActionResponse>;
 
 export function ResetConfig():Promise<core.ActionResponse>;
 
@@ -56,11 +72,15 @@ export function SetFolder(arg1:string):Promise<core.ActionResponse>;
 
 export function SetOptions(arg1:boolean,arg2:string,arg3:boolean):Promise<core.ActionResponse>;
 
+export function SetPlaylistPrefs(arg1:string,arg2:playlist.Prefs):Promise<core.ActionResponse>;
+
 export function SetPlaylists(arg1:Array<playlist.Playlist>):Promise<core.ActionResponse>;
 
 export function SetWatchEnabled(arg1:boolean):Promise<core.ActionResponse>;
 
 export function SetYtDlpConfig(arg1:boolean,arg2:string):Promise<core.ActionResponse>;
+
+export function SyncSettings():Promise<core.ActionResponse>;
 
 export function UninstallFFmpeg():Promise<core.ActionResponse>;
 

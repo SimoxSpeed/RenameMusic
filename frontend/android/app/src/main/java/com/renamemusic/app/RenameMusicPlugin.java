@@ -62,7 +62,8 @@ public class RenameMusicPlugin extends Plugin {
     private static final Set<String> LONG_METHODS = new HashSet<>(
         Arrays.asList(
             "ProcessAll", "ClearTags", "DownloadPlaylist", "DownloadAndProcess", "DownloadLink",
-            "DownloadLinkAndProcess", "InstallYtDlp", "InstallUpdate"
+            "DownloadLinkAndProcess", "DownloadGooglePlaylist", "DownloadGooglePlaylistAndProcess", "EmptyGooglePlaylist",
+            "InstallYtDlp", "InstallUpdate"
         )
     );
 
@@ -151,8 +152,10 @@ public class RenameMusicPlugin extends Plugin {
     private static String titleFor(String method) {
         switch (method) {
             case "DownloadPlaylist":
+            case "DownloadGooglePlaylist":
                 return "Download della playlist in corso";
             case "DownloadAndProcess":
+            case "DownloadGooglePlaylistAndProcess":
                 return "Download e conversione della playlist in corso";
             case "DownloadLink":
                 return "Download in corso";
@@ -160,6 +163,8 @@ public class RenameMusicPlugin extends Plugin {
                 return "Download e conversione in corso";
             case "ClearTags":
                 return "Cancellazione dei tag in corso";
+            case "EmptyGooglePlaylist":
+                return "Svuotamento della playlist in corso";
             case "InstallYtDlp":
                 return "Aggiornamento di yt-dlp in corso";
             case "InstallUpdate":

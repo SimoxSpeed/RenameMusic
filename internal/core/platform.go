@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"os"
 
@@ -87,6 +88,26 @@ type Updater interface {
 	// Cleanup rimuove i residui di un aggiornamento precedente. È chiamata una
 	// volta all'avvio, prima del primo controllo.
 	Cleanup()
+}
+
+// GoogleAuth astrae l'accesso all'account Google dell'utente, per gestire le
+// sue playlist con la YouTube Data API (vedi google.go). Su desktop è il flusso
+// OAuth nel browser di sistema (google.DesktopAuth), su Android passa da Google
+// Play Services. Token e Invalidate sono usati dal client dell'API; i metodi
+// che richiedono un nuovo accesso restituiscono google.ErrSignedOut.
+type GoogleAuth interface {
+	// Configured indica se l'accesso è disponibile in questa build (su
+	// desktop servono le credenziali del client OAuth).
+	Configured() bool
+	// SignIn chiede all'utente di accedere e concedere il permesso; è
+	// bloccante fino al termine (o all'annullamento di ctx).
+	SignIn(ctx context.Context) error
+	// Token restituisce un access token valido, senza interazione.
+	Token(ctx context.Context) (string, error)
+	// Invalidate scarta un access token rifiutato dall'API.
+	Invalidate(token string)
+	// SignOut revoca l'accesso e dimentica le credenziali.
+	SignOut(ctx context.Context) error
 }
 
 // ExecYtDlp è la gestione desktop di yt-dlp: un eseguibile esterno lanciato

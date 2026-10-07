@@ -42,6 +42,15 @@ type Host interface {
 	// se prima serve il permesso "installa app sconosciute" (l'installazione
 	// riparte da sola al ritorno nell'app), altrimenti il messaggio d'errore.
 	InstallApk(path string) string
+	// GoogleToken chiede a Google Play Services un access token per la
+	// YouTube Data API (vedi google.go). Con interactive mostra, se serve, la
+	// scelta dell'account e la richiesta del permesso; senza, risponde solo se
+	// il permesso è già stato concesso. Restituisce un oggetto JSON
+	// {"token": ..., "error": ..., "signedOut": bool}. È bloccante.
+	GoogleToken(interactive bool) string
+	// GoogleClearToken toglie un access token dalla cache di Play Services
+	// (rifiutato dall'API o revocato).
+	GoogleClearToken(token string)
 }
 
 var (
@@ -66,7 +75,7 @@ func Start(dataDir string, host Host) error {
 	}
 	settings.SetDir(dataDir)
 	ytdlp = &androidYtDlp{host: host}
-	opts := core.Options{Host: mobileHost{host: host}, YtDlp: ytdlp}
+	opts := core.Options{Host: mobileHost{host: host}, YtDlp: ytdlp, Google: androidGoogle{host: host}}
 	if checkUpdates {
 		opts.Updater = androidUpdater{host: host}
 	}

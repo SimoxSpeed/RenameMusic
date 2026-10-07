@@ -34,6 +34,8 @@ func (h *fakeHost) YtDlpRun(argsJSON string) string {
 func (h *fakeHost) YtDlpReady() bool    { return true }
 func (h *fakeHost) YtDlpUpdate() string { return "" }
 func (h *fakeHost) InstallApk(string) string { return "" }
+func (h *fakeHost) GoogleToken(bool) string  { return `{"signedOut":true}` }
+func (h *fakeHost) GoogleClearToken(string)  {}
 
 // TestCallDispatch avvia il core con un Host finto e verifica che Call invochi
 // i metodi per nome con argomenti/risultati JSON, come fa il plugin Kotlin.

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"renamemusic/internal/playlist"
 	"renamemusic/internal/rules"
@@ -17,6 +18,7 @@ const (
 	stateFile            = "state.json"
 	playlistsFile        = "playlists.json"
 	defaultPlaylistsFile = "defaults-playlists.json"
+	playlistPrefsFile    = "playlist-prefs.json"
 	filePerm             = 0o644
 	dirPermMode          = 0o755
 
@@ -46,6 +48,26 @@ type State struct {
 	// mostrato il popup "nuova versione disponibile": così compare una sola
 	// volta per versione.
 	UpdateSeenVersion string `json:"updateSeenVersion,omitempty"`
+
+	// GoogleConnected: l'utente ha collegato il proprio account Google (le
+	// credenziali le conserva la piattaforma, vedi core.GoogleAuth);
+	// GoogleEmail è l'indirizzo dell'account, mostrato nelle Impostazioni.
+	GoogleConnected bool   `json:"googleConnected,omitempty"`
+	GoogleEmail     string `json:"googleEmail,omitempty"`
+
+	// SyncUpdated è, per ogni sezione delle impostazioni sincronizzate con
+	// l'account Google (regole, predefiniti, playlist, ...: vedi
+	// core/settingssync.go), l'istante dell'ultima modifica; SyncDirty le
+	// sezioni cambiate e non ancora caricate. Fra dispositivi vince la
+	// versione più recente, sezione per sezione.
+	SyncUpdated map[string]time.Time `json:"syncUpdated,omitempty"`
+	SyncDirty   map[string]bool      `json:"syncDirty,omitempty"`
+}
+
+// GoogleTokenPath è il file in cui l'app desktop conserva (cifrato) il token
+// di accesso all'account Google.
+func GoogleTokenPath() (string, error) {
+	return pathFor("google-token.dat")
 }
 
 // DefaultState è lo stato al primo avvio: nessuna cartella, destinazione =
@@ -276,6 +298,44 @@ func savePlaylists(name string, list []playlist.Playlist) error {
 		return err
 	}
 	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(path, data, filePerm)
+}
+
+// LoadPlaylistPrefs restituisce le impostazioni delle singole playlist della
+// scelta del download (chiave -> impostazioni, vedi core.playlistKey). Non
+// fanno parte dei predefiniti: come le cartelle, si gestiscono a parte.
+func LoadPlaylistPrefs() (map[string]playlist.Prefs, error) {
+	prefs := map[string]playlist.Prefs{}
+	path, err := pathFor(playlistPrefsFile)
+	if err != nil {
+		return prefs, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return prefs, nil
+		}
+		return prefs, err
+	}
+	if err := json.Unmarshal(data, &prefs); err != nil {
+		return map[string]playlist.Prefs{}, err
+	}
+	return prefs, nil
+}
+
+// SavePlaylistPrefs persiste le impostazioni delle singole playlist.
+func SavePlaylistPrefs(prefs map[string]playlist.Prefs) error {
+	path, err := pathFor(playlistPrefsFile)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), dirPermMode); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(prefs, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -31,6 +31,8 @@ final class MediaRescan {
             case "DownloadAndProcess":
             case "DownloadLink":
             case "DownloadLinkAndProcess":
+            case "DownloadGooglePlaylist":
+            case "DownloadGooglePlaylistAndProcess":
                 return true;
             default:
                 return false;

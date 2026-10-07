@@ -19,6 +19,36 @@ function Icon({ size = 16, strokeWidth = 2, children }: {
     )
 }
 
+// AccountIcon: account Google collegato (Impostazioni > Download).
+export function AccountIcon() {
+    return (
+        <Icon>
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21a8 8 0 0 1 16 0" />
+        </Icon>
+    )
+}
+
+// PlaylistAddIcon: aggiunta del video del link a una playlist dell'account.
+export function PlaylistAddIcon() {
+    return (
+        <Icon>
+            <path d="M4 6h11M4 11h11M4 16h7" />
+            <path d="M18 13v8M14 17h8" />
+        </Icon>
+    )
+}
+
+// QueueIcon: playlist usata come coda, svuotata su YouTube dopo il download.
+export function QueueIcon() {
+    return (
+        <Icon>
+            <path d="M4 6h10M4 11h10M4 16h6" />
+            <path d="M15 16l2.5 2.5L22 14" />
+        </Icon>
+    )
+}
+
 // DownloadIcon: etichetta "Scarica playlist".
 export function DownloadIcon() {
     return (

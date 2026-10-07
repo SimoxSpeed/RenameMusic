@@ -72,6 +72,66 @@ export namespace core {
 	        this.artist = source["artist"];
 	    }
 	}
+	export class GooglePlaylistView {
+	    id: string;
+	    title: string;
+	    url: string;
+	    count: number;
+	    privacy: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GooglePlaylistView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.url = source["url"];
+	        this.count = source["count"];
+	        this.privacy = source["privacy"];
+	    }
+	}
+	export class GoogleView {
+	    available: boolean;
+	    connected: boolean;
+	    email: string;
+	    playlists: GooglePlaylistView[];
+	    syncError?: string;
+	    syncRevision: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoogleView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.connected = source["connected"];
+	        this.email = source["email"];
+	        this.playlists = this.convertValues(source["playlists"], GooglePlaylistView);
+	        this.syncError = source["syncError"];
+	        this.syncRevision = source["syncRevision"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class UpdateView {
 	    version: string;
 	    notes: string;
@@ -154,6 +214,8 @@ export namespace core {
 	    ffmpegManaged: boolean;
 	    appVersion: string;
 	    update?: UpdateView;
+	    google: GoogleView;
+	    playlistPrefs: Record<string, playlist.Prefs>;
 	
 	    static createFrom(source: any = {}) {
 	        return new StateResponse(source);
@@ -182,6 +244,8 @@ export namespace core {
 	        this.ffmpegManaged = source["ffmpegManaged"];
 	        this.appVersion = source["appVersion"];
 	        this.update = this.convertValues(source["update"], UpdateView);
+	        this.google = this.convertValues(source["google"], GoogleView);
+	        this.playlistPrefs = this.convertValues(source["playlistPrefs"], playlist.Prefs, true);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -209,6 +273,7 @@ export namespace core {
 	    results?: ResultView[];
 	    prompts?: TagPromptView[];
 	    downloadErrors?: DownloadErrorView[];
+	    googlePlaylists?: GooglePlaylistView[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ActionResponse(source);
@@ -222,6 +287,7 @@ export namespace core {
 	        this.results = this.convertValues(source["results"], ResultView);
 	        this.prompts = this.convertValues(source["prompts"], TagPromptView);
 	        this.downloadErrors = this.convertValues(source["downloadErrors"], DownloadErrorView);
+	        this.googlePlaylists = this.convertValues(source["googlePlaylists"], GooglePlaylistView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -248,6 +314,8 @@ export namespace core {
 	
 	
 	
+	
+	
 
 }
 
@@ -265,6 +333,26 @@ export namespace playlist {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.url = source["url"];
+	    }
+	}
+	export class Prefs {
+	    hidden?: boolean;
+	    afterDownload?: string;
+	    copyTo?: string;
+	    copyToTitle?: string;
+	    moveOnCopy?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Prefs(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hidden = source["hidden"];
+	        this.afterDownload = source["afterDownload"];
+	        this.copyTo = source["copyTo"];
+	        this.copyToTitle = source["copyToTitle"];
+	        this.moveOnCopy = source["moveOnCopy"];
 	    }
 	}
 
