@@ -128,6 +128,11 @@ type App struct {
 	currentTags map[string]rename.TagInfo
 	logs        []LogEntry
 
+	// suggestions è la cache delle ricerche su MusicBrainz di SuggestTrackNames
+	// (ricerca -> nomi trovati, vuoto = nessun risultato attendibile), così la
+	// ricerca fatta in anticipo per il popup successivo non si ripete.
+	suggestions map[string][]string
+
 	// playlists sono le playlist YouTube salvate (nome -> link), gestite in
 	// Impostazioni e usate da DownloadPlaylist. Persistite a parte
 	// (playlists.json): non sono regole di rinomina.

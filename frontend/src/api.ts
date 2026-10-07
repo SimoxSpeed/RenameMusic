@@ -79,6 +79,7 @@ export const SetYtDlpConfig = (managed: boolean, path: string): Action => call('
 export const ChooseYtDlpFile = (): Promise<string> => call('ChooseYtDlpFile')
 export const ResolveTagPrompt = (path: string, useEdited: boolean, editedBase: string): Action =>
     call('ResolveTagPrompt', path, useEdited, editedBase)
+export const SuggestTrackNames = (path: string): Promise<core.TrackSuggestions> => call('SuggestTrackNames', path)
 export const CheckUpdate = (): Action => call('CheckUpdate')
 export const MarkUpdateSeen = (version: string): Action => call('MarkUpdateSeen', version)
 export const InstallUpdate = (): Action => call('InstallUpdate')

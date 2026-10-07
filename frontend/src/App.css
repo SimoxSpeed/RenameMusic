@@ -2855,6 +2855,115 @@ th {
     color: var(--muted);
 }
 
+/* Ricerca su MusicBrainz in corso: il popup mostra solo l'attesa. */
+.tag-prompt-searching {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tag-prompt-searching > span:last-child {
+    min-width: 0;
+    word-break: break-word;
+}
+
+/* Esito della ricerca su MusicBrainz sotto il campo, con il ritorno al nome di
+   prima come link. */
+.tag-prompt-suggest {
+    margin: -10px 0 12px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.tag-prompt-suggest.is-error {
+    color: var(--warn);
+}
+
+.tag-prompt-restore {
+    min-height: 0;
+    border: none;
+    padding: 0;
+    background: none;
+    color: var(--accent);
+    font-size: inherit;
+    text-decoration: underline;
+}
+
+.tag-prompt-restore:disabled {
+    color: var(--muted);
+    text-decoration: none;
+    cursor: default;
+    opacity: 1;
+}
+
+/* Pannello dei brani trovati su MusicBrainz (es. stesso titolo, artisti
+   diversi): ricerca in cima, elenco sotto. Un tocco mette il brano nel campo;
+   quello nel campo è evidenziato. */
+.tag-prompt-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 0 16px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+}
+
+.tag-prompt-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+}
+
+.tag-prompt-filter input {
+    flex: 1;
+    min-width: 0;
+}
+
+.tag-prompt-count {
+    flex: none;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.tag-prompt-empty {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    word-break: break-word;
+}
+
+.tag-prompt-options {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 30vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tag-prompt-option {
+    width: 100%;
+    min-height: 0;
+    padding: 7px 11px;
+    border-radius: 8px;
+    background: var(--input-bg);
+    text-align: left;
+    word-break: break-word;
+}
+
+.tag-prompt-option:hover:not(:disabled),
+.tag-prompt-option.is-selected {
+    border-color: var(--primary);
+}
+
+.tag-prompt-option.is-selected {
+    background: color-mix(in srgb, var(--primary) 12%, var(--input-bg));
+}
+
 /* Aggiornamento dell'app. Pallino sul bottone "Impostazioni" quando c'è una
    nuova versione (il popup compare da solo una volta sola: il pallino ricorda
    che l'aggiornamento resta disponibile). */

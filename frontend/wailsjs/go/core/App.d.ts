@@ -80,6 +80,8 @@ export function SetWatchEnabled(arg1:boolean):Promise<core.ActionResponse>;
 
 export function SetYtDlpConfig(arg1:boolean,arg2:string):Promise<core.ActionResponse>;
 
+export function SuggestTrackNames(arg1:string):Promise<core.TrackSuggestions>;
+
 export function SyncSettings():Promise<core.ActionResponse>;
 
 export function UninstallFFmpeg():Promise<core.ActionResponse>;

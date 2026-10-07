@@ -31,6 +31,7 @@ import {
     SetYtDlpConfig,
     ChooseYtDlpFile,
     ResolveTagPrompt,
+    SuggestTrackNames,
     CheckUpdate,
     MarkUpdateSeen,
     InstallUpdate,
@@ -85,6 +86,7 @@ import {
     RefreshIcon,
     RemoveIcon,
     RulesIcon,
+    SearchIcon,
     SettingsIcon,
     TagOffIcon,
     TrashIcon,
@@ -114,6 +116,22 @@ type TagPrompt = {
     // sconosciuti); previewBase è il nome proposto, da cui parte il popup.
     review: boolean
     previewBase: string
+}
+
+// foldText porta un testo in minuscolo e senza accenti, per cercarlo
+// ("beyonce" trova "Beyoncé").
+function foldText(s: string): string {
+    return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
+// PromptSearch: ricerca su MusicBrainz per il popup di una TagPrompt. names
+// sono i nomi trovati, dal più probabile; error il motivo se non è riuscita;
+// skipped se l'utente non l'ha aspettata.
+type PromptSearch = {
+    loading: boolean
+    names: string[]
+    error: string
+    skipped?: boolean
 }
 
 // promptsOf estrae dalla risposta di una conversione le tracce da confermare
@@ -1231,6 +1249,7 @@ function cloneConfig(cfg: rules.Config): rules.Config {
         replacements: (cfg.replacements ?? []).map((r) => ({ from: r.from, to: r.to, scope: r.scope })),
         artistExceptions: [...(cfg.artistExceptions ?? [])],
         simpleMode: !!cfg.simpleMode,
+        musicBrainz: !!cfg.musicBrainz,
     } as rules.Config
 }
 
@@ -1433,6 +1452,17 @@ function App() {
     // promptDraft: nome modificabile nell'input del popup, inizializzato dal nome
     // originale della traccia in testa alla coda.
     const [promptDraft, setPromptDraft] = useState('')
+    // promptSearch: ricerca su MusicBrainz della traccia in testa alla coda
+    // (SuggestTrackNames): finché è in corso il popup mostra solo l'attesa,
+    // poi il campo con i nomi trovati (o l'errore). null = nessuna ricerca
+    // (disattivata). suggestionsRef: una ricerca per traccia, condivisa fra la
+    // ricerca in anticipo e il popup; stopSearchRef interrompe l'attesa
+    // ("Salta ricerca": il risultato che arriva dopo si ignora).
+    const [promptSearch, setPromptSearch] = useState<PromptSearch | null>(null)
+    const suggestionsRef = useRef(new Map<string, Promise<core.TrackSuggestions>>())
+    const stopSearchRef = useRef<(() => void) | null>(null)
+    // promptFilter: testo cercato fra i brani trovati su MusicBrainz.
+    const [promptFilter, setPromptFilter] = useState('')
     // downloadErrors: video di playlist non scaricati nell'ultimo download (con
     // dettaglio dell'errore). Popolato dalla risposta di DownloadPlaylist; un
     // badge nell'area download apre il modale che li elenca (showDownloadErrors).
@@ -1935,13 +1965,57 @@ function App() {
 
     // Quando cambia la traccia in testa alla coda, reimpostiamo l'input del popup
     // al suo nome originale (l'utente riparte dal nome da correggere) o, per una
-    // traccia selezionata da rivedere, al nome proposto dall'anteprima.
+    // traccia selezionata da rivedere, al nome proposto dall'anteprima. Se è
+    // attiva, prima del campo c'è la ricerca su MusicBrainz: il primo nome
+    // trovato va nell'input, gli altri restano da scegliere. Finita questa,
+    // parte quella in anticipo per la traccia successiva (MusicBrainz accetta
+    // una richiesta al secondo: così non rallenta quella che si sta aspettando).
     const headPromptPath = tagPrompts[0]?.path
+    const musicBrainzOn = !!state?.config?.musicBrainz
     useEffect(() => {
         const head = tagPrompts[0]
         setPromptDraft(head ? (head.review ? head.previewBase : head.originalBase) : '')
+        setPromptFilter('')
+        if (!head || !musicBrainzOn) {
+            setPromptSearch(null)
+            return
+        }
+        setPromptSearch({ loading: true, names: [], error: '' })
+        let current = true
+        stopSearchRef.current = () => {
+            current = false
+        }
+        const next = tagPrompts[1]
+        suggestFor(head.path).then((res) => {
+            if (next) void suggestFor(next.path)
+            if (!current) return
+            const names = res.names ?? []
+            if (names.length > 0) setPromptDraft(names[0])
+            setPromptSearch({ loading: false, names, error: res.error ?? '' })
+        })
+        return () => {
+            current = false
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [headPromptPath])
+
+    // suggestFor avvia (una volta sola per traccia) la ricerca su MusicBrainz.
+    function suggestFor(path: string): Promise<core.TrackSuggestions> {
+        let pending = suggestionsRef.current.get(path)
+        if (!pending) {
+            pending = SuggestTrackNames(path).catch(
+                (err) => ({ names: [], error: err?.message ?? String(err) }) as core.TrackSuggestions,
+            )
+            suggestionsRef.current.set(path, pending)
+        }
+        return pending
+    }
+
+    // "Salta ricerca": il popup mostra subito il campo, col nome di prima.
+    function skipPromptSearch() {
+        stopSearchRef.current?.()
+        setPromptSearch({ loading: false, names: [], error: '', skipped: true })
+    }
 
     // Attiva/disattiva l'aggiornamento automatico. È un semplice cambio di
     // impostazione (avvia/ferma il watcher, nessuna scansione): niente busy a
@@ -2090,6 +2164,7 @@ function App() {
         const head = tagPrompts[0]
         if (!head) return
         const edited = useEdited ? promptDraft : ''
+        suggestionsRef.current.delete(head.path)
         // Rimuoviamo subito il popup dalla coda (mostra l'eventuale successivo);
         // la conversione prosegue in background e ne aggiungiamo l'esito.
         setTagPrompts((prev) => prev.slice(1))
@@ -3587,6 +3662,13 @@ function App() {
                                         onChange={(checked) => setDraft({ ...draft, simpleMode: checked } as rules.Config)}
                                         disabled={busy}
                                     />
+                                    <CheckOption
+                                        label="Cerca titolo e artista su MusicBrainz"
+                                        info="Quando dal nome di una traccia non si capiscono titolo e artista (o la segni da rivedere), il popup propone il nome trovato su musicbrainz.org al posto di quello attuale. Per la ricerca il nome della traccia viene inviato a MusicBrainz."
+                                        checked={!!draft.musicBrainz}
+                                        onChange={(checked) => setDraft({ ...draft, musicBrainz: checked } as rules.Config)}
+                                        disabled={busy}
+                                    />
                                     <hr className="settings-divider" />
                                     <div className="settings-folders">{folderSettings}</div>
                                 </section>
@@ -4382,29 +4464,87 @@ function App() {
                     : titleUnknown
                       ? 'il titolo'
                       : 'l’artista'
+                const searching = !!promptSearch?.loading
+                const found = promptSearch?.names ?? []
+                const filterWords = foldText(promptFilter).split(/\s+/).filter(Boolean)
+                const shown = found.filter((name) => {
+                    const folded = foldText(name)
+                    return filterWords.every((w) => folded.includes(w))
+                })
+                const originalDraft = head.review ? head.previewBase : head.originalBase
+                const queue = tagPrompts.length > 1 && (
+                    <p className="tag-prompt-queue">Altre {tagPrompts.length - 1} tracce in attesa di una scelta.</p>
+                )
+                if (searching) {
+                    return (
+                        <div className="modal-overlay">
+                            <div className="modal" onClick={(e) => e.stopPropagation()}>
+                                <h3>{head.review ? 'Traccia da rivedere' : 'Traccia non rinominabile'}</h3>
+                                <p className="tag-prompt-searching" role="status">
+                                    <span className="spinner" aria-hidden="true" />
+                                    <span>
+                                        Ricerca di <strong>{head.originalBase}</strong> su MusicBrainz…
+                                    </span>
+                                </p>
+                                {queue}
+                                <div className="modal-actions">
+                                    <button onClick={skipPromptSearch}>Salta ricerca</button>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                }
                 return (
                     <div className="modal-overlay">
                         <div className="modal" onClick={(e) => e.stopPropagation()}>
                             {head.review ? (
                                 <>
                                     <h3>Traccia da rivedere</h3>
-                                    <p>
-                                        Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
-                                        sotto è quello proposto dall'anteprima (titolo <strong>{head.title}</strong>,
-                                        artista <strong>{head.artist}</strong>): puoi{' '}
-                                        <strong>correggerlo</strong> (i tag verranno riestratti da esso) oppure
-                                        convertire la traccia come in anteprima.
-                                    </p>
+                                    {found.length > 0 ? (
+                                        <p>
+                                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
+                                            sotto è quello trovato su MusicBrainz (l'anteprima proponeva titolo{' '}
+                                            <strong>{head.title}</strong>, artista <strong>{head.artist}</strong>):
+                                            controllalo e conferma,{' '}
+                                            {found.length > 1 && 'scegline un altro dall’elenco, '}
+                                            <strong>correggilo</strong> (i tag verranno riestratti da esso) oppure
+                                            converti la traccia come in anteprima.
+                                        </p>
+                                    ) : (
+                                        <p>
+                                            Hai scelto di rivedere questa traccia prima della conversione. Il nome qui
+                                            sotto è quello proposto dall'anteprima (titolo <strong>{head.title}</strong>,
+                                            artista <strong>{head.artist}</strong>): puoi{' '}
+                                            <strong>correggerlo</strong> (i tag verranno riestratti da esso) oppure
+                                            convertire la traccia come in anteprima.
+                                        </p>
+                                    )}
                                 </>
                             ) : (
                                 <>
                                     <h3>Traccia non rinominabile</h3>
-                                    <p>
-                                        Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>:
-                                        così com'è non può essere rinominata né taggata correttamente. Puoi{' '}
-                                        <strong>correggere il nome</strong> qui sotto (i tag verranno riestratti da esso)
-                                        oppure procedere lasciandolo invariato.
-                                    </p>
+                                    {found.length > 1 ? (
+                                        <p>
+                                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>.
+                                            Su MusicBrainz ci sono più brani che corrispondono: nel campo c'è il più
+                                            diffuso, puoi sceglierne un altro dall'elenco, <strong>correggere il nome</strong>{' '}
+                                            (i tag verranno riestratti da esso) oppure saltare per lasciarlo invariato.
+                                        </p>
+                                    ) : found.length === 1 ? (
+                                        <p>
+                                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>,
+                                            ma su MusicBrainz è stata trovata la corrispondenza qui sotto: controllala e
+                                            conferma, <strong>correggila</strong> (i tag verranno riestratti dal nome)
+                                            oppure salta per lasciare il nome invariato.
+                                        </p>
+                                    ) : (
+                                        <p>
+                                            Dal nome di questa traccia non è possibile dedurre <strong>{missing}</strong>:
+                                            così com'è non può essere rinominata né taggata correttamente. Puoi{' '}
+                                            <strong>correggere il nome</strong> qui sotto (i tag verranno riestratti da esso)
+                                            oppure procedere lasciandolo invariato.
+                                        </p>
+                                    )}
                                 </>
                             )}
                             <label className="tag-prompt-field">
@@ -4425,11 +4565,72 @@ function App() {
                                     <ExtChip ext={head.ext} />
                                 </div>
                             </label>
-                            {tagPrompts.length > 1 && (
-                                <p className="tag-prompt-queue">
-                                    Altre {tagPrompts.length - 1} tracce in attesa di una scelta.
+                            {promptSearch && !promptSearch.skipped && (
+                                <p className={'tag-prompt-suggest' + (promptSearch.error ? ' is-error' : '')}>
+                                    {promptSearch.error ? (
+                                        <>Ricerca non riuscita: {promptSearch.error}.</>
+                                    ) : found.length === 0 ? (
+                                        <>Nessun risultato su MusicBrainz.</>
+                                    ) : (
+                                        <>
+                                            {found.length > 1 ? 'Proposti da MusicBrainz' : 'Proposto da MusicBrainz'} ·{' '}
+                                            <button
+                                                type="button"
+                                                className="tag-prompt-restore"
+                                                onClick={() => setPromptDraft(originalDraft)}
+                                                disabled={promptDraft === originalDraft}
+                                            >
+                                                {head.review ? 'Usa il nome dell’anteprima' : 'Usa il nome originale'}
+                                            </button>
+                                        </>
+                                    )}
                                 </p>
                             )}
+                            {found.length > 1 && (
+                                <div className="tag-prompt-results">
+                                    <div className="tag-prompt-filter">
+                                        <SearchIcon />
+                                        <input
+                                            type="search"
+                                            value={promptFilter}
+                                            onChange={(e) => setPromptFilter(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                // Invio sceglie il primo brano filtrato; Esc svuota la ricerca
+                                                // senza chiudere nulla.
+                                                if (e.key === 'Enter' && shown.length > 0) setPromptDraft(shown[0])
+                                                if (e.key === 'Escape' && promptFilter) {
+                                                    e.stopPropagation()
+                                                    setPromptFilter('')
+                                                }
+                                            }}
+                                            placeholder={`Cerca tra i ${found.length} risultati`}
+                                            aria-label="Cerca tra i risultati di MusicBrainz"
+                                        />
+                                        <span className="tag-prompt-count">
+                                            {shown.length === found.length ? found.length : `${shown.length} di ${found.length}`}
+                                        </span>
+                                    </div>
+                                    {shown.length > 0 ? (
+                                        <ul className="tag-prompt-options">
+                                            {shown.map((name) => (
+                                                <li key={name}>
+                                                    <button
+                                                        type="button"
+                                                        className={'tag-prompt-option' + (name === promptDraft ? ' is-selected' : '')}
+                                                        aria-pressed={name === promptDraft}
+                                                        onClick={() => setPromptDraft(name)}
+                                                    >
+                                                        {name}
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="tag-prompt-empty">Nessun brano corrisponde a «{promptFilter.trim()}».</p>
+                                    )}
+                                </div>
+                            )}
+                            {queue}
                             <div className="modal-actions">
                                 <button onClick={() => resolvePrompt(false)}>
                                     {head.review ? 'Usa anteprima' : 'Salta'}

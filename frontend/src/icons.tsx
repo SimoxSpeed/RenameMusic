@@ -336,3 +336,13 @@ export function PasteIcon() {
         </Icon>
     )
 }
+
+// SearchIcon: ricerca fra i brani trovati su MusicBrainz (popup delle tracce).
+export function SearchIcon() {
+    return (
+        <Icon size={14}>
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+        </Icon>
+    )
+}

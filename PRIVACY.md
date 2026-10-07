@@ -1,12 +1,12 @@
 # Informativa sulla privacy di RenameMusic
 
-Ultimo aggiornamento: 1 ottobre 2026
+Ultimo aggiornamento: 7 ottobre 2026
 
 RenameMusic è un'app per Windows e Android che rinomina i file musicali e ne scrive i tag. Facoltativamente può collegarsi al tuo account Google per gestire le tue playlist di YouTube. Questa pagina spiega quali dati usa l'app e come.
 
 ## In breve
 
-- L'app **non ha server propri**: tutto avviene sul tuo dispositivo, oppure tra il tuo dispositivo e Google/YouTube.
+- L'app **non ha server propri**: tutto avviene sul tuo dispositivo, oppure tra il tuo dispositivo e Google/YouTube o MusicBrainz.
 - Lo sviluppatore **non riceve, non raccoglie e non conserva** alcun tuo dato.
 - Nell'app non ci sono pubblicità, analisi statistiche né tracciamento.
 
@@ -35,6 +35,10 @@ Questi dati non vengono mai inviati allo sviluppatore né a terzi. Viaggiano sol
 - Dal tuo account Google: <https://myaccount.google.com/permissions>.
 
 Anche disinstallare l'app elimina i dati salvati sul dispositivo.
+
+## Ricerca su MusicBrainz
+
+Quando dal nome di una traccia non si capiscono titolo e artista, o quando scegli di rivederla prima della conversione, l'app può cercarla su [MusicBrainz](https://musicbrainz.org), l'enciclopedia musicale libera della MetaBrainz Foundation, per proporti il nome corretto. Per la ricerca invia a musicbrainz.org solo il nome della traccia (oppure il titolo e l'artista dedotti dal nome), senza altri dati tuoi né del tuo account. Si usa solo per le tracce del popup di conferma, e puoi disattivarla da Impostazioni → Generale → «Cerca titolo e artista su MusicBrainz». Si applica l'[informativa sulla privacy di MetaBrainz](https://metabrainz.org/privacy).
 
 ## Rispetto delle norme di Google
 

@@ -60,6 +60,12 @@ type Config struct {
 	// ma sta qui perché segue la stessa logica correnti/predefiniti
 	// (config.json/defaults.json). Assente nei file esistenti = false.
 	SimpleMode bool `json:"simpleMode"`
+
+	// MusicBrainz attiva la ricerca su MusicBrainz nel popup delle tracce da
+	// confermare (core.SuggestTrackName): il campo propone "Artista - Titolo"
+	// trovato lì al posto del vecchio nome. Come SimpleMode non è una regola di
+	// rinomina; assente nei file esistenti = true (valore di fabbrica).
+	MusicBrainz bool `json:"musicBrainz"`
 }
 
 // FactoryConfig è il seed di fabbrica usato SOLO al primo avvio per inizializzare
@@ -136,6 +142,7 @@ func FactoryConfig() Config {
 			"Meg & Dia",
 			"Dodge & Fuski",
 		},
+		MusicBrainz: true,
 	}
 }
 

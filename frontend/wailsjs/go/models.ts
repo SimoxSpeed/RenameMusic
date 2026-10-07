@@ -316,6 +316,20 @@ export namespace core {
 	
 	
 	
+	export class TrackSuggestions {
+	    names: string[];
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TrackSuggestions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.names = source["names"];
+	        this.error = source["error"];
+	    }
+	}
 
 }
 
@@ -385,6 +399,7 @@ export namespace rules {
 	    ftAlias: string;
 	    artistExceptions: string[];
 	    simpleMode: boolean;
+	    musicBrainz: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -400,6 +415,7 @@ export namespace rules {
 	        this.ftAlias = source["ftAlias"];
 	        this.artistExceptions = source["artistExceptions"];
 	        this.simpleMode = source["simpleMode"];
+	        this.musicBrainz = source["musicBrainz"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

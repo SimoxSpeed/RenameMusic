@@ -154,6 +154,10 @@ export function SetYtDlpConfig(arg1, arg2) {
   return window['go']['core']['App']['SetYtDlpConfig'](arg1, arg2);
 }
 
+export function SuggestTrackNames(arg1) {
+  return window['go']['core']['App']['SuggestTrackNames'](arg1);
+}
+
 export function SyncSettings() {
   return window['go']['core']['App']['SyncSettings']();
 }
