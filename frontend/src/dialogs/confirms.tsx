@@ -138,7 +138,7 @@ export function InstallYtDlpConfirm({ managed, ffmpegAvailable, downloadWhat, on
                 <p>
                     yt-dlp non è presente. L'app lo scaricherà
                     {!ffmpegAvailable && <> insieme a ffmpeg (circa 200 MB)</>} in{' '}
-                    <code>%AppData%\RenameMusic</code> e avvierà subito il download
+                    <code>%AppData%\RenameMusic</code> e avvierà subito il download{' '}
                     {downloadWhat}.
                 </p>
             ) : (
