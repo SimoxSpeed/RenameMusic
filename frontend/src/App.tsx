@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import './App.css'
 import './mobile.css'
@@ -459,6 +459,122 @@ function DefaultsMenu({
             )}
         </div>
     )
+}
+
+// Pull to refresh (solo Android): misure in px dell'indicatore.
+// PULL_THRESHOLD: discesa oltre cui il rilascio aggiorna; PULL_MAX: discesa
+// massima; PULL_REST: posizione dell'indicatore mentre l'aggiornamento gira.
+const PULL_THRESHOLD = 72
+const PULL_MAX = 120
+const PULL_REST = 56
+const PULL_MIN_MS = 450
+
+// usePullToRefresh: tirando giù il contenuto di scrollRef quando è già in
+// cima, l'indicatore (indicatorRef, sotto l'header) scende e ruota; rilasciato
+// oltre la soglia gira finché onRefresh non finisce. Con enabled falso il
+// gesto non fa nulla, nemmeno l'animazione. Durante il trascinamento
+// l'indicatore si muove direttamente sul DOM, senza ridisegnare l'App a ogni
+// movimento; enabled e onRefresh stanno in ref per non dover registrare di
+// nuovo i listener. mounted dice quando il contenitore che scorre esiste
+// (prima del primo stato l'App non lo disegna).
+function usePullToRefresh(
+    scrollRef: RefObject<HTMLDivElement | null>,
+    indicatorRef: RefObject<HTMLDivElement | null>,
+    mounted: boolean,
+    enabled: boolean,
+    onRefresh: () => Promise<void>,
+) {
+    const enabledRef = useRef(enabled)
+    enabledRef.current = enabled
+    const refreshRef = useRef(onRefresh)
+    refreshRef.current = onRefresh
+
+    useEffect(() => {
+        const el = scrollRef.current
+        if (!isAndroid || !el) return
+        let startX = 0
+        let startY = 0
+        let tracking = false
+        let pulling = false
+        let refreshing = false
+        let pull = 0
+
+        function show(distance: number, animate: boolean) {
+            const ind = indicatorRef.current
+            if (!ind) return
+            ind.style.transition = animate ? '' : 'none'
+            ind.style.setProperty('--pull', distance + 'px')
+            ind.style.setProperty('--pull-progress', String(Math.min(1, distance / PULL_THRESHOLD)))
+            ind.classList.toggle('is-ready', distance >= PULL_THRESHOLD)
+        }
+
+        function onStart(e: TouchEvent) {
+            tracking = false
+            if (refreshing || !enabledRef.current || e.touches.length !== 1 || el!.scrollTop > 0) return
+            tracking = true
+            pulling = false
+            startX = e.touches[0].clientX
+            startY = e.touches[0].clientY
+        }
+
+        function onMove(e: TouchEvent) {
+            if (!tracking) return
+            const dx = e.touches[0].clientX - startX
+            const dy = e.touches[0].clientY - startY
+            if (!pulling) {
+                // Si decide alla prima mossa netta: in giù con il contenuto in
+                // cima è il gesto; altrimenti è uno scorrimento normale.
+                if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+                if (dy <= 0 || Math.abs(dx) > dy || el!.scrollTop > 0) {
+                    tracking = false
+                    return
+                }
+                pulling = true
+            }
+            e.preventDefault()
+            // Resistenza crescente: la discesa rallenta avvicinandosi al massimo.
+            const raw = Math.max(0, dy)
+            pull = PULL_MAX * (1 - Math.exp(-raw / (PULL_MAX * 1.6)))
+            show(pull, false)
+        }
+
+        function onEnd() {
+            if (!tracking) return
+            tracking = false
+            if (!pulling) return
+            pulling = false
+            if (pull < PULL_THRESHOLD || !enabledRef.current) {
+                pull = 0
+                show(0, true)
+                return
+            }
+            refreshing = true
+            show(PULL_REST, true)
+            indicatorRef.current?.classList.add('is-refreshing')
+            const start = performance.now()
+            refreshRef
+                .current()
+                .catch(() => {})
+                .then(() => new Promise((r) => window.setTimeout(r, Math.max(0, PULL_MIN_MS - (performance.now() - start)))))
+                .then(() => {
+                    refreshing = false
+                    pull = 0
+                    indicatorRef.current?.classList.remove('is-refreshing')
+                    show(0, true)
+                })
+        }
+
+        el.addEventListener('touchstart', onStart, { passive: true })
+        el.addEventListener('touchmove', onMove, { passive: false })
+        el.addEventListener('touchend', onEnd)
+        el.addEventListener('touchcancel', onEnd)
+        return () => {
+            el.removeEventListener('touchstart', onStart)
+            el.removeEventListener('touchmove', onMove)
+            el.removeEventListener('touchend', onEnd)
+            el.removeEventListener('touchcancel', onEnd)
+        }
+    }, [scrollRef, indicatorRef, mounted])
 }
 
 // logKey identifica una riga del registro (ora, tipo e testo) per ricordare
@@ -1815,7 +1931,7 @@ function App() {
 
     // Riscansiona la cartella corrente (utile se il contenuto è cambiato).
     function refresh() {
-        guard(async () => {
+        return guard(async () => {
             const resp = await Scan()
             absorb(resp)
             setResults(null)
@@ -2066,6 +2182,26 @@ function App() {
             .finally(() => setPrefsSyncing(false))
     }
 
+    // Pull to refresh nelle Impostazioni: rilegge dall'account Google le
+    // impostazioni condivise e le playlist, queste ultime anche se lette da
+    // poco (a differenza di RefreshGooglePlaylists). Senza busy, come
+    // all'apertura: il pannello dell'account mostra il controllo in corso.
+    async function reloadGoogleAccount() {
+        if (!stateRef.current?.google?.connected) return
+        setPrefsSyncing(true)
+        try {
+            const synced = await SyncSettings()
+            absorbSynced(synced.state)
+            const resp = await GooglePlaylists()
+            absorbSynced(resp.state)
+            if (!resp.ok) notify(false, resp.message ?? '')
+        } catch (err: any) {
+            notify(false, 'Errore: ' + (err?.message ?? String(err)))
+        } finally {
+            setPrefsSyncing(false)
+        }
+    }
+
     // Cambio di scheda: il contenuto riparte dall'alto.
     function selectSettingsTab(tab: SettingsTab) {
         setSettingsTab(tab)
@@ -2192,6 +2328,16 @@ function App() {
           : destMissing
             ? 'Cartella di destinazione non trovata: sceglila di nuovo nelle Impostazioni'
             : ''
+
+    // Pull to refresh (Android): nella schermata principale (non semplificata,
+    // senza anteprima) è una nuova scansione, come "Avvia nuova scansione";
+    // nelle Impostazioni rilegge i dati dell'account Google, e senza account
+    // collegato il gesto non fa nulla.
+    const ptrRef = useRef<HTMLDivElement>(null)
+    const pullEnabled =
+        !busy && (showSettings ? googleConnected : !simpleMode && foldersOk && storageGranted)
+    usePullToRefresh(scrollRef, ptrRef, !!state, pullEnabled, () => (showSettings ? reloadGoogleAccount() : refresh()))
+
     const canProcess = !busy && foldersOk && files.length > 0 && destReady
     // "Cancella tag" agisce in posto sugli MP3 scansionati: serve almeno un MP3.
     const canClearTags = !busy && files.some((f) => f.mp3)
@@ -3159,6 +3305,16 @@ function App() {
             {/* Scorre solo il contenuto sotto l'header (e sotto le schede delle
                 Impostazioni): la scrollbar parte da qui e non dalla cima della
                 finestra. */}
+            {/* Indicatore del pull to refresh (Android): sta appena sotto
+                l'header (e le schede) e scende con il dito (usePullToRefresh). */}
+            {isAndroid && (
+                <div className="ptr" aria-hidden="true">
+                    <div className="ptr-indicator" ref={ptrRef}>
+                        <RefreshIcon />
+                    </div>
+                </div>
+            )}
+
             <div className="app-scroll" ref={scrollRef}>
             <main className={showSettings ? 'is-settings' : simpleMode ? 'is-simple' : ''}>
                 <div

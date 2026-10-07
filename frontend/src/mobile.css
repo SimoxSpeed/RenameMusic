@@ -271,6 +271,49 @@
     padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
+/* ---- Pull to refresh -------------------------------------------------------- */
+
+/* Indicatore circolare che esce da sotto l'header (o le schede delle
+   Impostazioni, che gli stanno sopra) seguendo il dito: --pull è la discesa,
+   --pull-progress la frazione della soglia raggiunta (usePullToRefresh). */
+.is-android .ptr {
+    position: relative;
+    flex: none;
+    height: 0;
+    z-index: 25;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.is-android .ptr-indicator {
+    position: absolute;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
+    opacity: var(--pull-progress, 0);
+    transform: translateY(calc(var(--pull, 0px) - 46px)) rotate(calc(var(--pull-progress, 0) * 270deg));
+    transition: transform 0.22s ease, opacity 0.22s ease, color 0.15s ease;
+}
+
+/* Oltre la soglia: il rilascio aggiorna. */
+.is-android .ptr-indicator.is-ready,
+.is-android .ptr-indicator.is-refreshing {
+    color: var(--primary);
+}
+
+.is-android .ptr-indicator.is-refreshing svg {
+    animation: spin 0.8s linear infinite;
+}
+
 /* ---- Richiesta di accesso ai file ------------------------------------------ */
 
 .storage-banner {
