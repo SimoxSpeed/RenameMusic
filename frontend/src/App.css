@@ -1605,6 +1605,32 @@ button.folder-missing:disabled {
     background: var(--panel-alt);
 }
 
+/* Tasto "Incolla" (solo Android): a campo vuoto, al posto della ✕. */
+.link-field.has-paste input {
+    padding-right: 96px;
+}
+
+.link-field-paste {
+    position: absolute;
+    right: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    min-height: 0;
+    padding: 0 9px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-alt);
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.link-field-paste:hover:not(:disabled) {
+    background: var(--panel);
+}
+
 /* Tasto "aggiungi a una playlist" (account Google collegato), a sinistra della
    ✕: è il .tip che lo avvolge (riferimento del tooltip) a stare in posizione. */
 .link-field.has-add input {
@@ -1794,8 +1820,13 @@ main.is-simple {
     left: 14px;
 }
 
-.simple-hero .link-field-clear {
+.simple-hero .link-field-clear,
+.simple-hero .link-field-paste {
     right: 9px;
+}
+
+.simple-hero .link-field-paste {
+    height: 34px;
 }
 
 .simple-hero .link-field > .tip {

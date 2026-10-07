@@ -12,7 +12,6 @@ import androidx.activity.result.IntentSenderRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
 
 import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.PluginHandle;
 import com.getcapacitor.WebViewListener;
 
 public class MainActivity extends BridgeActivity {
@@ -45,17 +44,6 @@ public class MainActivity extends BridgeActivity {
     /** Chiamata da GoogleAuth sul thread principale. */
     void launchGoogleConsent(PendingIntent intent) {
         googleConsent.launch(new IntentSenderRequest.Builder(intent).build());
-    }
-
-    /** Con il focus si possono leggere gli appunti: vedi RenameMusicPlugin.onWindowFocused. */
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (!hasFocus || bridge == null) return;
-        PluginHandle handle = bridge.getPlugin("RenameMusic");
-        if (handle != null && handle.getInstance() instanceof RenameMusicPlugin) {
-            ((RenameMusicPlugin) handle.getInstance()).onWindowFocused();
-        }
     }
 
     /**

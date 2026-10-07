@@ -2,7 +2,6 @@ package com.renamemusic.app;
 
 import android.Manifest;
 import android.content.ClipData;
-import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
@@ -28,8 +27,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Ponte tra la UI (WebView) e il core Go (libreria gomobile). È l'equivalente
@@ -276,49 +273,27 @@ public class RenameMusicPlugin extends Plugin {
     // ---- Appunti -------------------------------------------------------------
 
     /**
-     * Link di YouTube (anche youtu.be e sottodomini come m. e music.) dentro il
-     * testo copiato: condividendo dall'app di YouTube a volte il link arriva
-     * preceduto da altro testo.
+     * Testo degli appunti, letto solo quando l'utente tocca "Incolla" nel campo
+     * del link (mai da soli: da Android 12 ogni lettura mostra l'avviso
+     * "RenameMusic ha incollato dagli appunti"). Il link si cerca nella UI.
+     * Restituisce {"text": ...}, vuoto se negli appunti non c'è testo.
      */
-    private static final Pattern YOUTUBE_LINK = Pattern.compile(
-        "https?://(?:[\\w-]+\\.)*(?:youtube\\.com|youtu\\.be)/\\S+", Pattern.CASE_INSENSITIVE
-    );
-
-    /** Istante (ClipDescription.getTimestamp) dell'ultimo contenuto degli appunti letto. */
-    private long lastClipTimestamp = -1;
-
-    /**
-     * La finestra ha ricevuto il focus (avvio o ritorno nell'app, vedi
-     * MainActivity): da Android 10 gli appunti si possono leggere solo da qui in
-     * poi, non ancora in onResume. Se contengono un link di YouTube copiato
-     * dopo l'ultima lettura lo passiamo alla UI (evento "clipboardLink",
-     * trattenuto finché la UI non si mette in ascolto), che ci riempie il campo
-     * del link. Il contenuto si legge solo quando è cambiato: da Android 12 ogni
-     * lettura mostra l'avviso "RenameMusic ha incollato dagli appunti".
-     */
-    void onWindowFocused() {
+    @PluginMethod
+    public void readClipboard(PluginCall call) {
+        String text = "";
         try {
             ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm == null || !cm.hasPrimaryClip()) return;
-            ClipDescription desc = cm.getPrimaryClipDescription();
-            if (desc == null || !desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN)) return;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                long ts = desc.getTimestamp();
-                if (ts == lastClipTimestamp) return;
-                lastClipTimestamp = ts;
+            ClipData clip = cm != null ? cm.getPrimaryClip() : null;
+            if (clip != null && clip.getItemCount() > 0) {
+                CharSequence s = clip.getItemAt(0).coerceToText(getContext());
+                if (s != null) text = s.toString();
             }
-            ClipData clip = cm.getPrimaryClip();
-            if (clip == null || clip.getItemCount() == 0) return;
-            CharSequence text = clip.getItemAt(0).getText();
-            if (text == null) return;
-            Matcher m = YOUTUBE_LINK.matcher(text);
-            if (!m.find()) return;
-            JSObject data = new JSObject();
-            data.put("url", m.group());
-            notifyListeners("clipboardLink", data, true);
         } catch (Throwable e) {
             Log.w(TAG, "lettura degli appunti fallita", e);
         }
+        JSObject data = new JSObject();
+        data.put("text", text);
+        call.resolve(data);
     }
 
     // ---- Ciclo di vita --------------------------------------------------------

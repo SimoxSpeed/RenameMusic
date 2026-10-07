@@ -23,9 +23,9 @@ interface RenameMusicPlugin {
     crashReport(): Promise<{ present: boolean }>
     shareCrashReport(): Promise<void>
     discardCrashReport(): Promise<void>
+    readClipboard(): Promise<{ text: string }>
     addListener(event: 'event', cb: (e: EventPayload) => void): Promise<PluginListenerHandle>
     addListener(event: 'resume', cb: (e: { storageGranted: boolean }) => void): Promise<PluginListenerHandle>
-    addListener(event: 'clipboardLink', cb: (e: { url: string }) => void): Promise<PluginListenerHandle>
 }
 
 const native = registerPlugin<RenameMusicPlugin>('RenameMusic')
@@ -157,15 +157,12 @@ export function onResume(cb: (storageGranted: boolean) => void): () => void {
     }
 }
 
-// onClipboardLink: link di YouTube trovato negli appunti di Android quando
-// l'app riprende il focus (solo se copiato dopo l'ultima lettura). Su desktop
-// gli appunti non si leggono mai.
-export function onClipboardLink(cb: (url: string) => void): () => void {
-    if (!isAndroid) return () => {}
-    const handle = native.addListener('clipboardLink', (e) => cb(e.url))
-    return () => {
-        handle.then((h) => h.remove())
-    }
+// readClipboard: testo degli appunti di Android ('' se non c'è), letto solo
+// quando l'utente tocca "Incolla" nel campo del link. Su desktop non serve (si
+// incolla con Ctrl+V).
+export async function readClipboard(): Promise<string> {
+    if (!isAndroid) return ''
+    return (await native.readClipboard()).text
 }
 
 // ---- Eventi del core --------------------------------------------------------

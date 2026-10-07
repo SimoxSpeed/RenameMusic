@@ -95,7 +95,8 @@
 }
 
 .is-android .info-icon,
-.is-android .toast-close {
+.is-android .toast-close,
+.is-android .link-field-paste {
     min-height: 0;
 }
 

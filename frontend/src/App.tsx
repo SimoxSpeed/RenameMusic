@@ -45,7 +45,7 @@ import {
     DownloadGooglePlaylistAndProcess,
     AddLinkToPlaylist,
     isAndroid,
-    onClipboardLink,
+    readClipboard,
     onEvent,
     onResume,
     openURL,
@@ -79,6 +79,7 @@ import {
     InfoCircleIcon,
     KeyboardIcon,
     LinkIcon,
+    PasteIcon,
     PlaylistAddIcon,
     PlusIcon,
     RefreshIcon,
@@ -923,23 +924,28 @@ function Collapse({
 // LinkField: campo per il link da scaricare (di solito un singolo video), sopra
 // la scelta della playlist, con il tasto per svuotarlo. Invio avvia il download.
 // onAddToPlaylist, se c'è (account Google collegato e link di un video), mostra
-// anche il tasto per aggiungere il video a una playlist dell'account.
+// anche il tasto per aggiungere il video a una playlist dell'account. onPaste,
+// se c'è (solo Android), mostra a campo vuoto il tasto "Incolla" al posto
+// della ✕: gli appunti si leggono solo con quel tocco.
 function LinkField({
     value,
     onChange,
     onSubmit,
     onAddToPlaylist,
+    onPaste,
     disabled,
 }: {
     value: string
     onChange: (value: string) => void
     onSubmit: () => void
     onAddToPlaylist?: () => void
+    onPaste?: () => void
     disabled?: boolean
 }) {
     const canAdd = !!onAddToPlaylist && value !== '' && !disabled
+    const canPaste = !!onPaste && value === ''
     return (
-        <div className={'link-field' + (canAdd ? ' has-add' : '')}>
+        <div className={'link-field' + (canAdd ? ' has-add' : '') + (canPaste ? ' has-paste' : '')}>
             <span className="link-field-icon" aria-hidden="true">
                 <LinkIcon />
             </span>
@@ -976,8 +982,28 @@ function LinkField({
                     <CloseIcon />
                 </button>
             )}
+            {canPaste && (
+                <button
+                    type="button"
+                    className="link-field-paste"
+                    onClick={onPaste}
+                    disabled={disabled}
+                    aria-label="Incolla il link dagli appunti"
+                >
+                    <PasteIcon />
+                    Incolla
+                </button>
+            )}
         </div>
     )
+}
+
+// linkInText trova un link http(s) in un testo incollato (condividendo
+// dall'app di YouTube il link arriva a volte dopo altro testo): prima uno di
+// YouTube, altrimenti il primo che c'è; '' se non ce ne sono.
+function linkInText(text: string): string {
+    const links = text.match(/https?:\/\/\S+/gi) ?? []
+    return links.find((l) => youtubeUrl(l) !== null) ?? links[0] ?? ''
 }
 
 // splitName separa il nome file dalla sua estensione (parte dopo l'ultimo punto).
@@ -1685,9 +1711,17 @@ function App() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Android: un link di YouTube copiato negli appunti (letto quando l'app
-    // riprende il focus) finisce nel campo del link, pronto da scaricare.
-    useEffect(() => onClipboardLink((url) => setDownloadLink(url)), [])
+    // Android: "Incolla" nel campo del link legge gli appunti (solo con quel
+    // tocco) e ci mette il link che contengono, pronto da scaricare.
+    function pasteLink() {
+        readClipboard()
+            .then((text) => {
+                const url = linkInText(text)
+                if (url) setDownloadLink(url)
+                else notify(false, text.trim() ? 'Negli appunti non c\'è un link.' : 'Gli appunti sono vuoti.')
+            })
+            .catch((err: any) => notify(false, 'Impossibile leggere gli appunti: ' + (err?.message ?? String(err))))
+    }
 
     // Chiede l'accesso a tutti i file (Android 11+: apre le impostazioni di
     // sistema; lo stato si aggiorna al ritorno nell'app, vedi onResume).
@@ -2653,8 +2687,7 @@ function App() {
     // assorbe l'esito. In modalità semplificata (DownloadAndProcess) il core
     // converte anche subito i brani: mostriamo i risultati e le tracce da
     // confermare come dopo "Converti nomi e scrivi tag". Un link scaricato senza
-    // errori si toglie dal campo, a meno che nel frattempo non ne sia arrivato
-    // un altro dagli appunti.
+    // errori si toglie dal campo, a meno che nel frattempo non sia cambiato.
     async function playlistStep() {
         const [kind, key] = [selectedPlaylist.slice(0, 3), selectedPlaylist.slice(3)]
         const resp = link
@@ -3359,6 +3392,7 @@ function App() {
                                 onChange={setDownloadLink}
                                 onSubmit={() => foldersOk && downloadPlaylist()}
                                 onAddToPlaylist={onAddLink}
+                                onPaste={isAndroid ? pasteLink : undefined}
                                 disabled={busy}
                             />
                             <div className="download-controls" ref={downloadRowRef}>
@@ -3459,6 +3493,7 @@ function App() {
                                     onChange={setDownloadLink}
                                     onSubmit={() => foldersOk && downloadPlaylist()}
                                     onAddToPlaylist={onAddLink}
+                                    onPaste={isAndroid ? pasteLink : undefined}
                                     disabled={busy}
                                 />
 
