@@ -3,7 +3,9 @@
     Pubblica una nuova versione di RenameMusic: versione, build, commit, tag e push.
 
 .DESCRIPTION
-    1. controlli: branch, tag libero (in locale e su origin), modifiche
+    1. controlli: branch, credenziali di Google per l'exe
+       (internal\google\credentials_local.go, obbligatorio: le variabili
+       d'ambiente non bastano), tag libero (in locale e su origin), modifiche
        pendenti e GitHub CLI. Se il tag esiste già chiede se ricrearlo
        (sostituito solo al push, insieme a un'eventuale release GitHub
        rimasta su quel tag) o annullare. Con gh pronta apre nel Blocco note un
@@ -13,6 +15,7 @@
        unica fonte della versione: la usano il controllo aggiornamenti e l'APK)
     3. compila l'exe desktop (wails build)
     4. compila gli APK (mobile\build-apk.ps1)
+       Prima del commit verifica che l'exe contenga il client ID di Google.
     5. commit di tutte le modifiche (dopo conferma) con il messaggio fisso
        "chore(release): 🚀 release <versione>", tag annotato v<versione> e push
        di branch e tag insieme (--atomic: o tutti e due o nessuno)
@@ -76,6 +79,9 @@ $repoUrl = "https://github.com/$repoSlug"
 $desktopAsset = 'build\bin\RenameMusic.exe'
 $apkAssets = @('build\bin\RenameMusic-arm64-v8a.apk', 'build\bin\RenameMusic-x86_64.apk')
 $allAssets = @($desktopAsset) + $apkAssets
+$credentialsFileRel = 'internal\google\credentials_local.go'
+$credentialsFile = Join-Path $root $credentialsFileRel
+$googleClientID = ''
 # Copia di exe e APK di prima delle build, da rimettere a posto se la release
 # non va in porto (build\bin è ignorata da git).
 $backupDir = Join-Path $root 'build\bin\.release-backup'
@@ -208,6 +214,38 @@ function Show-Asset([string]$rel) {
 function Assert-Assets {
     $missing = @($allAssets | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root $_)) })
     if ($missing.Count -gt 0) { throw ("File da pubblicare mancanti: {0}" -f ($missing -join ', ')) }
+}
+
+# Credenziali del client OAuth desktop in internal\google\credentials_local.go
+# (ignorato da git): senza, l'exe pubblicato avrebbe l'account Google «Non
+# configurato» per tutti. Le variabili RENAMEMUSIC_GOOGLE_CLIENT_ID/_SECRET non
+# contano: valgono solo sulla macchina dove sono impostate, non nell'exe.
+# Restituisce il client ID, per cercarlo poi nell'exe compilato.
+function Get-GoogleClientID {
+    if (-not (Test-Path -LiteralPath $credentialsFile)) {
+        throw "Manca $credentialsFileRel (ignorato da git): copialo dalla macchina che lo ha o crealo da credentials_local.go.example con le credenziali del client «App desktop». Le variabili d'ambiente non bastano per una release."
+    }
+    $text = [System.IO.File]::ReadAllText($credentialsFile)
+    $id = [regex]::Match($text, '(?m)^\s*clientID\s*=\s*"([^"]*)"').Groups[1].Value
+    $secret = [regex]::Match($text, '(?m)^\s*clientSecret\s*=\s*"([^"]*)"').Groups[1].Value
+    if ($id -notmatch '^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$') {
+        throw "clientID mancante o non valido in $credentialsFileRel (è ancora quello del modello?)."
+    }
+    if (-not $secret -or $secret -match 'x{8}') {
+        throw "clientSecret mancante o non valido in $credentialsFileRel (è ancora quello del modello?)."
+    }
+    return $id
+}
+
+# L'exe deve contenere il client ID (le stringhe Go restano in chiaro nel
+# binario): con -NoBuild potrebbe essere stato compilato prima del file.
+function Assert-ExeCredentials {
+    $bytes = [System.IO.File]::ReadAllBytes((Join-Path $root $desktopAsset))
+    $text = [System.Text.Encoding]::GetEncoding(28591).GetString($bytes)
+    if ($text.IndexOf($googleClientID, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "$desktopAsset non contiene le credenziali di Google di $credentialsFileRel`: ricompilalo (senza -NoBuild)."
+    }
+    Ok "$desktopAsset contiene le credenziali di Google"
 }
 
 # Sposta da parte exe e APK attuali prima delle build: se la release non va in
@@ -398,6 +436,9 @@ try {
     if (-not $branch) { throw 'HEAD non è su un branch (detached): passa prima a un branch.' }
     Ok "Branch $branch"
 
+    $googleClientID = Get-GoogleClientID
+    Ok "Credenziali di Google in $credentialsFileRel"
+
     $oldLocalTag = git rev-parse -q --verify "refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { $oldLocalTag = '' }
     Detail 'Controllo dei tag su origin...'
@@ -496,6 +537,7 @@ try {
         foreach ($a in $apkAssets) { Show-Asset $a }
     }
     Assert-Assets
+    Assert-ExeCredentials
 
     # ---- 5. Commit, tag, push -----------------------------------------------------
 
