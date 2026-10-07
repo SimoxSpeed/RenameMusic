@@ -6,8 +6,5 @@
     "apk:install": "powershell -NoProfile -ExecutionPolicy Bypass -File mobile/install-apk.ps1",
     "apk": "powershell -NoProfile -ExecutionPolicy Bypass -File mobile/install-apk.ps1 -Build",
     "release": "powershell -NoProfile -ExecutionPolicy Bypass -File release.ps1"
-  },
-  "dependencies": {
-    "apk": "^1.2.0"
   }
 }

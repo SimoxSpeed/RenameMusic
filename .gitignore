@@ -5,7 +5,7 @@
 Rename Music/
 
 # Frontend
-frontend/node_modules/
+node_modules/
 frontend/dist/
 
 # Wails build output
