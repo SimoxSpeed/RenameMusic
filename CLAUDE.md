@@ -13,14 +13,19 @@ L'utente sceglie una cartella di file audio; l'app mostra un'**anteprima** del n
 
 Toolchain sulla macchina (vedi memoria `build-toolchain`): Go in `D:\Programmi\bin` (nel PATH), Wails CLI e `gomobile`/`gobind` in `%USERPROFILE%\go\bin`, Node/npm nel PATH, Android SDK+NDK in `%LOCALAPPDATA%\Android\Sdk`, JDK 21 in `D:\Web_Programming\Java\jdk` (`JAVA_HOME` punta invece a un JDK 18).
 
-- Build GUI: `wails build` → `build\bin\RenameMusic.exe`
-- Dev hot-reload: `wails dev`
-- Build APK: `powershell -ExecutionPolicy Bypass -File mobile\build-apk.ps1` → `build\bin\RenameMusic-arm64-v8a.apk` (telefono) e `-x86_64.apk` (emulatore). Cache/temporanei in `.android-build\` (ignorata da git).
-- Installa APK sul dispositivo collegato (adb, sceglie l'ABI giusto): `powershell -ExecutionPolicy Bypass -File mobile\install-apk.ps1 [-Build] [-Serial <id>]`. Dalla radice o da `frontend/`: `npm run apk:build`, `npm run apk:install`, `npm run apk` (build + installazione).
-- Release: `powershell -ExecutionPolicy Bypass -File release.ps1 patch|minor|major` (o `npm run release -- patch|minor|major`; l'argomento è **obbligatorio**, accettato anche come `-patch`/`--patch`): si ferma subito se manca `internal/google/credentials_local.go` o ha ancora i valori del modello (le variabili d'ambiente non contano) e prima del commit verifica che l'exe contenga il client ID; incrementa `update.Version`, compila exe + APK, e dopo conferma fa commit (messaggio fisso `chore(release): 🚀 release X.Y.Z`), tag `vX.Y.Z` e push (`--atomic`), poi crea la release su GitHub con `gh release create` (exe + APK allegati; le note si scrivono solo all'inizio dello script, in un file temporaneo vuoto aperto nel Blocco note che viene letto ed eliminato subito, e restano solo in memoria). Senza GitHub CLI autenticata apre invece la pagina della nuova release da completare a mano. Se il tag esiste già (in locale o su origin) chiede se ricrearlo o annullare: il vecchio tag si sostituisce solo al push (`git tag -f` + push forzato del solo tag), e con `gh` si elimina anche la release rimasta su quel tag; con `-Yes` invece si interrompe. Se la release si annulla o fallisce prima del commit, ripristina versione, staging ed exe/APK di `build\bin` (messi da parte in `build\bin\.release-backup`). `-NoBuild` salta le build, `-Yes` la conferma. Lo lancia **l'utente** (vedi "Commit").
-- Test: `go test ./...`
-- Solo build frontend: `cd frontend; npm run build` (utile per verificare `tsc` + Vite senza Wails)
-- `frontend/dist` è output di build, ignorata da git: su un clone nuovo `go build ./...`/`go test ./...` falliscono (l'embed richiede almeno un file) finché `wails build` (o `cd frontend; npm run build`) non la popola.
+Tutti i comandi si lanciano **dalla radice** con `npm run <script>` ([package.json](package.json); `frontend/package.json` ha solo gli script di Vite):
+
+- `setup`: installa le dipendenze del frontend (`npm --prefix frontend install`; `wails build`/`dev` lo fanno comunque da sé)
+- `dev`: `wails dev` (hot reload)
+- `build`: `wails build` → `build\bin\RenameMusic.exe`
+- `build:frontend`: solo `tsc` + Vite in `frontend/dist` (utile per verificare il frontend senza Wails)
+- `test`: `go test ./...`; prima (`pretest`) compila il frontend se manca `frontend/dist/index.html`
+- `check`: build del frontend (con `tsc`) + `go vet ./...` + `go test ./...`
+- `apk:build`: `mobile\build-apk.ps1` → `build\bin\RenameMusic-arm64-v8a.apk` (telefono) e `-x86_64.apk` (emulatore). Cache/temporanei in `.android-build\` (ignorata da git). Opzioni dello script: `-SkipGo` (riusa l'`.aar`), `-JavaHome <jdk>`.
+- `apk:install`: `mobile\install-apk.ps1` (adb, sceglie l'ABI giusto; `-Serial <id>` con più dispositivi); `apk`: build + installazione.
+- `release -- patch|minor|major` (`release.ps1`; l'argomento è **obbligatorio**, accettato anche come `-patch`/`--patch`): si ferma subito se manca `internal/google/credentials_local.go` o ha ancora i valori del modello (le variabili d'ambiente non contano) e prima del commit verifica che l'exe contenga il client ID; incrementa `update.Version`, compila exe + APK, e dopo conferma fa commit (messaggio fisso `chore(release): 🚀 release X.Y.Z`), tag `vX.Y.Z` e push (`--atomic`), poi crea la release su GitHub con `gh release create` (exe + APK allegati; le note si scrivono solo all'inizio dello script, in un file temporaneo vuoto aperto nel Blocco note che viene letto ed eliminato subito, e restano solo in memoria). Senza GitHub CLI autenticata apre invece la pagina della nuova release da completare a mano. Se il tag esiste già (in locale o su origin) chiede se ricrearlo o annullare: il vecchio tag si sostituisce solo al push (`git tag -f` + push forzato del solo tag), e con `gh` si elimina anche la release rimasta su quel tag; con `-Yes` invece si interrompe. Se la release si annulla o fallisce prima del commit, ripristina versione, staging ed exe/APK di `build\bin` (messi da parte in `build\bin\.release-backup`). `-NoBuild` salta le build, `-Yes` la conferma. Lo lancia **l'utente** (vedi "Commit").
+
+`frontend/dist` è output di build, ignorata da git: su un clone nuovo `go build ./...`/`go vet ./...` falliscono (l'embed richiede almeno un file) finché `npm run build` o `npm run build:frontend` non la popola (`npm test` lo fa da sé).
 
 > Il binario embedda `frontend/dist` a compile-time: modifiche al frontend si vedono solo dopo `wails build` (o in `wails dev`). Per l'APK le copia `npx cap sync` (lo fa lo script).
 

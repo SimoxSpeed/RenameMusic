@@ -32,10 +32,14 @@ Il core è in Go ed è condiviso. La GUI è la stessa sulle due piattaforme: Rea
 
 ### Desktop
 
+Tutti i comandi si lanciano dalla radice del repo:
+
 ```powershell
-wails dev     # sviluppo con hot reload
-wails build   # build\bin\RenameMusic.exe
-go test ./... # test (prima serve una build del frontend: cd frontend; npm run build)
+npm run setup  # dipendenze del frontend
+npm run dev    # sviluppo con hot reload (wails dev)
+npm run build  # build\bin\RenameMusic.exe (wails build)
+npm test       # go test ./... (compila prima il frontend se manca)
+npm run check  # tsc + build del frontend, go vet e test
 ```
 
 Senza credenziali OAuth la parte "Account Google" non è disponibile (il resto dell'app funziona). Per abilitarla copia [credentials_local.go.example](internal/google/credentials_local.go.example) in `internal/google/credentials_local.go`, ignorato da git, e inserisci il client OAuth «App desktop» di Google Cloud. In alternativa puoi impostare le variabili `RENAMEMUSIC_GOOGLE_CLIENT_ID` / `RENAMEMUSIC_GOOGLE_CLIENT_SECRET`.
