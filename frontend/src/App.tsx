@@ -3473,23 +3473,28 @@ function App() {
                                         di YouTube dell'utente. Senza le credenziali OAuth (solo
                                         desktop) resta visibile e spiega cosa manca. */}
                                         <div className="ytdlp-panel google-panel">
+                                            {/* Titolo con la "i" a sinistra, stato (o email
+                                                dell'account) allineato a destra accanto
+                                                all'azione; su Android l'email va a capo. */}
                                             <div className="ytdlp-head">
                                                 <div className="ytdlp-head-info">
                                                     <span className="google-title">
                                                         <AccountIcon />
                                                         Account Google
                                                     </span>
-                                                    {!googleAvailable ? (
-                                                        <span className="ytdlp-badge google-off">Non configurato</span>
-                                                    ) : googleConnected ? (
+                                                    <InfoIcon text="Collegando il tuo account l'app può leggere le tue playlist di YouTube (anche quelle private) per importarle qui, mostrarle per prime nella scelta del download, aggiungere a una playlist il video del link e, secondo le impostazioni di ogni playlist (⚙), togliere da YouTube i brani appena scaricati o aggiungerli a un'altra playlist. Puoi revocare l'accesso in qualsiasi momento con «Scollega»." />
+                                                </div>
+                                                {!googleAvailable ? (
+                                                    <span className="ytdlp-badge google-off">Non configurato</span>
+                                                ) : googleConnected ? (
+                                                    <span className="google-account-row">
                                                         <span className="ytdlp-badge ytdlp-ok google-account" title="Account collegato">
                                                             {state?.google?.email || 'Collegato'}
                                                         </span>
-                                                    ) : (
-                                                        <span className="ytdlp-badge google-off">Non collegato</span>
-                                                    )}
-                                                    <InfoIcon text="Collegando il tuo account l'app può leggere le tue playlist di YouTube (anche quelle private) per importarle qui, mostrarle per prime nella scelta del download, aggiungere a una playlist il video del link e, secondo le impostazioni di ogni playlist (⚙), togliere da YouTube i brani appena scaricati o aggiungerli a un'altra playlist. Puoi revocare l'accesso in qualsiasi momento con «Scollega»." />
-                                                </div>
+                                                    </span>
+                                                ) : (
+                                                    <span className="ytdlp-badge google-off">Non collegato</span>
+                                                )}
                                                 {!googleAvailable ? null : googleConnected ? (
                                                     <button
                                                         className="ghost small danger"
@@ -3596,7 +3601,7 @@ function App() {
                                     )}
 
                                     <div className="replacements">
-                                        <div className="replacements-head">
+                                        <div className="replacements-head saved-playlists-head">
                                             <span>Playlist salvate (nome → link)</span>
                                             <span className="replacements-head-actions">
                                                 {googleConnected && (

@@ -703,6 +703,29 @@
         flex-wrap: wrap;
     }
 
+    /* Playlist salvate: i due tasti sotto il titolo, "Importa dall'account" a
+       sinistra e "+ Aggiungi" a destra (anche quando è da solo). */
+    .is-android .saved-playlists-head {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .is-android .saved-playlists-head .replacements-head-actions {
+        flex-basis: 100%;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+    }
+
+    .is-android .saved-playlists-head .add-replacement {
+        margin-left: auto;
+    }
+
+    /* Email dell'account: sotto titolo e "Scollega", sempre allineata a destra. */
+    .is-android .google-account-row {
+        order: 1;
+        flex-basis: 100%;
+    }
+
     .is-android .ytdlp-install {
         margin-left: auto;
     }

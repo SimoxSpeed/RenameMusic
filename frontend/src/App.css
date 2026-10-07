@@ -2042,14 +2042,22 @@ main.is-simple {
     white-space: nowrap;
 }
 
+/* L'email dell'account sta a destra, accanto a "Scollega" (su Android va a
+   capo su una riga propria, mobile.css). */
+.google-account-row {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
 .google-off {
     background: color-mix(in srgb, var(--muted) 16%, transparent);
     color: var(--muted);
 }
 
+.google-panel .ytdlp-head > .ytdlp-badge,
 .google-panel .ytdlp-head > button {
     flex: none;
-    margin-left: auto;
 }
 
 .google-hint {
