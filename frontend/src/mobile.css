@@ -763,10 +763,39 @@
         margin-left: auto;
     }
 
-    /* Email dell'account: sotto titolo e "Scollega", sempre allineata a destra. */
-    .is-android .google-account-row {
-        order: 1;
-        flex-basis: 100%;
+    /* Righe "nome + stato + azione" (account Google, versione dell'app): nome
+       e stato (email, "Non collegato", nuova versione) uno sotto l'altro a
+       sinistra, tasti a destra centrati sulle due righe. Lo stacco fra le
+       righe è un margine del badge, così senza badge non resta spazio vuoto. */
+    .is-android .google-panel .ytdlp-head,
+    .is-android .about .ytdlp-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0 10px;
+    }
+
+    .is-android .google-panel .ytdlp-head > :first-child,
+    .is-android .about .ytdlp-head > :first-child {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .is-android .google-panel .ytdlp-head > .ytdlp-badge,
+    .is-android .google-panel .ytdlp-head > .google-account-row,
+    .is-android .about .ytdlp-head > .ytdlp-badge {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: start;
+        max-width: 100%;
+        margin-top: 6px;
+    }
+
+    .is-android .google-panel .ytdlp-head > button,
+    .is-android .about .ytdlp-head > button,
+    .is-android .about .ytdlp-head > .tip {
+        grid-column: 2;
+        grid-row: 1 / span 2;
     }
 
     .is-android .ytdlp-install {

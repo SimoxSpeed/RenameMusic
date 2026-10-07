@@ -2087,6 +2087,11 @@ main.is-simple {
     display: inline;
 }
 
+/* Checkbox una sotto l'altra (scheda Generale): staccate, non incollate. */
+.settings > .check + .check {
+    margin-top: 12px;
+}
+
 /* Bottone icona "Disinstalla yt-dlp": spinto a destra del badge, compatto,
    solo icona (cestino). Visibile solo in gestione automatica con yt-dlp presente. */
 .ytdlp-uninstall {
@@ -2134,8 +2139,8 @@ main.is-simple {
     white-space: nowrap;
 }
 
-/* L'email dell'account sta a destra, accanto a "Scollega" (su Android va a
-   capo su una riga propria, mobile.css). */
+/* L'email dell'account sta a destra, accanto a "Scollega" (su Android sotto
+   "Account Google", mobile.css). */
 .google-account-row {
     display: flex;
     justify-content: flex-end;

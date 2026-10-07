@@ -3851,7 +3851,8 @@ function App() {
                                         <div className="ytdlp-panel google-panel">
                                             {/* Titolo con la "i" a sinistra, stato (o email
                                                 dell'account) allineato a destra accanto
-                                                all'azione; su Android l'email va a capo. */}
+                                                all'azione; su Android lo stato va sotto il
+                                                titolo e l'azione resta a destra. */}
                                             <div className="ytdlp-head">
                                                 <div className="ytdlp-head-info">
                                                     <span className="google-title">
