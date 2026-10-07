@@ -1,0 +1,271 @@
+/* Pannelli (comparsa, intestazioni) e tabella di anteprima/risultati: colonne, badge, chip formato. */
+
+/* Fade+slide leggerissimo sui pannelli quando appaiono nel DOM. */
+.fade-in {
+    animation: fadeIn 0.18s ease-out both;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fade-in { animation: none; }
+}
+
+.panel h2 {
+    margin: 0;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 15px;
+    background: var(--panel-alt);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Icona a fianco delle etichette dei pannelli (Anteprima / Attività / Risultato). */
+.h2-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--primary);
+}
+
+.panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-alt);
+    padding-right: 10px;
+}
+
+.panel-head h2 {
+    border-bottom: 0;
+    background: transparent;
+    flex: 1;
+}
+
+/* Strumenti a destra dell'intestazione Anteprima: toggle vista + aggiorna. */
+.preview-tools {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Il pannello Anteprima non ritaglia il contenuto (i tooltip dell'intestazione
+   devono poterne uscire): gli angoli arrotondati li danno intestazione e
+   ultima riga della tabella. */
+.preview-panel {
+    overflow: visible;
+}
+
+.preview-panel > .panel-head {
+    border-radius: 7px 7px 0 0;
+}
+
+.preview-panel tr:last-child > td:first-child {
+    border-bottom-left-radius: 7px;
+}
+
+.preview-panel tr:last-child > td:last-child {
+    border-bottom-right-radius: 7px;
+}
+
+/* I controlli stanno sul bordo destro: il tooltip si allinea a destra invece
+   di centrarsi, così non esce dalla finestra. */
+.preview-tools .info-tooltip {
+    left: auto;
+    right: 0;
+    transform: translateY(-4px);
+}
+
+.preview-tools .tip:hover > .info-tooltip,
+.preview-tools .tip:has(:focus-visible) > .info-tooltip {
+    transform: translateY(0);
+}
+
+.preview-tools .info-tooltip::before {
+    left: auto;
+    right: 16px;
+    transform: none;
+}
+
+/* Toggle "Solo da rinominare": è una vista, non cambia l'elaborazione. */
+.toggle-changed {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+/* Colonna Tag/Esito */
+.panel table th:last-child,
+.panel table td:last-child {
+    width: 130px;
+}
+
+/* Colonna "File attuale": leggermente più larga delle tre colonne di
+   anteprima (nome/titolo/artista), che si dividono lo spazio restante. */
+.preview-table .cell-current {
+    width: 30%;
+}
+
+/* Colonna delle caselle "da rivedere", a sinistra dell'anteprima: stretta e
+   centrata sulla riga. La casella è disegnata con i colori del tema (bordo
+   tenue come i campi, riempita col primario quando spuntata) e resta discreta
+   finché non si passa sulla riga o la si spunta. */
+.preview-table .cell-select {
+    width: 40px;
+    padding-left: 0;
+    padding-right: 0;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.preview-table .cell-select input {
+    appearance: none;
+    display: block;
+    width: 15px;
+    height: 15px;
+    min-height: 0;
+    margin: 0 auto;
+    padding: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 4px;
+    background: var(--input-bg) center / 11px 11px no-repeat;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.preview-table tr:hover .cell-select input:not(:disabled),
+.preview-table .cell-select input:hover:not(:disabled) {
+    border-color: var(--muted);
+}
+
+.preview-table .cell-select input:checked,
+.preview-table .cell-select input:indeterminate {
+    border-color: var(--primary);
+    background-color: var(--primary);
+}
+
+.preview-table .cell-select input:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 6.2 5 8.5l4.5-5'/%3E%3C/svg%3E");
+}
+
+.preview-table .cell-select input:indeterminate {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 6h6'/%3E%3C/svg%3E");
+}
+
+.preview-table .cell-select input:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+th,
+td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+}
+
+th {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    background: var(--panel-alt);
+}
+
+.empty {
+    padding: 22px 14px;
+    color: var(--muted);
+}
+
+.badge {
+    display: inline-block;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+/* Contenitore dei badge di stato: gap verticale + wrap per evitare che
+   "Da rinominare" e "MP3" si incollino su una sola riga. */
+.badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+}
+
+.badge-changed {
+    border-color: rgba(45, 125, 70, 0.55);
+    background: rgba(45, 125, 70, 0.12);
+    color: var(--accent-strong);
+}
+
+.badge-neutral {
+    /* Bordo ben visibile (colore del testo attenuato, non la linea tenue delle
+       tabelle) così "Invariato" si legge come un'etichetta racchiusa, alla pari
+       di "Da rinominare". */
+    border-color: var(--muted);
+    background: transparent;
+    color: var(--muted);
+}
+
+/* "Da taggare": file il cui nome resta invariato ma i cui tag ID3
+   (titolo/artista) verranno riscritti. Arancione, per distinguerlo dal verde di
+   "Da rinominare". */
+.badge-tag {
+    border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    color: var(--warn);
+}
+
+/* Brano selezionato nell'anteprima per essere rivisto prima della conversione. */
+.badge-review {
+    border-color: color-mix(in srgb, #8b5cf6 55%, transparent);
+    background: color-mix(in srgb, #8b5cf6 14%, transparent);
+    color: #8b5cf6;
+}
+
+.badge-mp3 {
+    border-color: rgba(23, 107, 135, 0.55);
+    background: rgba(23, 107, 135, 0.12);
+    color: var(--primary-strong);
+}
+
+/* Chip formato. Mostra l'estensione del file (mai visibile nel nome) in stile
+   blu. I file trattati sono sempre mp3: nessuna conversione fra formati diversi. */
+.ext-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.7;
+}
+
+.ext-same {
+    border: 1px solid rgba(23, 107, 135, 0.55);
+    background: rgba(23, 107, 135, 0.12);
+    color: var(--primary-strong);
+}

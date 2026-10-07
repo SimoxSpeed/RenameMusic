@@ -1,0 +1,346 @@
+/* Righe del registro Attività, popup (modal), traccia da confermare, aggiornamento dell'app, errori di download. */
+
+.log {
+    padding: 8px 0;
+    margin: 0;
+    list-style: none;
+    color: var(--text);
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.log-empty {
+    padding: 12px 14px;
+    color: var(--muted);
+}
+
+.log-item {
+    display: grid;
+    grid-template-columns: 8px 64px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line-soft);
+}
+
+.log-item:last-child {
+    border-bottom: 0;
+}
+
+.log-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    align-self: center;
+}
+
+.log-time {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+}
+
+.log-msg {
+    min-width: 0;
+    word-break: break-word;
+}
+
+.log-info .log-dot    { background: var(--muted); }
+.log-success .log-dot { background: var(--ok); }
+.log-auto .log-dot    { background: var(--primary); }
+.log-error .log-dot   { background: var(--danger); }
+.log-error .log-msg   { color: var(--danger); }
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 50;
+}
+
+.modal {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px 22px;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: var(--shadow);
+}
+
+.modal h3 {
+    margin: 0 0 10px;
+    font-size: 17px;
+}
+
+.modal p {
+    margin: 0 0 18px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* Popup "traccia non rinominabile": campo col nome modificabile e chip formato.
+   Il paragrafo descrittivo sopra usa già .modal p; qui gestiamo solo il campo. */
+.tag-prompt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 16px;
+}
+
+.tag-prompt-field > span {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+/* Il nome originale fa da etichetta al campo: può essere lungo, va a capo. */
+.tag-prompt-field > .tag-prompt-label {
+    word-break: break-word;
+}
+
+/* Input + chip estensione affiancati: l'input occupa lo spazio residuo, il chip
+   resta a destra (l'estensione non è mostrata nel nome, come nel resto della UI). */
+.tag-prompt-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tag-prompt-input input {
+    flex: 1;
+    min-width: 0;
+}
+
+.tag-prompt-queue {
+    margin: -6px 0 16px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Ricerca su MusicBrainz in corso: il popup mostra solo l'attesa. */
+.tag-prompt-searching {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tag-prompt-searching > span:last-child {
+    min-width: 0;
+    word-break: break-word;
+}
+
+/* Esito della ricerca su MusicBrainz sotto il campo, con il ritorno al nome di
+   prima come link. */
+.tag-prompt-suggest {
+    margin: -10px 0 12px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.tag-prompt-suggest.is-error {
+    color: var(--warn);
+}
+
+.tag-prompt-restore {
+    min-height: 0;
+    border: none;
+    padding: 0;
+    background: none;
+    color: var(--accent);
+    font-size: inherit;
+    text-decoration: underline;
+}
+
+.tag-prompt-restore:disabled {
+    color: var(--muted);
+    text-decoration: none;
+    cursor: default;
+    opacity: 1;
+}
+
+/* Pannello dei brani trovati su MusicBrainz (es. stesso titolo, artisti
+   diversi): ricerca in cima, elenco sotto. Un tocco mette il brano nel campo;
+   quello nel campo è evidenziato. */
+.tag-prompt-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 0 16px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+}
+
+.tag-prompt-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+}
+
+.tag-prompt-filter input {
+    flex: 1;
+    min-width: 0;
+}
+
+.tag-prompt-count {
+    flex: none;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.tag-prompt-empty {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    word-break: break-word;
+}
+
+.tag-prompt-options {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 30vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tag-prompt-option {
+    width: 100%;
+    min-height: 0;
+    padding: 7px 11px;
+    border-radius: 8px;
+    background: var(--input-bg);
+    text-align: left;
+    word-break: break-word;
+}
+
+.tag-prompt-option:hover:not(:disabled),
+.tag-prompt-option.is-selected {
+    border-color: var(--primary);
+}
+
+.tag-prompt-option.is-selected {
+    background: color-mix(in srgb, var(--primary) 12%, var(--input-bg));
+}
+
+/* Aggiornamento dell'app. Pallino sul bottone "Impostazioni" quando c'è una
+   nuova versione (il popup compare da solo una volta sola: il pallino ricorda
+   che l'aggiornamento resta disponibile). */
+.header-btn {
+    position: relative;
+}
+
+.update-dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--header-bg);
+}
+
+.update-badge {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent-strong);
+}
+
+/* Note di rilascio della versione (testo della release GitHub), scrollabili. */
+.update-notes {
+    margin: -6px 0 16px;
+    padding: 9px 11px;
+    max-height: 32vh;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--input-bg);
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.update-progress {
+    margin: -6px 0 16px;
+}
+
+.modal p.update-later {
+    margin-top: -6px;
+    font-size: 12px;
+}
+
+/* Modale più largo per elenchi (es. errori di download). */
+.modal-wide {
+    max-width: 640px;
+}
+
+/* Badge accanto a "Scarica" quando l'ultimo download ha avuto errori: apre il
+   modale di dettaglio. Compatto, con icona di avviso e conteggio. */
+.download-errors-btn {
+    gap: 5px;
+}
+
+/* Elenco scrollabile degli errori di download nel modale. */
+.download-errors-list {
+    list-style: none;
+    margin: 0 0 18px;
+    padding: 0;
+    max-height: 46vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.download-error-item {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--danger, #e5484d);
+    border-radius: 8px;
+    padding: 9px 11px;
+    background: var(--input-bg);
+}
+
+.dl-err-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.dl-err-url {
+    font-size: 12px;
+    color: var(--muted);
+    word-break: break-all;
+    margin-top: 2px;
+}
+
+.dl-err-msg {
+    font-size: 12.5px;
+    color: var(--text);
+    margin-top: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+@media (max-width: 860px) {
+    .toolbar {
+        grid-template-columns: 1fr;
+    }
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,0 +1,347 @@
+/* Tasti dell'header, barre di avanzamento (indeterminata in cima e determinata delle operazioni) e varianti dei pulsanti. */
+
+/* Bottone azione nell'header (es. "Impostazioni"): coerente con il tema scuro
+   dell'header, bordo tenue e testo chiaro. */
+.header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(203, 213, 225, 0.35);
+    background: transparent;
+    color: var(--header-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.header-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(203, 213, 225, 0.6);
+}
+
+.header-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .watch-dot { animation: none; }
+    .watch-toggle.is-on .watch-dot { animation: none; }
+}
+
+main {
+    position: relative;
+    max-width: 1600px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px 24px 32px;
+}
+
+.toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.folder-path {
+    flex: 1;
+    min-width: 0;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-alt);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.icon-btn {
+    min-width: 42px;
+    line-height: 1;
+    padding: 8px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+input,
+select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--text);
+    background: var(--input-bg);
+    font: inherit;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* Barra di progresso indeterminata in cima al main. È in position:absolute così
+   non occupa spazio nel flusso: appare/scompare senza spostare i controlli
+   sottostanti (niente layout-shift/flicker). Colore e animazione solo quando
+   è attiva (.is-active). */
+.busy-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Sopra il contenuto del main. */
+    z-index: 31;
+    height: 3px;
+    background: transparent;
+    overflow: hidden;
+    /* Animazione di attivazione discreta: la barra sfuma e cresce dolcemente in
+       altezza quando parte un'operazione, e sfuma via al termine. Vive su un layer
+       compositato proprio (transform/opacity) così la sua animazione non provoca
+       ridisegni dei controlli sottostanti (niente flicker). */
+    opacity: 0;
+    transform: scaleY(0.35);
+    transform-origin: top center;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    will-change: opacity, transform;
+}
+
+.busy-bar.is-active {
+    opacity: 1;
+    transform: scaleY(1);
+    background: rgba(23, 107, 135, 0.15);
+}
+
+/* Lo shimmer esiste (e quindi anima) solo quando la barra è attiva:
+   niente animazione perenne che ridipinge di continuo. */
+.busy-bar.is-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    animation: busySlide 1.2s ease-in-out infinite;
+    will-change: transform;
+}
+
+@keyframes busySlide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .busy-bar { transition: none; }
+    .busy-bar.is-active::before { animation: none; }
+}
+
+/* Barra di avanzamento determinata (oltre alla busy-bar indeterminata in cima):
+   mostra il progresso reale delle operazioni con totale noto — in particolare il
+   download di una playlist (canzoni scaricate / totale). Appare solo mentre
+   l'operazione è in corso. Se l'etichetta non sta accanto alla barra (schermi
+   stretti, caratteri grandi) va sotto di essa e, se serve, a capo, invece di
+   uscire dalla finestra. */
+.op-progress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 12px;
+}
+
+.op-progress-track {
+    flex: 1 1 120px;
+    min-width: 0;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--panel-alt);
+    border: 1px solid var(--line);
+    overflow: hidden;
+}
+
+.op-progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+}
+
+.op-progress-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+input {
+    min-height: 38px;
+}
+
+button,
+select {
+    /* I controlli del form non ereditano il font di default: senza questo i
+       pulsanti userebbero il font di sistema del WebView (che appare tipo Arial),
+       mentre gli input hanno già `font: inherit`. */
+    font-family: inherit;
+}
+
+button {
+    min-height: 38px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease,
+        box-shadow 0.14s ease;
+}
+
+button:hover:not(:disabled) {
+    border-color: #aab3c2;
+}
+
+button:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* Leggera micro-interazione di rilievo sulle azioni principali: solo un'ombra,
+   senza spostamento verticale (i bottoni non devono "salire" in hover). */
+button.primary:hover:not(:disabled),
+button.accent:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
+}
+
+button.primary:active:not(:disabled),
+button.accent:active:not(:disabled) {
+    box-shadow: none;
+}
+
+/* Bottoni con icona che appare lateralmente da sinistra all'hover/focus, mentre
+   il testo scivola dolcemente verso destra. */
+.with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+}
+
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    width: 0;
+    margin-right: 0;
+    opacity: 0;
+    transform: translateX(-6px);
+    overflow: hidden;
+    transition: width 0.2s ease, margin-right 0.2s ease, opacity 0.2s ease,
+        transform 0.2s ease;
+}
+
+.with-icon:hover:not(:disabled) .btn-icon,
+.with-icon:focus-visible .btn-icon {
+    width: 16px;
+    margin-right: 7px;
+    opacity: 1;
+    transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btn-icon {
+        transition: none;
+    }
+    button.primary:hover:not(:disabled),
+    button.accent:hover:not(:disabled) {
+        transform: none;
+    }
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+button.primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: white;
+}
+
+button.primary:hover:not(:disabled) {
+    background: var(--primary-strong);
+}
+
+button.accent {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: white;
+}
+
+button.accent:hover:not(:disabled) {
+    background: var(--accent-strong);
+}
+
+button.ghost {
+    background: transparent;
+}
+
+button.small {
+    min-height: 30px;
+    padding: 4px 10px;
+    font-size: 13px;
+}
+
+button.danger {
+    color: var(--danger);
+    border-color: #e3c2c2;
+}
+
+/* Hover della X "rimuovi sostituzione": sfondo rosso pieno, glifo nero/grigio. */
+button.danger:hover:not(:disabled) {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #2b2b2b;
+}
+
+/* Hover di "+ Aggiungi" sostituzione: sfondo verde (accento). */
+button.add-replacement:hover:not(:disabled) {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+/* Variante pieno-rosso per azioni distruttive nei modali ("Continua"). */
+button.danger-solid {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+}
+
+button.danger-solid:hover:not(:disabled) {
+    filter: brightness(1.05);
+}
+
+/* "Salva predefiniti": azione gialla, distinta dalle altre della barra delle
+   Impostazioni e da quelle distruttive (rosse). Testo scuro per contrasto sul
+   giallo. */
+button.warn-solid {
+    background: #eab308;
+    border-color: #eab308;
+    color: #1f2937;
+}
+
+button.warn-solid:hover:not(:disabled) {
+    background: #f5c518;
+    border-color: #f5c518;
+}

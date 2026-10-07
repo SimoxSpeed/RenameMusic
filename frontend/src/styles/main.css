@@ -1,0 +1,368 @@
+/* Schermata principale normale: riga dei comandi, riepilogo delle cartelle, registro Attività, controlli di download e campo del link. */
+
+/* Riga in cima: la testata (riepilogo cartelle+azioni), a tutta larghezza
+   (il registro Attività sta nell'header, vedi .activity-menu). */
+.top-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+/* Le impostazioni occupano l'intera larghezza della griglia (entrambe le
+   colonne), così sono larghe come la tabella di conversione sottostante e non
+   solo come la colonna sinistra della testata. */
+.top-row > .settings {
+    grid-column: 1 / -1;
+}
+
+.top-left-head {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Riquadro del riepilogo cartelle in testa alla schermata principale: le
+   cartelle si scelgono nelle Impostazioni, qui se ne mostrano solo i percorsi. */
+.folder-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-alt);
+    color: var(--muted);
+    font-size: 13px;
+}
+
+/* Riepilogo delle cartelle (schermata principale e card della modalità
+   semplificata): una riga per cartella con il percorso completo, distinte
+   dall'icona (freccia in entrata per la partenza, in uscita per la
+   destinazione; entrambe in una riga sola se coincidono). */
+.folder-lines {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.folder-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.folder-line-icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--primary);
+}
+
+.folder-line + .folder-line .folder-line-icon {
+    color: var(--accent);
+}
+
+/* Il percorso non si allarga: l'eventuale icona d'errore gli sta subito accanto. */
+.folder-line-path {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text);
+}
+
+.folder-line-path em {
+    color: var(--muted);
+}
+
+/* Icona d'errore accanto a una cartella che non c'è più sul disco (il
+   dettaglio è nel tooltip). */
+.folder-missing {
+    display: inline-flex;
+    flex: none;
+    color: var(--danger);
+    cursor: help;
+}
+
+/* Nella schermata principale l'icona è cliccabile (apre le Impostazioni):
+   solo il glifo, senza l'aspetto da pulsante. */
+button.folder-missing {
+    min-height: 0;
+    padding: 2px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+}
+
+button.folder-missing:hover:not(:disabled) {
+    background: var(--row-error);
+}
+
+button.folder-missing:disabled {
+    cursor: default;
+}
+
+/* Registro Attività nell'header (ActivityMenu): tasto solo icona, come
+   Impostazioni, che apre sopra un velo scuro su tutta la pagina (header
+   compreso) un pannello grande, alto quasi quanto la finestra; la lista scorre
+   internamente (vedi .log). Il velo è fixed dentro l'header, che con il suo
+   z-index sta già sopra il contenuto. */
+.activity-menu {
+    position: relative;
+    display: inline-flex;
+    align-self: stretch;
+}
+
+/* Alto quanto Impostazioni (la riga lo stira), con l'icona centrata. */
+.activity-trigger {
+    justify-content: center;
+    padding: 6px 9px;
+}
+
+.activity-trigger.is-open {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(203, 213, 225, 0.6);
+}
+
+.activity-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    padding: 24px;
+    background: var(--overlay);
+    backdrop-filter: blur(2px);
+    animation: activityOverlayIn 0.16s ease-out both;
+}
+
+.activity-popover {
+    display: flex;
+    flex-direction: column;
+    width: min(760px, 100%);
+    color: var(--text);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    font-size: 14px;
+    animation: activityPanelIn 0.2s ease-out both;
+}
+
+.activity-popover .panel-head {
+    flex-shrink: 0;
+}
+
+.activity-popover .panel-head h2 {
+    padding: 14px 16px;
+    font-size: 16px;
+}
+
+.activity-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.activity-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 7px;
+    line-height: 0;
+}
+
+.activity-popover .log-item {
+    padding: 10px 16px;
+}
+
+@keyframes activityOverlayIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes activityPanelIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .activity-overlay,
+    .activity-popover { animation: none; }
+}
+
+/* Tra le righe nuove c'è un errore: pallino rosso invece che verde. */
+.update-dot.is-error {
+    background: var(--danger);
+}
+
+/* Controlli di download playlist (select + "+" + "Scarica"): stanno sotto il
+   divisore, con il campo del link sopra (.download-box, su una riga propria
+   del contenitore flex-wrap .actions), subito sopra i bottoni di
+   conversione/tag. */
+.download-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-basis: 100%;
+}
+
+/* Scelta della playlist: con un link inserito si chiude e sparisce (vedi
+   Collapse in components/controls.tsx). Il contenitore non cambia le misure
+   del select. */
+.playlist-pick {
+    display: inline-flex;
+    min-width: 0;
+}
+
+/* Campo del link e riga playlist + "Scarica" hanno la stessa larghezza, quella
+   della riga con la playlist aperta (--download-row-width, misurata in
+   App.tsx; senza misura restano a tutta larghezza). Con la playlist chiusa
+   "Scarica" si allarga fino a lì, mentre l'altra si stringe. */
+.download-box {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 100%;
+    gap: 10px;
+    min-width: 0;
+}
+
+.download-box > .link-field,
+.download-box > .download-controls {
+    flex: none;
+}
+
+.download-box > .link-field {
+    max-width: var(--download-row-width, none);
+}
+
+.download-controls:has(> .playlist-pick[data-away]) {
+    max-width: var(--download-row-width, none);
+}
+
+.download-controls:has(> .playlist-pick[data-away]) > .playlist-pick + .tip {
+    flex-grow: 1;
+}
+
+.download-controls:has(> .playlist-pick[data-away]) > .playlist-pick + .tip > button {
+    flex: 1 1 auto;
+    justify-content: center;
+}
+
+/* Il select della playlist sta sul bordo sinistro: il suo tooltip si allinea a
+   sinistra invece di centrarsi, così non esce dalla finestra. */
+.playlist-pick > .tip > .info-tooltip {
+    left: 0;
+    transform: translateY(-4px);
+}
+
+.playlist-pick > .tip:hover > .info-tooltip,
+.playlist-pick > .tip:has(:focus-visible) > .info-tooltip {
+    transform: translateY(0);
+}
+
+.playlist-pick > .tip > .info-tooltip::before {
+    left: 16px;
+    transform: none;
+}
+
+/* Campo del link da scaricare (sopra la scelta della playlist): icona a
+   sinistra e tasto per svuotarlo a destra, dentro il campo. */
+.link-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.link-field input {
+    padding-left: 34px;
+    padding-right: 38px;
+    text-overflow: ellipsis;
+}
+
+.link-field-icon {
+    position: absolute;
+    left: 11px;
+    display: inline-flex;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+.link-field-clear {
+    position: absolute;
+    right: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+}
+
+.link-field-clear:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--panel-alt);
+}
+
+/* Tasto "Incolla" (solo Android): a campo vuoto, al posto della ✕. */
+.link-field.has-paste input {
+    padding-right: 96px;
+}
+
+.link-field-paste {
+    position: absolute;
+    right: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    min-height: 0;
+    padding: 0 9px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-alt);
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.link-field-paste:hover:not(:disabled) {
+    background: var(--panel);
+}
+
+/* Tasto "aggiungi a una playlist" (account Google collegato), a sinistra della
+   ✕: è il .tip che lo avvolge (riferimento del tooltip) a stare in posizione. */
+.link-field.has-add input {
+    padding-right: 72px;
+}
+
+.link-field > .tip {
+    position: absolute;
+    right: 37px;
+}
+
+.link-field-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary);
+}
+
+.link-field-add:hover:not(:disabled) {
+    background: var(--panel-alt);
+}

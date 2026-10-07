@@ -72,7 +72,7 @@ body {
 }
 
 /* La pagina non scorre: scorre solo il contenuto sotto l'header (.app-scroll
-   in App.css), così la scrollbar parte da sotto l'header. */
+   in styles/layout.css), così la scrollbar parte da sotto l'header. */
 html {
     overflow: hidden;
 }

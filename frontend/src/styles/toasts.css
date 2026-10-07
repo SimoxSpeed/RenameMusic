@@ -1,0 +1,149 @@
+/* Toast; in fondo piccoli ritocchi dell'account Google e del popup di una playlist, che devono restare dopo le regole precedenti. */
+
+/* Toast: notifiche effimere impilate in basso a destra, lontane dall'header
+   (dove stanno i comandi) e dall'area delle cartelle. Sotto ai modali (z 50). */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: min(380px, calc(100vw - 40px));
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 12px 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    border-left-width: 4px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    pointer-events: auto;
+    animation: toastIn 0.18s ease;
+    /* Contesto per la barra del tempo residuo, ritagliata dagli angoli. */
+    position: relative;
+    overflow: hidden;
+}
+
+/* Barra del tempo residuo sul fondo del toast: parte piena e si svuota verso
+   sinistra in animation-duration (impostata inline da main/Toasts.tsx); la fine
+   dell'animazione chiude il toast. scaleX (e non width) per restare sul
+   compositor senza ricalcolare il layout. */
+.toast-timer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    transform-origin: left center;
+    opacity: 0.55;
+    animation-name: toastTimer;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+}
+
+.toast-ok .toast-timer {
+    background: var(--ok);
+}
+
+.toast-err .toast-timer {
+    background: var(--danger);
+}
+
+/* Solo con un puntatore vero (desktop): col mouse sopra, o col focus sul tasto
+   di chiusura, il conto alla rovescia si ferma per leggere con calma. Su touch
+   l'hover resterebbe "attaccato" dopo un tocco e il toast non sparirebbe più. */
+@media (hover: hover) {
+    .toast:hover .toast-timer,
+    .toast:focus-within .toast-timer {
+        animation-play-state: paused;
+    }
+}
+
+.toast-ok {
+    border-left-color: var(--ok);
+}
+
+.toast-err {
+    border-left-color: var(--danger);
+}
+
+.toast-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    margin-top: 1px;
+}
+
+.toast-ok .toast-icon {
+    color: var(--ok);
+}
+
+.toast-err .toast-icon {
+    color: var(--danger);
+}
+
+.toast-msg {
+    flex: 1 1 auto;
+    font-size: 13px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.toast-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.toast-close:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--line-soft);
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastTimer {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+}
+
+/* Con movimento ridotto spegniamo solo l'entrata a scorrimento: la barra del
+   tempo resta, perché è la sua animazione a chiudere il toast. */
+@media (prefers-reduced-motion: reduce) {
+    .toast { animation: none; }
+}
+
+/* Riga sotto l'account collegato (canale, numero di playlist): testo in linea. */
+.google-hint.google-sub {
+    display: block;
+}
+
+/* «Togli anche dalla playlist di origine», sotto la scelta della destinazione. */
+.prefs-move {
+    margin-left: 26px;
+}
+
+/* Sincronizzazione delle impostazioni delle playlist non riuscita. */
+.google-hint.google-sync-error {
+    color: var(--warn);
+}

@@ -186,7 +186,7 @@
 }
 
 /* Impostazioni: sotto la barra in alto (Indietro e predefiniti) la fascia
-   ferma delle schede (vedi App.css), qui come pillole orizzontali scorrevoli
+   ferma delle schede (vedi styles/settings.css), qui come pillole orizzontali scorrevoli
    invece delle tab del desktop, con attorno il colore dello sfondo. */
 .is-android .settings-tabs-bar {
     padding: 12px 24px 10px;
@@ -581,7 +581,7 @@
         flex-wrap: wrap;
     }
     /* La playlist occupa lo spazio accanto a "Scarica"; con un link si chiude
-       (vedi Collapse in App.tsx) e "Scarica" ne prende il posto (App.css). */
+       (vedi Collapse in components/controls.tsx) e "Scarica" ne prende il posto (styles/main.css). */
     .is-android .download-controls > .playlist-pick,
     .is-android .download-controls > .playlist-pick > .tip {
         flex: 1 1 auto;

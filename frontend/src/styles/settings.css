@@ -1,0 +1,392 @@
+/* Impostazioni: barra e schede, scheda Info, card delle regole (RuleGroup), ChipList, sostituzioni e divisori. */
+
+/* Barra delle Impostazioni: prende il posto dell'header (stesso aspetto, fissa
+   in cima). A sinistra Indietro, titolo e indicatore del salvataggio
+   automatico; a destra i predefiniti. */
+.settings-header-title,
+.settings-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.settings-header-actions {
+    gap: 10px;
+}
+
+/* "Salva predefiniti" sta sul bordo destro: il suo tooltip si allinea a destra
+   invece di centrarsi, così non esce dalla finestra (come .preview-tools). */
+.settings-header-actions > .tip:last-child > .info-tooltip {
+    left: auto;
+    right: 0;
+    transform: translateY(-4px);
+}
+
+.settings-header-actions > .tip:last-child:hover > .info-tooltip,
+.settings-header-actions > .tip:last-child:has(:focus-visible) > .info-tooltip {
+    transform: translateY(0);
+}
+
+.settings-header-actions > .tip:last-child > .info-tooltip::before {
+    left: auto;
+    right: 16px;
+    transform: none;
+}
+
+.save-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--header-muted);
+}
+
+.save-status svg {
+    color: #b7e5c4;
+}
+
+.settings-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Vista Impostazioni: schede orizzontali ravvicinate in una fascia ferma tra
+   l'header e l'area che scorre (.app-scroll), così la scrollbar parte sotto
+   di loro. Sotto le schede 10px del colore dello sfondo chiusi dalla linea
+   grigia, poi un'ombra che stacca la fascia dal contenuto. La riga è
+   allineata al main (stessa max-width e stesso padding orizzontale).
+   position + z-index tengono l'ombra sopra .app-scroll. */
+.settings-tabs-bar {
+    position: relative;
+    flex: none;
+    z-index: 30;
+    background: var(--bg);
+    box-shadow: 0 6px 14px -4px rgba(0, 0, 0, 0.3);
+}
+
+.settings-tabs {
+    display: flex;
+    gap: 2px;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--line);
+}
+
+/* Sotto le schede il contenuto parte a una distanza più corta del solito. */
+main.is-settings {
+    padding-top: 16px;
+}
+
+.settings-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 6px 6px 0 0;
+    background: transparent;
+    color: var(--muted);
+}
+
+.settings-tab:hover:not(.is-active) {
+    background: var(--panel-alt);
+    color: var(--text);
+}
+
+.settings-tab.is-active {
+    border-bottom-color: var(--primary);
+    color: var(--primary-strong);
+}
+
+/* Pallino dell'aggiornamento sulla scheda Info: accanto all'etichetta. */
+.settings-tab .update-dot {
+    position: static;
+    box-shadow: none;
+}
+
+/* Scheda Info. */
+.about-desc {
+    margin: 0 0 16px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.about-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 8px 16px;
+    margin: 16px 0 0;
+    font-size: 14px;
+}
+
+.about-list dt {
+    color: var(--muted);
+}
+
+.about-list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.about-list a {
+    color: var(--primary);
+}
+
+.about-disclaimer {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+}
+
+.about-disclaimer h3 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.about-disclaimer p {
+    margin: 0 0 8px;
+}
+
+.about-disclaimer p:last-child {
+    margin-bottom: 0;
+}
+
+.settings h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+}
+
+.settings label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.settings label span {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.replacements {
+    margin-top: 16px;
+}
+
+/* Scheda Regole: card richiudibili (RuleGroup), una sotto l'altra a tutta
+   larghezza. Ogni categoria ha un colore (--tone) per il bordo sinistro e il
+   contatore, così si riconosce a colpo d'occhio anche da chiusa. */
+.rule-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.rule-group {
+    --tone: var(--muted);
+    min-width: 0;
+    border: 1px solid var(--line-soft);
+    border-left: 3px solid var(--tone);
+    border-radius: 8px;
+    background: var(--panel-alt);
+}
+
+.rule-group.tone-red { --tone: var(--danger); }
+.rule-group.tone-blue { --tone: var(--primary); }
+.rule-group.tone-green { --tone: var(--accent); }
+.rule-group.tone-yellow { --tone: var(--warn); }
+
+/* Titolo cliccabile: freccia (ruota quando è aperta), nome, numero di voci e
+   descrizione, che va a capo sotto su schermi stretti. */
+.rule-group > summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 10px 12px;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.rule-group > summary::-webkit-details-marker {
+    display: none;
+}
+
+.rule-group > summary:hover {
+    background: color-mix(in srgb, var(--tone) 6%, transparent);
+}
+
+.rule-group > summary:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+    border-radius: 6px;
+}
+
+.rule-group > summary svg {
+    flex: 0 0 auto;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+}
+
+.rule-group[open] > summary svg {
+    transform: rotate(90deg);
+}
+
+.rule-group-title {
+    font-size: 14px;
+    font-weight: 650;
+}
+
+.rule-count {
+    min-width: 22px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--tone) 16%, transparent);
+    color: var(--tone);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.rule-hint {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.rule-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 2px 12px 12px 38px;
+}
+
+/* Titolo del blocco delle sostituzioni, sotto le card delle altre regole. */
+.rule-title {
+    margin: 20px 0 8px;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.rule-empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.rule-group .replacement-row {
+    margin-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rule-group > summary svg { transition: none; }
+}
+
+/* L'alias del featuring è breve (poche lettere): il campo resta stretto. */
+.ft-alias input {
+    max-width: 150px;
+}
+
+/* Elenco a etichette (ChipList): le voci affiancate e, in fondo, il campo per
+   aggiungerne; l'insieme ha l'aspetto di un unico campo di testo. */
+.chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--input-bg);
+}
+
+.chip-list:focus-within {
+    border-color: var(--primary);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    padding: 2px 2px 2px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-alt);
+    font-size: 13px;
+}
+
+/* white-space: pre mostra anche gli spazi ai bordi, che contano (es. " x "). */
+.chip-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+}
+
+button.chip-remove {
+    min-height: 0;
+    padding: 3px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    line-height: 0;
+}
+
+button.chip-remove:hover:not(:disabled) {
+    background: var(--line-soft);
+    color: var(--danger);
+}
+
+.chip-input {
+    flex: 1 1 160px;
+    width: auto;
+    min-width: 120px;
+    min-height: 0;
+    padding: 4px 6px;
+    border: 0;
+    background: transparent;
+}
+
+.chip-input:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+/* Divisore sottile tra blocchi di una sezione delle Impostazioni. */
+.settings-divider {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 16px 0;
+}
+
+.replacements-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* Spazio minimo tra etichetta e "+ Aggiungi" quando l'etichetta è lunga
+       (es. "Playlist YouTube (nome → link)" su schermi stretti). */
+    gap: 16px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.replacement-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.replacement-row .arrow {
+    color: var(--muted);
+}

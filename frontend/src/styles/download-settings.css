@@ -1,0 +1,451 @@
+/* Scheda Download: yt-dlp e ffmpeg, account Google, playlist dell'account e salvate, popup delle impostazioni di una playlist e dell'account, loader. */
+
+/* Pannello di gestione yt-dlp (in cima alla sezione "Download da YouTube"):
+   riepilogo del "bin" (stato/percorso) + controlli di download/percorso. */
+.ytdlp-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+/* Intestazione: nome dello strumento, badge di stato e azione principale sulla
+   stessa riga, così la prima informazione che si legge è "cos'è e com'è messo",
+   con l'azione a portata di clic. */
+.ytdlp-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Una riga per strumento (yt-dlp, ffmpeg), separate da una linea tenue. */
+.ytdlp-head ~ .ytdlp-head {
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+/* Nome + stato + percorso: vanno a capo (il percorso scende sotto) quando non
+   c'è spazio, lasciando l'azione a destra sulla prima riga. */
+.ytdlp-head-info {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    min-width: 0;
+}
+
+/* Badge "Non presente" + tasto per scaricare: non si separano mai andando a capo. */
+.ytdlp-status {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Cosa indica il percorso (etichetta) + il percorso stesso. */
+.ytdlp-location {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.ytdlp-title {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text);
+}
+
+/* La checkbox "Gestisci autonomamente" sta un livello sopra la card yt-dlp,
+   in cima alla scheda Download, con l'icona info dopo la sua label. */
+.ytdlp-toggle {
+    min-height: 0;
+    margin-bottom: 12px;
+}
+
+/* La label delle checkbox dentro .settings resta testo in linea: la regola
+   generica ".settings label { display: flex; flex-direction: column }"
+   (pensata per le label con span+campo impilati) la
+   staccherebbe dall'icona "i". */
+.settings .check-label {
+    display: inline;
+}
+
+/* Checkbox una sotto l'altra (scheda Generale): staccate, non incollate. */
+.settings > .check + .check {
+    margin-top: 12px;
+}
+
+/* Bottone icona "Disinstalla yt-dlp": spinto a destra del badge, compatto,
+   solo icona (cestino). Visibile solo in gestione automatica con yt-dlp presente. */
+.ytdlp-uninstall {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 7px;
+    line-height: 0;
+}
+
+.ytdlp-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.ytdlp-ok {
+    background: color-mix(in srgb, var(--ok) 18%, transparent);
+    color: var(--ok);
+}
+
+.ytdlp-missing {
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+    color: var(--danger);
+}
+
+/* Account Google (scheda Download): stessa card di yt-dlp, con il nome
+   dell'account nel badge e l'azione (Collega/Scollega) a destra. */
+.google-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.google-account {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* L'email dell'account sta a destra, accanto a "Scollega" (su Android sotto
+   "Account Google", mobile.css). */
+.google-account-row {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.google-off {
+    background: color-mix(in srgb, var(--muted) 16%, transparent);
+    color: var(--muted);
+}
+
+.google-panel .ytdlp-head > .ytdlp-badge,
+.google-panel .ytdlp-head > button {
+    flex: none;
+}
+
+.google-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--muted);
+}
+
+/* Testata delle playlist: "Importa dall'account" accanto a "+ Aggiungi". */
+.replacements-head-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Riga di una playlist salvata, con il tasto delle sue impostazioni (⚙). */
+.replacement-row.playlist-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;
+}
+
+.prefs-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 7px;
+    line-height: 0;
+    color: var(--muted);
+}
+
+.prefs-btn.is-on {
+    color: var(--primary);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* Playlist dell'account nella scheda Download: una riga per playlist con
+   nome, numero di video, riassunto delle impostazioni e tasto ⚙. */
+.account-playlists {
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.account-playlist {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--input-bg);
+}
+
+.account-playlist.is-hidden .account-playlist-title {
+    color: var(--muted);
+}
+
+.account-playlist-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.account-playlist-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.account-playlist-meta {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.account-playlist-prefs {
+    color: var(--primary);
+}
+
+.account-playlist-progress {
+    flex-basis: 100%;
+}
+
+/* Popup delle impostazioni di una playlist. */
+.prefs-group {
+    margin: 16px 0 0;
+    padding: 0;
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.prefs-group legend {
+    margin-bottom: 8px;
+    padding: 0;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.radio-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.radio-option input {
+    flex: none;
+    width: auto;
+    min-height: 0;
+    margin: 0.2em 0 0;
+    cursor: inherit;
+}
+
+.radio-option small {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.radio-option.is-disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.prefs-target {
+    align-self: flex-start;
+    margin-left: 26px;
+}
+
+.prefs-target .select-trigger {
+    min-width: 220px;
+}
+
+.prefs-empty {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.prefs-empty > button {
+    flex: none;
+}
+
+/* Elenco delle playlist dell'account nel popup (importazione o aggiunta). */
+.google-list {
+    list-style: none;
+    margin: 0 0 18px;
+    padding: 0;
+    max-height: 46vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.google-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.google-item:hover:not(.is-disabled) {
+    border-color: var(--primary);
+}
+
+.google-item input {
+    flex: none;
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    cursor: inherit;
+}
+
+.google-item.is-disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.google-item > svg {
+    flex: none;
+    margin-left: auto;
+    color: var(--primary);
+}
+
+.google-item-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.google-item-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.google-item-meta {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Loader mostrato al posto del badge mentre, riattivata la gestione autonoma,
+   si cerca la copia locale di yt-dlp. */
+.ytdlp-checking {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.spinner {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--line);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation-duration: 2s;
+    }
+}
+
+/* Percorso della copia dell'app, accanto allo stato: monospace, sempre intero
+   (se è troppo lungo va a capo anche a metà) e in tono secondario rispetto a
+   nome e versione. */
+.ytdlp-path {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* In modalità manuale la riga "Percorso" diventa editabile: input + Sfoglia
+   occupano lo spazio della cella valore, unificando il percorso mostrato con
+   quello impostato a mano. */
+/* Fuori dalla gestione autonoma: etichetta + campo + Sfoglia accanto allo
+   stato, sulla stessa riga; se lo spazio è meno di ~360px scendono sotto. */
+.ytdlp-path-edit {
+    display: flex;
+    flex: 1 1 360px;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.ytdlp-path-edit .ytdlp-location-label {
+    flex: none;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.ytdlp-path-edit input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Avanzamento del download di yt-dlp/ffmpeg dentro la card: la spaziatura la
+   dà già il gap del pannello. */
+.ytdlp-progress {
+    margin-top: 0;
+}
+
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+}

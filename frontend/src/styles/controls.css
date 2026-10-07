@@ -1,0 +1,377 @@
+/* Controlli riusabili: checkbox con "i" (CheckOption), campi, tooltip, legenda delle scorciatoie; righe della tabella con errori o modifiche; blocco azioni. */
+
+.options {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Riga checkbox (CheckOption): casella a sinistra, poi testo e icona "i" nello
+   stesso flusso di testo, così l'icona segue l'ultima parola anche quando il
+   testo va a capo. */
+.check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.4;
+}
+
+/* Alta quanto una riga di testo: la casella resta centrata sulla prima riga
+   anche quando il testo ne occupa più di una. */
+.check-box {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 1.4em;
+}
+
+.check-text {
+    min-width: 0;
+}
+
+/* Ultima parola + icona: vanno a capo insieme, mai l'icona da sola. */
+.check-tail {
+    white-space: nowrap;
+}
+
+/* La label è collegata alla casella (htmlFor): cliccarla toggola la checkbox.
+   L'icona info è fuori dalla label, quindi cliccarla non ha effetto. */
+.check-label {
+    cursor: pointer;
+}
+
+.check input {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+.check .info-icon {
+    margin-left: 4px;
+    vertical-align: -0.2em;
+}
+
+/* Gruppo campo: etichetta sopra il controllo (cartelle di partenza/destinazione). */
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.field-group .toolbar {
+    margin-bottom: 0;
+}
+
+.field-label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Icona "i" con tooltip custom: solo il glifo, senza anello/bordo esterno. */
+.info-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: help;
+}
+
+.info-icon:hover:not(:disabled) {
+    color: var(--primary);
+}
+
+/* Non è un'azione: niente spostamento al click (button:active). Il transform
+   creerebbe un nuovo contesto di impilamento e il fumetto, finché si tiene
+   premuto, finirebbe sotto i riquadri successivi. Su Android renderebbe anche
+   l'icona il blocco contenitore del fumetto, che per un istante si
+   stringerebbe alla sua larghezza. */
+.info-icon:active:not(:disabled) {
+    transform: none;
+}
+
+/* Il tooltip è figlio di un contenitore position:relative (info-icon o un
+   bottone della toolbar) e compare verso il BASSO su hover/focus del genitore,
+   con una piccola freccia (caret) che punta verso l'alto, verso il trigger. */
+.info-tooltip {
+    position: absolute;
+    top: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    z-index: 20;
+    width: max-content;
+    max-width: 260px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--tooltip-bg, #1f2937);
+    color: var(--tooltip-text, #f8fafc);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* Freccia: triangolo che punta verso l'alto, agganciato al bordo superiore. */
+.info-tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-bottom-color: var(--tooltip-bg, #1f2937);
+}
+
+.info-icon:hover .info-tooltip,
+.info-icon:focus-visible .info-tooltip,
+.icon-btn:hover .info-tooltip,
+.icon-btn:focus-visible .info-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* La toolbar contiene bottoni con tooltip: serve un contesto di posizionamento. */
+.toolbar .icon-btn {
+    position: relative;
+}
+
+/* Wrapper generico per il tooltip moderno (componente Tooltip). Fornisce il
+   contesto di posizionamento al fumetto .info-tooltip e lo mostra su hover o
+   focus. Essendo il wrapper a ricevere l'hover, il tooltip appare anche quando
+   il bottone interno è disabilitato. */
+.tip {
+    position: relative;
+    display: inline-flex;
+}
+
+/* Mostra il tooltip su hover o su focus DA TASTIERA (:focus-visible). Usare
+   :focus-within lo lasciava aperto dopo un click del mouse su un controllo
+   interno (es. la checkbox "Solo da modificare"), che resta focalizzato: con
+   :has(:focus-visible) il click col mouse non lo tiene più aperto, mentre la
+   navigazione da tastiera continua a mostrarlo. */
+.tip:hover > .info-tooltip,
+.tip:has(:focus-visible) > .info-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .info-tooltip { transition: none; }
+}
+
+/* Legenda scorciatoie nell'header: l'icona vive su sfondo scuro, quindi usa i
+   colori "header" invece del grigio muted pensato per lo sfondo chiaro. */
+.shortcuts-legend {
+    color: var(--header-muted);
+}
+
+.shortcuts-legend:hover:not(:disabled) {
+    color: var(--header-text);
+}
+
+/* Il tooltip della legenda è più largo del tooltip informativo standard perché
+   contiene una griglia tasto → azione su più righe. */
+.shortcuts-tooltip {
+    max-width: none;
+}
+
+.shortcuts-title {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.shortcut-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.shortcut-row kbd {
+    justify-self: start;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--tooltip-text, #f8fafc);
+}
+
+.shortcut-desc {
+    opacity: 0.85;
+}
+
+.hint {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.note {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+tr.skipped td {
+    color: var(--muted);
+    background: var(--row-skipped);
+}
+
+/* Righe con errore di elaborazione: il file non è stato completato. */
+tr.failed td {
+    background: var(--row-error);
+}
+
+/* Etichetta "Errore" nella colonna esito: chip rosso con tooltip su hover/focus. */
+.result-error {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 0;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(164, 59, 59, 0.5);
+    background: rgba(164, 59, 59, 0.12);
+    color: var(--danger);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    cursor: help;
+}
+
+.result-error svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* Tooltip del messaggio d'errore: compare verso l'ALTO (le righe possono stare
+   in fondo alla tabella), con caret che punta in basso verso l'etichetta. */
+.result-error-tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    z-index: 20;
+    width: max-content;
+    max-width: 280px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--tooltip-bg, #1f2937);
+    color: var(--tooltip-text, #f8fafc);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: pre-line;
+    text-align: left;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.result-error-tip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--tooltip-bg, #1f2937);
+}
+
+.result-error:hover .result-error-tip,
+.result-error:focus-visible .result-error-tip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .result-error-tip { transition: none; }
+}
+
+/* Righe dove l'anteprima del nuovo nome differisce dal nome attuale */
+tr.changed td {
+    background: var(--row-changed);
+}
+
+/* Valore nuovo (nome, titolo o artista) quando differisce da quello attuale:
+   applicata al singolo valore, non alla riga, così una riga "changed" per un
+   tag non colora per errore anche il nome se quello non cambia. */
+.value-changed {
+    color: var(--accent-strong);
+    font-weight: 600;
+}
+
+/* Nome/tag vecchio quando sta per essere sovrascritto: linea sottile e
+   leggermente attenuata, per far risaltare la nuova versione senza cancellarlo. */
+.old-name {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: rgba(164, 59, 59, 0.5);
+    text-decoration-thickness: 1px;
+}
+
+/* Trattino/placeholder neutro per i valori non applicabili (es. tag ID3 su
+   file non-mp3, o tag assente in File attuale). */
+.muted-dash {
+    color: var(--muted);
+}
+
+/* Righe "nome:"/"titolo:"/"artista:" impilate nella colonna File attuale. */
+.current-line {
+    line-height: 1.5;
+}
+
+.current-line + .current-line {
+    margin-top: 2px;
+}
+
+.current-label {
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Blocco azioni: un bordo superiore fa da divisore fra le checkbox soprastanti e
+   i pulsanti (download playlist inclusi), che vivono tutti qui sotto. */
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+}
+
+.settings {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+}

@@ -272,13 +272,13 @@ function App() {
     draftRef.current = draft
     const playlistDraftRef = useRef(playlistDraft)
     playlistDraftRef.current = playlistDraft
-    // Contenitore che scorre sotto l'header (vedi .app-scroll in App.css).
+    // Contenitore che scorre sotto l'header (vedi .app-scroll in styles/layout.css).
     const scrollRef = useRef<HTMLDivElement>(null)
 
     // downloadRowWidth: larghezza della riga playlist + "Scarica" della
     // schermata normale su desktop, misurata con la playlist aperta e ferma. Il
     // campo del link non la supera e, con la playlist chiusa, "Scarica" si
-    // allarga fino a lei (--download-row-width in App.css). Su Android la riga
+    // allarga fino a lei (--download-row-width in styles/main.css). Su Android la riga
     // occupa già tutta la larghezza.
     const downloadRowRef = useRef<HTMLDivElement>(null)
     const [downloadRowWidth, setDownloadRowWidth] = useState(0)

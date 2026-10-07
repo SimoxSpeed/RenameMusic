@@ -1,0 +1,247 @@
+/* Modalità semplificata (card centrale) e blocco cartelle delle Impostazioni. */
+
+/* ---- Modalità semplificata ------------------------------------------------ */
+
+/* Il <main> occupa tutto lo spazio sotto l'header (.app-scroll è una colonna
+   flex alta quanto il resto della finestra), così il "palco" della card può
+   centrarla anche in verticale. Dopo una conversione il palco torna alto
+   quanto la card e la tabella dei risultati le sta sotto. */
+main.is-simple {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.simple-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-block: 24px 56px;
+}
+
+.simple-stage.has-results {
+    flex: none;
+    padding-block: 12px 24px;
+}
+
+/* Card centrale: la scelta della playlist è l'unica azione della schermata,
+   quindi ha dimensioni, spazio e gerarchia da protagonista. */
+.simple-hero {
+    width: 100%;
+    max-width: 600px;
+    padding: 36px 36px 0;
+    text-align: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 10px 34px rgba(15, 23, 42, 0.08);
+    /* Niente overflow: hidden (taglierebbe i tooltip del piede): gli angoli
+       inferiori li arrotonda il piede stesso. */
+}
+
+.simple-hero-badge {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 16px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.simple-hero-badge svg {
+    width: 26px;
+    height: 26px;
+}
+
+.simple-hero-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+}
+
+.simple-hero-sub {
+    max-width: 420px;
+    margin: 8px auto 0;
+    color: var(--muted);
+}
+
+/* Playlist + azione principale, più alti dei controlli normali. Il select
+   prende tutto lo spazio libero; il suo menu resta allineato a sinistra. */
+.simple-hero-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 26px;
+}
+
+.simple-hero-controls .select-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+}
+
+.simple-hero-pick {
+    display: flex;
+    flex: 1 1 auto;
+    gap: 10px;
+    min-width: 0;
+}
+
+/* Con un link la playlist si chiude (vedi Collapse in components/controls.tsx)
+   e l'azione ne prende il posto, allargandosi mentre l'altra si stringe. */
+.simple-hero-controls:has(> .simple-hero-pick[data-away]) > .simple-hero-action,
+.simple-hero-controls:has(> .simple-hero-pick[data-away]) > .tip {
+    flex-grow: 1;
+}
+
+/* Tasto "+" (porta alle Impostazioni): quadrato, alto come select e azione. */
+.simple-hero-add {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    min-height: 48px;
+    padding: 0;
+}
+
+.simple-hero-controls .select-playlist .select-trigger {
+    width: 100%;
+    max-width: none;
+    min-height: 48px;
+    padding-inline: 14px;
+    font-size: 15px;
+}
+
+/* L'icona è sempre visibile (niente comparsa in hover come per .with-icon). */
+.simple-hero-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 22px;
+    font-size: 15px;
+}
+
+.simple-hero-action svg {
+    flex: none;
+}
+
+/* Con il Tooltip (cartella mancante) il bottone è dentro il suo wrapper. */
+.simple-hero-controls .tip > .simple-hero-action {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Link sopra playlist e azione, alto come loro e largo quanto la loro riga:
+   un blocco unico, largo al massimo come la riga playlist + azione della 3.0.4
+   (526 px, tutto lo spazio interno della card; sul telefono è comunque a tutta
+   larghezza). */
+.simple-hero-download {
+    max-width: 526px;
+    margin: 26px auto 0;
+}
+
+.simple-hero .link-field {
+    text-align: left;
+}
+
+.simple-hero .link-field input {
+    min-height: 48px;
+    padding-left: 38px;
+    font-size: 15px;
+}
+
+.simple-hero .link-field-icon {
+    left: 14px;
+}
+
+.simple-hero .link-field-clear,
+.simple-hero .link-field-paste {
+    right: 9px;
+}
+
+.simple-hero .link-field-paste {
+    height: 34px;
+}
+
+.simple-hero .link-field > .tip {
+    right: 41px;
+}
+
+.simple-hero .link-field + .simple-hero-controls {
+    margin-top: 10px;
+}
+
+.simple-hero .op-progress {
+    margin-top: 18px;
+}
+
+.simple-hero-errors {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+}
+
+/* Piede della card, a filo dei bordi: dove finiscono i brani e il tasto per
+   cambiarlo (le cartelle stanno nelle Impostazioni). */
+.simple-hero-foot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 28px -36px 0;
+    padding: 12px 16px 12px 20px;
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 15px 15px; /* raggio della card meno il bordo */
+    background: var(--panel-alt);
+    color: var(--muted);
+    font-size: 13px;
+    text-align: left;
+}
+
+/* I risultati restano centrati sotto la card, senza allargarsi a tutto schermo. */
+.simple-results {
+    width: 100%;
+    max-width: 1100px;
+    margin-inline: auto;
+}
+
+/* Schermi stretti (telefono): meno margine interno e comandi impilati, a
+   tutta larghezza. */
+@media (max-width: 560px) {
+    .simple-hero {
+        padding: 28px 18px 0;
+        border-radius: 14px;
+    }
+    .simple-hero-foot {
+        margin-inline: -18px;
+        padding-inline: 16px 12px;
+    }
+    .simple-hero-controls {
+        flex-direction: column;
+    }
+    .simple-hero-controls .select-wrap {
+        flex: none;
+    }
+    .simple-hero-controls .simple-hero-pick .select-wrap {
+        flex: 1 1 auto;
+    }
+    /* Con i caratteri grandi il testo va a capo invece di uscire dalla card. */
+    .simple-hero-action,
+    .simple-hero-errors {
+        white-space: normal;
+    }
+}
+
+
+/* Cartelle e opzioni nelle Impostazioni (in qualunque modalità). */
+.settings-folders {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}

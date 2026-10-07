@@ -1,0 +1,184 @@
+/* Struttura della pagina: colonna alta quanto la finestra, header fermo e area che scorre; contatori e aggiornamento automatico nell'header. */
+
+/* La finestra è una colonna alta quanto il viewport: header fermo in cima e
+   sotto il contenuto, l'unico che scorre (.app-scroll). */
+.app {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header fisso in cima. La leggera ombra lo stacca dal contenuto;
+   position + z-index la tengono sopra .app-scroll. */
+header {
+    position: relative;
+    flex: none;
+    z-index: 40;
+    background: var(--header-bg);
+    color: var(--header-text);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.18);
+}
+
+/* Contenuto sotto l'header: scorre qui, quindi la scrollbar parte da sotto
+   l'header. Lo spazio della scrollbar è sempre riservato: evita il layout
+   shift (flicker orizzontale) quando la tabella cambia dimensione e la
+   scrollbar compare/scompare durante Scan/Refresh. È una colonna flex perché
+   il main della modalità semplificata occupi tutta l'altezza. */
+.app-scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+}
+
+.app-scroll > main {
+    flex-shrink: 0;
+}
+
+/* Il contenuto dell'header (titolo + azioni) è allineato allo stesso contenitore
+   di <main>: stessa max-width e stesso padding orizzontale, così i bottoni non
+   sfuggono oltre i margini del layout sottostante su schermi larghi. Lo sfondo
+   scuro resta invece a tutta larghezza (vive su <header>). */
+.header-inner {
+    max-width: 1600px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 24px;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 650;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.counters {
+    display: flex;
+    gap: 8px;
+    color: var(--header-muted);
+    font-size: 13px;
+}
+
+.counters .dot {
+    opacity: 0.5;
+}
+
+.counters .counter-hi {
+    color: #b7e5c4;
+    font-weight: 600;
+}
+
+/* Brani selezionati da rivedere: viola chiaro come il badge "Da rivedere",
+   schiarito per lo sfondo scuro dell'header. */
+.counters .counter-review {
+    color: #c4b5fd;
+    font-weight: 600;
+}
+
+.counters .counter-err {
+    color: #f0a9a9;
+    font-weight: 600;
+}
+
+/* Pill "Agg. automatico attivo" nell'header: rimane sempre visibile, con puntino pulsante. */
+.watch-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(78, 168, 106, 0.18);
+    color: #b7e5c4;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.watch-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    box-shadow: 0 0 0 0 rgba(78, 168, 106, 0.7);
+    animation: watchPulse 1.8s ease-out infinite;
+}
+
+@keyframes watchPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(78, 168, 106, 0.55); }
+    70%  { box-shadow: 0 0 0 8px rgba(78, 168, 106, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(78, 168, 106, 0); }
+}
+
+/* Toggle "Aggiornamento automatico" nell'header: è un <button> cliccabile che
+   attiva/disattiva l'osservazione della cartella. Da spento è discreto (bordo
+   tenue, testo attenuato); da acceso si accende con lo stesso verde della pill
+   e il puntino pulsa. Sostituisce la vecchia checkbox nelle opzioni. */
+.watch-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(203, 213, 225, 0.35);
+    background: transparent;
+    color: var(--header-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.watch-toggle:hover:not(:disabled) {
+    border-color: rgba(203, 213, 225, 0.6);
+    color: var(--header-text);
+}
+
+.watch-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.watch-toggle.is-on {
+    background: rgba(78, 168, 106, 0.18);
+    border-color: rgba(78, 168, 106, 0.5);
+    color: #b7e5c4;
+}
+
+/* Il puntino pulsa SOLO quando l'aggiornamento automatico è attivo; da spento
+   resta un pallino statico e attenuato. */
+.watch-toggle .watch-dot {
+    animation: none;
+    background: var(--header-muted);
+}
+
+.watch-toggle.is-on .watch-dot {
+    background: var(--accent-strong);
+    animation: watchPulse 1.8s ease-out infinite;
+}
+
+/* Attivo ma con la cartella di partenza non trovata: pillola rossa, comunque
+   attenuata come ogni tasto disabilitato, e puntino fermo (non sta osservando
+   nulla). */
+.watch-toggle.is-error {
+    background: rgba(229, 115, 115, 0.18);
+    border-color: rgba(229, 115, 115, 0.55);
+    color: #f0a9a9;
+}
+
+.watch-toggle.is-error .watch-dot {
+    background: #e57373;
+}
