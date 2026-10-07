@@ -100,8 +100,13 @@ import { SETTINGS_TABS, SettingsTabsBar, type SettingsTab } from './settings/tab
 import { cloneConfig, comparableConfig, comparablePlaylists } from './lib/config'
 import { fileWillChange } from './lib/files'
 import { linkInText, playlistIdOf, isVideoLink } from './lib/links'
+import { errorMessage } from './lib/errors'
 import { type InstallProgress, installPercent, installLabel } from './lib/progress'
 import { type TagPrompt, type PromptSearch, promptsOf } from './lib/prompts'
+
+// Elenco dei file quando lo stato non ne ha: sempre lo stesso array, così chi
+// dipende da files (effetti) non riparte a ogni render.
+const NO_FILES: core.FileView[] = []
 
 function App() {
     const [state, setState] = useState<core.StateResponse | null>(null)
@@ -296,7 +301,6 @@ function App() {
     useLayoutEffect(measureDownloadRow)
     useEffect(() => {
         document.fonts?.ready.then(measureDownloadRow)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     function absorb(resp: core.ActionResponse, resetDrafts = false) {
@@ -387,8 +391,8 @@ function App() {
         setBusy(true)
         try {
             await fn()
-        } catch (err: any) {
-            notify(false, 'Errore: ' + (err?.message ?? String(err)))
+        } catch (err) {
+            notify(false, 'Errore: ' + errorMessage(err))
         } finally {
             const elapsed = performance.now() - start
             if (elapsed < MIN_BUSY_MS) {
@@ -504,7 +508,7 @@ function App() {
                 if (url) setDownloadLink(url)
                 else notify(false, text.trim() ? 'Negli appunti non c\'è un link.' : 'Gli appunti sono vuoti.')
             })
-            .catch((err: any) => notify(false, 'Impossibile leggere gli appunti: ' + (err?.message ?? String(err))))
+            .catch((err) => notify(false, 'Impossibile leggere gli appunti: ' + errorMessage(err)))
     }
 
     // Chiede l'accesso a tutti i file (Android 11+: apre le impostazioni di
@@ -682,7 +686,6 @@ function App() {
         }
         window.addEventListener('online', onOnline)
         return () => window.removeEventListener('online', onOnline)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     // Al ritorno sulla finestra ricontrolliamo che le cartelle esistano ancora
@@ -714,7 +717,6 @@ function App() {
         MarkUpdateSeen(availableUpdate.version)
             .then((resp) => absorbUpdate(resp.state))
             .catch(() => {})
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [availableUpdate, updateBlocked])
 
     // Quando cambia la traccia in testa alla coda, reimpostiamo l'input del popup
@@ -758,7 +760,7 @@ function App() {
         let pending = suggestionsRef.current.get(path)
         if (!pending) {
             pending = SuggestTrackNames(path).catch(
-                (err) => ({ names: [], error: err?.message ?? String(err) }) as core.TrackSuggestions,
+                (err) => ({ names: [], error: errorMessage(err) }) as core.TrackSuggestions,
             )
             suggestionsRef.current.set(path, pending)
         }
@@ -877,7 +879,7 @@ function App() {
             .then((resp) => {
                 if (resp && !resp.ok) notify(false, resp.message || 'Impossibile aprire la cartella.')
             })
-            .catch((err) => notify(false, 'Impossibile aprire la cartella: ' + (err?.message ?? String(err))))
+            .catch((err) => notify(false, 'Impossibile aprire la cartella: ' + errorMessage(err)))
     }
 
     // Processo unificato: normalizzazione nomi + scrittura tag in un colpo solo.
@@ -930,7 +932,7 @@ function App() {
                     setResults((prev) => [...(prev ?? []), ...added])
                 }
             })
-            .catch((err) => notify(false, 'Errore sulla traccia: ' + (err?.message ?? String(err))))
+            .catch((err) => notify(false, 'Errore sulla traccia: ' + errorMessage(err)))
     }
 
     // Cancella TUTTI i tag ID3 dagli MP3 della cartella (azione distruttiva:
@@ -1017,9 +1019,9 @@ function App() {
                 if (!resp.ok) notify(false, resp.message ?? '')
                 ok = ok && resp.ok
             }
-        } catch (err: any) {
+        } catch (err) {
             ok = false
-            notify(false, 'Errore: ' + (err?.message ?? String(err)))
+            notify(false, 'Errore: ' + errorMessage(err))
         }
         setSaveStatus(ok ? 'saved' : null)
         if (ok) savedTimerRef.current = window.setTimeout(() => setSaveStatus(null), 1800)
@@ -1058,8 +1060,8 @@ function App() {
             const resp = await GooglePlaylists()
             absorbSynced(resp.state)
             if (!resp.ok) notify(false, resp.message ?? '')
-        } catch (err: any) {
-            notify(false, 'Errore: ' + (err?.message ?? String(err)))
+        } catch (err) {
+            notify(false, 'Errore: ' + errorMessage(err))
         } finally {
             setPrefsSyncing(false)
         }
@@ -1126,7 +1128,7 @@ function App() {
     // principale (solo scelta della playlist, "Scarica e converti", niente
     // anteprima).
     const simpleMode = !!state?.config?.simpleMode
-    const files = state?.files ?? []
+    const files = state?.files ?? NO_FILES
     const logs = state?.logs ?? []
     // Righe del registro arrivate dopo l'ultima apertura di Attività (le più
     // recenti sono in cima): se la riga vista non c'è più sono tutte nuove.
@@ -1359,10 +1361,10 @@ function App() {
                 return
             }
             setGoogleLists(resp.googlePlaylists ?? [])
-        } catch (err: any) {
+        } catch (err) {
             if (req !== pickerReqRef.current) return
             setGooglePicker(null)
-            notify(false, 'Errore: ' + (err?.message ?? String(err)))
+            notify(false, 'Errore: ' + errorMessage(err))
         }
     }
 
@@ -1714,7 +1716,7 @@ function App() {
     // il registro, così il popup non ricompare.
     function shareCrash() {
         setCrashReport(false)
-        shareCrashReport().catch((err: any) => notify(false, 'Condivisione non riuscita: ' + (err?.message ?? String(err))))
+        shareCrashReport().catch((err) => notify(false, 'Condivisione non riuscita: ' + errorMessage(err)))
     }
 
     function discardCrash() {

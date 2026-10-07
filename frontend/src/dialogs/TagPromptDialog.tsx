@@ -128,7 +128,6 @@ export function TagPromptDialog({
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') onResolve(true)
                         }}
-                        // eslint-disable-next-line jsx-a11y/no-autofocus
                         autoFocus
                     />
                     <ExtChip ext={head.ext} />

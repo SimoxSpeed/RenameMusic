@@ -144,7 +144,6 @@ export default function FolderPicker({
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') createFolder()
                             }}
-                            // eslint-disable-next-line jsx-a11y/no-autofocus
                             autoFocus
                         />
                         <button type="button" onClick={() => setNewName(null)}>
